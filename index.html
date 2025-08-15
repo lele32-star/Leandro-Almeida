@@ -133,6 +133,10 @@
             <div id="km-hint" class="hint">Edite se preferir informar direto em km</div>
           </div>
 
+          <div class="col-12">
+            <div class="hint">Preencha os campos de distância manualmente <strong>ou</strong> deixe-os vazios e informe os aeroportos para cálculo automático.</div>
+          </div>
+
           <div class="col-3">
             <label for="valorKm">Tarifa por km (R$)</label>
             <input id="valorKm" type="number" inputmode="decimal" step="0.01" placeholder="ex.: 36,00" />
@@ -353,13 +357,18 @@
   function gerarPreOrcamento(){
     const s = buildState();
     if(!s.aeronave){ alert('Selecione uma aeronave.'); return; }
-    if(!s.origem || !s.destino){ alert('Informe Origem e Destino.'); return; }
 
-    const waypoints = [s.origem, ...s.stops, s.destino];
+    const manualProvided = (s.nm > 0 || s.km > 0);
+    const haveAirports = s.origem && s.destino;
+    if(!manualProvided && !haveAirports){
+      alert('Informe Origem e Destino ou a distância manualmente.');
+      return;
+    }
+
+    const waypoints = haveAirports ? [s.origem, ...s.stops, s.destino] : [];
     const autoKm = waypoints.length >= 2 ? computeRouteKm(waypoints) : null;
 
     // Preferir o que o usuário informou; senão, o auto
-    const manualProvided = (s.nm > 0 || s.km > 0);
     let useKm = 0, useNm = 0, sourceLabel = '';
     if (manualProvided){
       if (s.nm > 0){ useNm = s.nm; useKm = asKM(s.nm); }
@@ -387,7 +396,7 @@
       }
     }
 
-    const rotaStr = waypoints.join(' → ');
+    const rotaStr = waypoints.length ? waypoints.join(' → ') : '-';
     $("resultado").innerHTML = `
       <h3>Pré-Orçamento</h3>
       <table class="preview">
@@ -451,13 +460,18 @@
   async function gerarPDF(){
     const s = buildState();
     if(!s.aeronave){ alert('Selecione uma aeronave.'); return; }
-    if(!s.origem || !s.destino){ alert('Informe Origem e Destino.'); return; }
 
-    const waypoints = [s.origem, ...s.stops, s.destino];
+    const manualProvided = (s.nm > 0 || s.km > 0);
+    const haveAirports = s.origem && s.destino;
+    if(!manualProvided && !haveAirports){
+      alert('Informe Origem e Destino ou a distância manualmente.');
+      return;
+    }
+
+    const waypoints = haveAirports ? [s.origem, ...s.stops, s.destino] : [];
     const autoKm = waypoints.length >= 2 ? computeRouteKm(waypoints) : null;
 
     // Preferir o informado pelo usuário
-    const manualProvided = (s.nm > 0 || s.km > 0);
     let useKm = 0, useNm = 0, sourceLabel = '';
     if (manualProvided){
       if (s.nm > 0){ useNm = s.nm; useKm = asKM(s.nm); }
@@ -481,8 +495,8 @@
       else { total -= s.valorExtra; ajusteNode = { text:`Desconto: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0] }; }
     }
 
-    const mapImage = s.cfg.showMapa ? (await generateMapImageData(waypoints)) : null;
-    const rotaStr = waypoints.join(' → ');
+    const mapImage = (s.cfg.showMapa && waypoints.length >= 2) ? (await generateMapImageData(waypoints)) : null;
+    const rotaStr = waypoints.length ? waypoints.join(' → ') : '-';
 
     const content = [
       { text: 'Cotação de Voo Executivo', style: 'header' },
@@ -539,7 +553,11 @@
     if (!map) return;
     if (routeLayer){ routeLayer.remove(); routeLayer = null; }
 
-    const codes = Array.isArray(waypoints) ? waypoints.map(toICAO) : [toICAO(arguments[0]), toICAO(arguments[1])];
+    const codes = Array.isArray(waypoints) ? waypoints.map(toICAO) : [];
+    if (codes.length < 2){
+      map.setView([ -14.2350, -51.9253 ], 4);
+      return;
+    }
     const coords = codes.map(getCoords);
     if (coords.some(c=>!c)){
       map.setView([ -14.2350, -51.9253 ], 4);
