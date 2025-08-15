@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cotação de Voo Executivo — v2</title>
+
+  <!-- Libs -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+  <style>
+    :root{
+      --bg: #0b0c10;
+      --card: #111318;
+      --muted: #b2b8c5;
+      --text: #f1f5f9;
+      --brand: #22c55e;
+      --brand-ink: #0a7a3a;
+      --border: #20232a;
+      --danger: #ef4444;
+      --overlay: rgba(2,6,23,.6);
+    }
+    *{ box-sizing: border-box; }
+    html, body{ height: 100%; }
+    body{
+      margin: 0; background: radial-gradient(1200px 600px at 10% -10%, #1a1c24 0, #0b0c10 55%);
+      color: var(--text); font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    .wrap{ max-width: 1160px; margin: 24px auto; padding: 0 16px; }
+    header{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom: 16px; }
+    header h1{ font-size: clamp(20px, 3vw, 28px); margin:0; letter-spacing:.2px; }
+    header p{ margin:0; color: var(--muted); }
+
+    .grid{ display:grid; grid-template-columns: 1.05fr .95fr; gap:16px; }
+    @media (max-width: 980px){ .grid{ grid-template-columns: 1fr; } }
+
+    .card{ background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(0,0,0,.06)); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,.25) inset, 0 10px 20px rgba(0,0,0,.25);
+      padding: 16px; }
+    .card h2{ margin: 0 0 12px; font-size: 16px; letter-spacing:.4px; color:#e7ebf3; }
+
+    label{ font-weight:600; font-size:12px; letter-spacing:.4px; color:#cdd3df; display:block; margin: 8px 0 6px; }
+    input, select, textarea{ width:100%; background:#0e1117; color:var(--text); border:1px solid #1b2030; border-radius:10px; padding:10px 12px; outline:none; transition: border-color .15s, box-shadow .15s; }
+    input:focus, select:focus, textarea:focus{ border-color:#334155; box-shadow: 0 0 0 3px rgba(51,65,85,.25); }
+    .row{ display:grid; grid-template-columns: repeat(12,1fr); gap:10px; }
+    .col-6{ grid-column: span 6; }
+    .col-5{ grid-column: span 5; }
+    .col-4{ grid-column: span 4; }
+    .col-3{ grid-column: span 3; }
+    .col-2{ grid-column: span 2; }
+    .col-12{ grid-column: span 12; }
+    @media (max-width:720px){ .col-6,.col-5,.col-4,.col-3,.col-2{ grid-column: span 12; } }
+
+    .hint{ color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+    .btns{ display:flex; flex-wrap:wrap; gap:10px; margin-top: 14px; }
+    .btn{ appearance:none; border:1px solid #1f2937; background: linear-gradient(180deg, #1f2937, #111827); color:#e5e7eb; padding:11px 14px; border-radius:12px; cursor:pointer; font-weight:600; letter-spacing:.3px; transition: transform .05s ease, border-color .15s, box-shadow .15s; }
+    .btn:hover{ border-color:#334155; box-shadow: 0 6px 18px rgba(0,0,0,.35); }
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{ background: linear-gradient(180deg, #16a34a, #0f8a3b); border-color:#0f8a3b; color:#052e16; text-shadow: 0 1px 0 rgba(255,255,255,.3); }
+    .btn.ghost{ background: transparent; border-color:#273043; }
+    .btn.danger{ background: linear-gradient(180deg, #ef4444, #b91c1c); border-color:#7f1d1d; }
+
+    #resultado{ min-height: 120px; border:1px dashed #273043; border-radius: 12px; padding: 12px; margin-top: 10px; }
+    #resultado h3{ margin: 0 0 8px; }
+    table.preview{ width:100%; border-collapse: collapse; font-size: 13px; }
+    table.preview td{ padding: 6px 8px; border-bottom:1px solid #1b2030; }
+    table.preview tr:last-child td{ border-bottom: none; }
+    table.preview td:first-child{ color:#cdd3df; width: 42%; }
+
+    #map{ height: 320px; width: 100%; border-radius: 12px; border:1px solid var(--border); }
+    .note{ font-size:12px; color:var(--muted); margin-top:8px; }
+
+    /* Paradas */
+    #stops .stop-row{ display:flex; align-items:center; gap:8px; margin:6px 0; }
+    #stops .stop-row input{ flex:1; }
+
+    /* Modal README */
+    .modal{ position: fixed; inset: 0; display:none; align-items: center; justify-content: center; padding: 24px; }
+    .modal.show{ display:flex; }
+    .modal .backdrop{ position:absolute; inset:0; background: var(--overlay); backdrop-filter: blur(2px); }
+    .modal .panel{ position: relative; z-index:1; background:#0e1117; border:1px solid var(--border); border-radius: 16px; width:min(100%, 980px); max-height: 85vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,.55); }
+    .modal header{ position: sticky; top:0; background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(0,0,0,.1)); display:flex; justify-content:space-between; align-items:center; padding: 12px 16px; border-bottom:1px solid var(--border); }
+    .modal header h3{ margin:0; font-size:16px; }
+    .modal .content{ padding: 16px; }
+
+    /* Config PDF */
+    .cfg-grid{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px 14px; }
+    @media (max-width:720px){ .cfg-grid{ grid-template-columns: 1fr; } }
+    .cfg-item{ display:flex; align-items:center; gap:10px; font-size:13px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Cotação de Voo Executivo</h1>
+        <p>Rápido, elegante e direto ao ponto. Selecione a aeronave, informe a distância e gere seu PDF.</p>
+      </div>
+      <div>
+        <button id="btnReadme" class="btn ghost" type="button" title="Ajuda e instruções">Ajuda / README</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- Formulário principal -->
+      <section class="card" aria-labelledby="form-title">
+        <h2 id="form-title">Parâmetros da cotação</h2>
+        <div class="row">
+          <div class="col-6">
+            <label for="aeronave">Aeronave</label>
+            <select id="aeronave" required>
+              <option value="" disabled selected>Escolha uma aeronave</option>
+              <option value="Hawker 400">Hawker 400</option>
+              <option value="Phenom 100">Phenom 100</option>
+              <option value="Citation II">Citation II</option>
+              <option value="King Air C90">King Air C90</option>
+              <option value="Sêneca IV">Sêneca IV</option>
+              <option value="Cirrus SR22">Cirrus SR22</option>
+            </select>
+          </div>
+          <div class="col-3">
+            <label for="nm">Distância (NM)</label>
+            <input id="nm" type="number" inputmode="decimal" min="0" step="0.1" placeholder="ex.: 540" />
+            <div class="hint">Convertemos para km automaticamente (1 NM = 1,852 km)</div>
+          </div>
+          <div class="col-3">
+            <label for="km">Distância (km)</label>
+            <input id="km" type="number" inputmode="decimal" min="0" step="0.1" placeholder="preenchido por NM" aria-describedby="km-hint" />
+            <div id="km-hint" class="hint">Edite se preferir informar direto em km</div>
+          </div>
+
+          <div class="col-3">
+            <label for="valorKm">Tarifa por km (R$)</label>
+            <input id="valorKm" type="number" inputmode="decimal" step="0.01" placeholder="ex.: 36,00" />
+            <div class="hint">Preenche automático pela aeronave, mas você pode alterar</div>
+          </div>
+          <div class="col-3"></div><div class="col-3"></div><div class="col-3"></div>
+
+          <div class="col-6">
+            <label for="origem">Origem</label>
+            <input id="origem" type="text" placeholder="ex.: SBBR" maxlength="8" />
+          </div>
+          <div class="col-6">
+            <label for="destino">Destino</label>
+            <input id="destino" type="text" placeholder="ex.: SBMT" maxlength="8" />
+          </div>
+
+          <div class="col-12">
+            <label for="stops">Pernas adicionais</label>
+            <div id="stops"></div>
+            <div class="btns" style="margin-top:8px;">
+              <button id="btnAddStop" class="btn ghost" type="button">Adicionar Aeroporto</button>
+            </div>
+            <div class="hint">Cada aeroporto adicionado vira uma nova perna (Origem → A → B → … → Destino).</div>
+          </div>
+
+          <div class="col-6">
+            <label for="dataIda">Data ida</label>
+            <input id="dataIda" type="date" />
+            <div class="hint">Somente a data de <b>hoje</b> pode ser selecionada.</div>
+          </div>
+          <div class="col-6">
+            <label for="dataVolta">Data volta</label>
+            <input id="dataVolta" type="date" disabled />
+            <div id="voltaHint" class="hint">Travada para a mesma data da ida.</div>
+          </div>
+
+          <div class="col-4">
+            <label for="valorExtra">Acréscimo/Desconto (R$)</label>
+            <input id="valorExtra" type="number" inputmode="decimal" step="0.01" placeholder="0,00" />
+          </div>
+          <div class="col-4">
+            <label for="tipoExtra">Tipo</label>
+            <select id="tipoExtra">
+              <option value="soma">Adicionar</option>
+              <option value="subtrai">Subtrair</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="btns">
+          <button id="btnPreOrcamento" class="btn primary" type="button">Gerar Pré-Orçamento</button>
+          <button id="btnPDF" class="btn" type="button">Gerar PDF</button>
+          <button id="btnMaps" class="btn ghost" type="button" title="Abre rota no Google Maps">Traçar no Google Maps</button>
+          <button id="btnReset" class="btn danger" type="button" title="Limpa o formulário">Limpar</button>
+        </div>
+      </section>
+
+      <!-- Preview + Mapa -->
+      <aside class="card" aria-labelledby="preview-title">
+        <h2 id="preview-title">Pré-visualização & mapa</h2>
+        <div id="resultado" aria-live="polite"></div>
+        <div id="map" style="margin-top:12px;"></div>
+        <div class="note">Dica: use “Traçar no Google Maps” para abrir a rota rapidamente no navegador.</div>
+
+        <!-- Configurações do PDF -->
+        <div class="card" style="margin-top:12px;">
+          <h2 id="pdfcfg-title">Configurações do PDF</h2>
+          <div class="cfg-grid" role="group" aria-labelledby="pdfcfg-title">
+            <label class="cfg-item"><input type="checkbox" id="cfgShowRota" checked />Mostrar rota (texto ORIG → … → DEST)</label>
+            <label class="cfg-item"><input type="checkbox" id="cfgShowMapa" checked />Mostrar mapa/rota no PDF</label>
+            <label class="cfg-item"><input type="checkbox" id="cfgShowModelo" checked />Mostrar modelo da aeronave</label>
+            <label class="cfg-item"><input type="checkbox" id="cfgShowTarifa" checked />Mostrar tarifa por km</label>
+            <label class="cfg-item"><input type="checkbox" id="cfgShowDistancia" checked />Mostrar distância (NM e km)</label>
+            <label class="cfg-item"><input type="checkbox" id="cfgShowDatas" checked />Mostrar datas (ida/volta)</label>
+            <label class="cfg-item"><input type="checkbox" id="cfgShowAjuste" />Mostrar ajuste (acréscimo/desconto)</label>
+            <label class="cfg-item"><input type="checkbox" id="cfgShowObs" />Mostrar observações</label>
+          </div>
+          <div class="hint" style="margin-top:8px;">Marque/desmarque o que deseja exibir no PDF. O total final sempre é mostrado.</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Modal README -->
+  <div id="readmeModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="readmeTitle" aria-hidden="true">
+    <div class="backdrop" data-close-readme></div>
+    <div class="panel">
+      <header>
+        <h3 id="readmeTitle">README — Como usar, personalizar e resolver problemas</h3>
+        <button class="btn ghost" type="button" data-close-readme>Fechar</button>
+      </header>
+      <div class="content">
+        <h2>🚀 Recursos</h2>
+        <ul>
+          <li>Botões funcionando (Pré-Orçamento, PDF, Maps, Limpar).</li>
+          <li>“Adicionar Aeroporto” adiciona campos com remover individual.</li>
+          <li>Calendário de data: ida apenas <b>hoje</b>; volta travada = ida.</li>
+          <li>Configurações finas do PDF (mostrar/ocultar cada item).</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Script principal -->
+  <script>
+  // ====== Config ======
+  const valoresKm = {
+    "Hawker 400": 36,
+    "Phenom 100": 36,
+    "Citation II": 36,
+    "King Air C90": 30,
+    "Sêneca IV": 22,
+    "Cirrus SR22": 15,
+  };
+
+  // Coordenadas de exemplo (expanda conforme necessário)
+  const ICAO_COORDS = {
+    SBBR: { lat: -15.871, lng: -47.918 },
+    SBSP: { lat: -23.6267, lng: -46.6554 },
+    SBMT: { lat: -23.509, lng: -46.637 },
+    SBMO: { lat: -9.5108, lng: -35.7917 },
+    SBEG: { lat:  -3.039, lng: -60.049 },
+    SBGL: { lat: -22.809, lng: -43.250 },
+    SKCL: { lat:   3.543, lng: -76.381 },
+  };
+
+  // ====== Utils ======
+  const $ = (id) => document.getElementById(id);
+  const asKM = (nm) => nm * 1.852;
+  const asCurrency = (n) => (isFinite(n) ? n : 0).toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
+  const parseNum = (v) => {
+    const n = typeof v === 'number' ? v : parseFloat(String(v).replace(',', '.'));
+    return isFinite(n) ? n : 0;
+  }
+  const toICAO = (s) => (s||'').trim().toUpperCase();
+  const todayISO = (() => { const d=new Date(); const z=n=>String(n).padStart(2,'0'); return `${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`; })();
+
+  function ensureKmSynced(){
+    const nm = parseNum($("nm").value);
+    if (nm > 0) $("km").value = asKM(nm).toFixed(1);
+  }
+
+  function syncValorKmByAeronave(){
+    const a = $("aeronave").value;
+    const defaultKm = valoresKm[a] || 0;
+    if (defaultKm > 0) $("valorKm").value = defaultKm.toFixed(2);
+  }
+
+  function getStops(){
+    return Array.from(document.querySelectorAll('#stops .stop-input'))
+      .map(i => toICAO(i.value))
+      .filter(Boolean);
+  }
+
+  function updateLegModeUI(){
+    // Volta sempre travada para a data de ida (conforme pedido)
+    const volta = $('#dataVolta');
+    const ida = $('#dataIda');
+    const hint = $('#voltaHint');
+    if (ida && volta){
+      volta.value = ida.value || todayISO;
+      volta.disabled = true;
+      if (hint) hint.textContent = 'Travada para a mesma data da ida.';
+    }
+  }
+
+  function buildState(){
+    const aeronave = $("aeronave").value;
+    const nm = parseNum($("nm").value);
+    let kmInput = parseNum($("km").value);
+    const km = nm > 0 ? asKM(nm) : kmInput;
+    const origem = toICAO($("origem").value);
+    const destino = toICAO($("destino").value);
+    const stops = getStops();
+    const dataIda = $("dataIda").value;
+    const dataVolta = $("dataVolta").value;
+    const observacoes = (document.getElementById('observacoes')?.value || '').trim();
+    const valorExtra = parseNum($("valorExtra").value);
+    const tipoExtra = $("tipoExtra").value;
+    const valorKmCustom = parseNum($("valorKm").value) || (valoresKm[aeronave] || 0);
+
+    // Config PDF
+    const cfg = {
+      showRota: $('#cfgShowRota')?.checked ?? true,
+      showMapa: $('#cfgShowMapa')?.checked ?? true,
+      showModelo: $('#cfgShowModelo')?.checked ?? true,
+      showTarifa: $('#cfgShowTarifa')?.checked ?? true,
+      showDistancia: $('#cfgShowDistancia')?.checked ?? true,
+      showDatas: $('#cfgShowDatas')?.checked ?? true,
+      showAjuste: $('#cfgShowAjuste')?.checked ?? false,
+      showObs: $('#cfgShowObs')?.checked ?? false,
+    };
+
+    return { aeronave, nm, km, origem, destino, stops, dataIda, dataVolta, observacoes, valorExtra, tipoExtra, valorKmCustom, cfg };
+  }
+
+  // ====== Rotas (Haversine) ======
+  function haversineKm(a, b){
+    const R = 6371; // km
+    const toRad = (d)=>d*Math.PI/180;
+    const dlat=toRad(b.lat-a.lat), dlon=toRad(b.lng-a.lng);
+    const s = Math.sin(dlat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dlon/2)**2;
+    return 2*R*Math.asin(Math.sqrt(s));
+  }
+  function getCoords(code){
+    const c = ICAO_COORDS[code];
+    return c ? {lat:c.lat, lng:c.lng} : null;
+  }
+  function computeRouteKm(waypoints){
+    const coords = waypoints.map(getCoords);
+    if (coords.some(c => !c)) return null;
+    let total = 0;
+    for (let i=0;i<coords.length-1;i++) total += haversineKm(coords[i], coords[i+1]);
+    return total;
+  }
+
+  // ====== Prévia ======
+  function gerarPreOrcamento(){
+    const s = buildState();
+    if(!s.aeronave){ alert('Selecione uma aeronave.'); return; }
+    if(!s.origem || !s.destino){ alert('Informe Origem e Destino.'); return; }
+
+    const waypoints = [s.origem, ...s.stops, s.destino];
+    const autoKm = waypoints.length >= 2 ? computeRouteKm(waypoints) : null;
+
+    // Preferir o que o usuário informou; senão, o auto
+    const manualProvided = (s.nm > 0 || s.km > 0);
+    let useKm = 0, useNm = 0, sourceLabel = '';
+    if (manualProvided){
+      if (s.nm > 0){ useNm = s.nm; useKm = asKM(s.nm); }
+      else { useKm = s.km; useNm = s.km/1.852; }
+    } else if (autoKm){
+      useKm = autoKm; useNm = autoKm/1.852; sourceLabel = ' — automático (mapa)';
+      $('nm').value = useNm.toFixed(1);
+      $('km').value = useKm.toFixed(1);
+    }
+
+    if(!(useNm > 0 || useKm > 0)){
+      alert('Informe a distância (NM/km) ou use códigos com coordenadas conhecidas.');
+      return;
+    }
+
+    const valorKm = s.valorKmCustom > 0 ? s.valorKmCustom : (valoresKm[s.aeronave] || 0);
+    const kmToUse = useKm || asKM(useNm);
+    let total = kmToUse * valorKm;
+    let labelExtra = '';
+    if (s.valorExtra > 0){
+      if (s.tipoExtra === 'soma'){
+        total += s.valorExtra; labelExtra = `+ ${asCurrency(s.valorExtra)} (outras despesas)`;
+      } else {
+        total -= s.valorExtra; labelExtra = `- ${asCurrency(s.valorExtra)} (desconto)`;
+      }
+    }
+
+    const rotaStr = waypoints.join(' → ');
+    $("resultado").innerHTML = `
+      <h3>Pré-Orçamento</h3>
+      <table class="preview">
+        <tr><td>Rota</td><td>${rotaStr}</td></tr>
+        <tr><td>Modelo</td><td>${s.aeronave}</td></tr>
+        <tr><td>Tarifa por km</td><td>${asCurrency(valorKm)}</td></tr>
+        <tr><td>Distância</td><td>${useNm ? `${useNm.toFixed(1)} NM` : '-'} ${kmToUse ? `(${kmToUse.toFixed(1)} km)` : ''}${sourceLabel}</td></tr>
+        ${s.valorExtra > 0 ? `<tr><td>Ajuste</td><td>${labelExtra}</td></tr>` : ''}
+        <tr><td><strong>Total Estimado</strong></td><td><strong>${asCurrency(total)}</strong></td></tr>
+      </table>
+    `;
+
+    drawRouteOnMap(waypoints);
+  }
+
+  // ====== Captura do mapa (para PDF) ======
+  async function captureMapAsDataURL(){
+    try{
+      if (!window.html2canvas) return null;
+      const mapEl = $("map");
+      if(!mapEl) return null;
+      const canvas = await html2canvas(mapEl, { useCORS: true, backgroundColor: null, scale: 2 });
+      return canvas.toDataURL('image/png');
+    }catch(e){
+      console.warn('Falha ao capturar mapa com html2canvas', e);
+      return null;
+    }
+  }
+  function renderSchematicRoute(waypoints){
+    const w = 640, h = 360;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#0f1320'; ctx.fillRect(0,0,w,h);
+    ctx.strokeStyle = '#1c2236'; ctx.lineWidth = 1;
+    for(let x=20; x<w; x+=20){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+    for(let y=20; y<h; y+=20){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
+    const n = waypoints.length;
+    const marginX = 80, y = h/2, usable = w - marginX*2;
+    ctx.strokeStyle = '#5eead4'; ctx.lineWidth = 3; ctx.beginPath();
+    for(let i=0;i<n;i++){
+      const x = marginX + (usable*(i/(n-1||1)));
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y- (i%2?25:-15));
+    }
+    ctx.stroke();
+    ctx.fillStyle = '#e2e8f0'; ctx.font = '14px system-ui';
+    for(let i=0;i<n;i++){
+      const x = marginX + (usable*(i/(n-1||1)));
+      ctx.beginPath(); ctx.arc(x,y- (i%2?25:-15),6,0,Math.PI*2); ctx.fill();
+      ctx.fillText((waypoints[i]||'').toUpperCase(), x-24, y- (i%2?25:-15) - 10);
+    }
+    return c.toDataURL('image/png');
+  }
+  async function generateMapImageData(waypoints){
+    const data = await captureMapAsDataURL();
+    if (data) return data;
+    return renderSchematicRoute(waypoints);
+  }
+
+  // ====== PDF ======
+  async function gerarPDF(){
+    const s = buildState();
+    if(!s.aeronave){ alert('Selecione uma aeronave.'); return; }
+    if(!s.origem || !s.destino){ alert('Informe Origem e Destino.'); return; }
+
+    const waypoints = [s.origem, ...s.stops, s.destino];
+    const autoKm = waypoints.length >= 2 ? computeRouteKm(waypoints) : null;
+
+    // Preferir o informado pelo usuário
+    const manualProvided = (s.nm > 0 || s.km > 0);
+    let useKm = 0, useNm = 0, sourceLabel = '';
+    if (manualProvided){
+      if (s.nm > 0){ useNm = s.nm; useKm = asKM(s.nm); }
+      else { useKm = s.km; useNm = s.km/1.852; }
+    } else if (autoKm){
+      useKm = autoKm; useNm = autoKm/1.852; sourceLabel = ' — automático (mapa)';
+      $('nm').value = useNm.toFixed(1);
+      $('km').value = useKm.toFixed(1);
+    }
+    if(!(useNm > 0 || useKm > 0)){
+      alert('Informe a distância (NM/km) ou use códigos com coordenadas conhecidas.');
+      return;
+    }
+
+    const valorKm = s.valorKmCustom > 0 ? s.valorKmCustom : (valoresKm[s.aeronave] || 0);
+    const kmToUse = useKm || asKM(useNm);
+    let total = kmToUse * valorKm;
+    let ajusteNode = null;
+    if (s.valorExtra > 0 && s.cfg.showAjuste){
+      if (s.tipoExtra === 'soma'){ total += s.valorExtra; ajusteNode = { text:`Outras despesas: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0] }; }
+      else { total -= s.valorExtra; ajusteNode = { text:`Desconto: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0] }; }
+    }
+
+    const mapImage = s.cfg.showMapa ? (await generateMapImageData(waypoints)) : null;
+    const rotaStr = waypoints.join(' → ');
+
+    const content = [
+      { text: 'Cotação de Voo Executivo', style: 'header' },
+      s.cfg.showRota ? { text: rotaStr, margin: [0, 6, 0, 0], style:'route' } : null,
+      (s.cfg.showMapa && mapImage) ? { image: mapImage, width: 500, margin:[0,8,0,8] } : null,
+      s.cfg.showModelo ? { text: `Aeronave: ${s.aeronave}` } : null,
+      s.cfg.showTarifa ? { text: `Tarifa por km: ${asCurrency(valorKm)}` } : null,
+      s.cfg.showDistancia ? { text: `Distância: ${useNm ? useNm.toFixed(1)+' NM' : '-'} ${kmToUse ? `(${kmToUse.toFixed(1)} km)` : ''}${sourceLabel}` } : null,
+      s.cfg.showDatas ? { text: `Data ida: ${s.dataIda || '-'}   |   Data volta: ${s.dataVolta || '-'}` } : null,
+      ajusteNode,
+      { text: `Total final: ${asCurrency(total)}`, style:'total', margin: [0, 8, 0, 0] },
+      s.cfg.showObs && s.observacoes ? { text: `Observações: ${s.observacoes}`, margin:[0,8,0,0] } : null,
+    ].filter(Boolean);
+
+    const docDefinition = {
+      content,
+      styles: {
+        header: { fontSize: 18, bold: true },
+        route: { fontSize: 13, bold: true },
+        total: { fontSize: 14, bold: true }
+      },
+      defaultStyle: { fontSize: 11 }
+    };
+
+    try{
+      pdfMake.createPdf(docDefinition).open();
+    }catch(e){
+      alert('Não foi possível gerar o PDF nesta aba. Permita pop-ups para este site.');
+    }
+  }
+
+  // ====== Google Maps ======
+  function openMaps(){
+    const { origem, destino } = buildState();
+    const stops = getStops();
+    if (!origem || !destino){ alert('Informe origem e destino.'); return; }
+    const parts = [origem, ...stops, destino].map(encodeURIComponent).join('/');
+    const url = `https://www.google.com/maps/dir/${parts}`;
+    window.open(url, '_blank', 'noopener');
+  }
+
+  // ====== Mapa (Leaflet) ======
+  let map, routeLayer;
+  function initMap(){
+    map = L.map('map', { zoomControl: true });
+    const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; OpenStreetMap'
+    });
+    tiles.addTo(map);
+    map.setView([ -14.2350, -51.9253 ], 4); // Brasil
+  }
+
+  function drawRouteOnMap(waypoints){
+    if (!map) return;
+    if (routeLayer){ routeLayer.remove(); routeLayer = null; }
+
+    const codes = Array.isArray(waypoints) ? waypoints.map(toICAO) : [toICAO(arguments[0]), toICAO(arguments[1])];
+    const coords = codes.map(getCoords);
+    if (coords.some(c=>!c)){
+      map.setView([ -14.2350, -51.9253 ], 4);
+      return;
+    }
+
+    const markers = coords.map((c, i)=> L.marker([c.lat, c.lng]).bindPopup(`<b>${codes[i]}</b>`));
+    const poly = L.polyline(coords.map(c=>[c.lat, c.lng]), { weight: 3, opacity: .9 });
+    routeLayer = L.layerGroup([...markers, poly]).addTo(map);
+    map.fitBounds(poly.getBounds(), { padding: [20,20] });
+  }
+
+  // ====== Pernas dinâmicas ======
+  function addStopField(value=''){
+    const row = document.createElement('div');
+    row.className = 'stop-row';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'stop-input';
+    input.placeholder = 'ex.: SBMO';
+    input.maxLength = 8;
+    input.value = value || '';
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn danger btnRemoveStop';
+    btn.title = 'Remover';
+    btn.textContent = 'Remover';
+    btn.addEventListener('click', ()=>{ row.remove(); updateLegModeUI(); });
+
+    row.appendChild(input);
+    row.appendChild(btn);
+    $('#stops').appendChild(row);
+
+    updateLegModeUI();
+    input.focus({preventScroll:false});
+    row.scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+
+  // ====== Reset ======
+  function resetForm(){
+    ["aeronave","nm","km","origem","destino","dataIda","dataVolta","observacoes","valorExtra","valorKm"].forEach(id=>{ const el=$(id); if(el) el.value=''; });
+    // Defaults
+    $('#cfgShowRota').checked = true;
+    $('#cfgShowMapa').checked = true;
+    $('#cfgShowModelo').checked = true;
+    $('#cfgShowTarifa').checked = true;
+    $('#cfgShowDistancia').checked = true;
+    $('#cfgShowDatas').checked = true;
+    $('#cfgShowAjuste').checked = false;
+    $('#cfgShowObs').checked = false;
+
+    $("resultado").innerHTML = '';
+    $('#stops').innerHTML = '';
+    if (routeLayer){ routeLayer.remove(); routeLayer = null; }
+    if (map) map.setView([ -14.2350, -51.9253 ], 4);
+
+    // Reconfigura datas
+    const ida = $('#dataIda');
+    const volta = $('#dataVolta');
+    if (ida){ ida.min = todayISO; ida.max = todayISO; ida.value = todayISO; }
+    if (volta){ volta.value = todayISO; volta.disabled = true; }
+  }
+
+  // ====== Eventos ======
+  window.addEventListener('DOMContentLoaded', () => {
+    // Datas: apenas hoje na ida; volta = ida
+    const ida = $('#dataIda');
+    const volta = $('#dataVolta');
+    if (ida){ ida.min = todayISO; ida.max = todayISO; ida.value = todayISO; }
+    if (volta){ volta.value = todayISO; volta.disabled = true; }
+    ida?.addEventListener('change', ()=>{ if(volta){ volta.value = ida.value; } });
+
+    // Mapa
+    initMap();
+
+    // Botões
+    $('#btnPreOrcamento').addEventListener('click', gerarPreOrcamento);
+    $('#btnPDF').addEventListener('click', gerarPDF);
+    $('#btnMaps').addEventListener('click', openMaps);
+    $('#btnReset').addEventListener('click', resetForm);
+    $('#btnAddStop').addEventListener('click', ()=> addStopField(''));
+
+    // Inputs
+    $('#nm').addEventListener('input', ensureKmSynced);
+    $('#aeronave').addEventListener('change', syncValorKmByAeronave);
+
+    // Modal README
+    const modal = $('#readmeModal');
+    const openBtn = $('#btnReadme');
+    const closeEls = document.querySelectorAll('[data-close-readme]');
+    openBtn?.addEventListener('click', ()=>{ modal?.classList.add('show'); modal?.setAttribute('aria-hidden','false'); });
+    closeEls.forEach(el=> el.addEventListener('click', ()=>{ modal?.classList.remove('show'); modal?.setAttribute('aria-hidden','true'); }));
+    window.addEventListener('keydown', (e)=>{ if(e.key==='Escape'){ modal?.classList.remove('show'); modal?.setAttribute('aria-hidden','true'); }});
+  });
+  </script>
+</body>
+</html>
