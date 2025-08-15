@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cotação de Voo Executivo</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>
+            <div class="icon">✈</div>
+            Cotação de Voo Executivo
+        </h1>
+        
+        <div class="form-group">
+            <label>Rota</label>
+            <div id="airports">
+                <div class="form-group">
+                    <label>Aeroporto 1 (Origem)</label>
+                    <input type="text" placeholder="Ex.: SBBR ou 'Brasília'" data-index="0">
+                </div>
+                <div class="form-group">
+                    <label>Aeroporto 2</label>
+                    <input type="text" placeholder="Ex.: SBBH ou 'Pampulha'" data-index="1">
+                </div>
+            </div>
+            <button id="addAirport">Adicionar aeroporto</button>
+        </div>
+
+        <div class="row">
+            <div class="col">
+                <div class="form-group">
+                    <label>Aeronave</label>
+                    <select id="aircraft">
+                        <option>Hawker 400</option>
+                        <option>Phenom 100</option>
+                        <option>Citation II</option>
+                        <option>King Air C90</option>
+                        <option>Sêneca IV</option>
+                        <option>Cirrus SR22</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col">
+                <div class="form-group">
+                    <label>R$/km</label>
+                    <input type="number" id="rate" step="0.01" value="36.00">
+                </div>
+            </div>
+            <div class="col">
+                <div class="form-group">
+                    <label>Ida/Volta?</label>
+                    <select id="roundtrip">
+                        <option value="one">Só ida</option>
+                        <option value="round">Ida e volta</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col">
+                <div class="form-group">
+                    <label>Ajuste (Adicionar/Subtrair)</label>
+                    <select id="adjType">
+                        <option value="none">Sem ajuste</option>
+                        <option value="add">Adicionar</option>
+                        <option value="sub">Subtrair</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col">
+                <div class="form-group">
+                    <label>Valor do ajuste (R$)</label>
+                    <input type="number" id="adjValue" step="0.01" placeholder="0,00">
+                </div>
+            </div>
+        </div>
+
+        <div class="note">
+            Se "Adicionar" → "Despesas acessórias" no PDF. Se "Subtrair" → "Desconto".
+        </div>
+
+        <div class="row">
+            <div class="col">
+                <button id="btCalc">Calcular & Traçar Rota</button>
+            </div>
+            <div class="col">
+                <button id="btPdf" disabled>Gerar PDF</button>
+            </div>
+        </div>
+
+        <div id="map"></div>
+        <div id="resumo"></div>
+
+        <div class="form-group">
+            <label>Informações Gerais</label>
+            <textarea id="generalInfo" rows="6">DADOS PARA PAGAMENTO
+
+INTER - 077
+AUTOCON SUPRIMENTOS DE INFORMATICA 
+CNPJ: 36.326.772/0001-65
+Agência: 0001
+Conta: 25691815-5</textarea>
+        </div>
+
+        <div class="pdf-config">
+            <h3>Configuração do PDF</h3>
+            <div class="checkbox-group">
+                <div class="checkbox-item">
+                    <input type="checkbox" id="cfgMap" checked>
+                    <label for="cfgMap">Incluir mapa</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="cfgRoute" checked>
+                    <label for="cfgRoute">Incluir rota</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="cfgDistance" checked>
+                    <label for="cfgDistance">Incluir distância</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="cfgAircraft" checked>
+                    <label for="cfgAircraft">Incluir aeronave</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="cfgRate" checked>
+                    <label for="cfgRate">Incluir tarifa</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="cfgLegs" checked>
+                    <label for="cfgLegs">Incluir pernas</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="cfgSubtotal" checked>
+                    <label for="cfgSubtotal">Incluir subtotal</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="cfgAdjustment" checked>
+                    <label for="cfgAdjustment">Incluir ajuste</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="cfgTotal" checked>
+                    <label for="cfgTotal">Incluir total</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="cfgGeneral" checked>
+                    <label for="cfgGeneral">Incluir informações gerais</label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-image@0.4.0/leaflet-image.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
