@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>COTAÇÃO • Visual Novo</title>
+
+  <!-- Leaflet (mantive, sem mexer em lógica) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- pdfMake (mantive) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+
+  <!-- 🔥 DESIGN NOVO (apenas visual) -->
+  <style>
+    :root{
+      --bg:#0b1020; --card:#121831; --card-2:#0f152b;
+      --text:#e8ecf6; --muted:#a7b0c3;
+      --primary:#5b8cff; --primary-600:#4b78e3; --accent:#14d1c5;
+      --ring: rgba(91,140,255,.35);
+      --radius:14px; --shadow:0 10px 30px rgba(0,0,0,.25); --shadow-soft:0 6px 20px rgba(0,0,0,.18);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      color:var(--text);
+      background:
+        radial-gradient(1200px 600px at 80% -20%, #1a2246 0%, rgba(26,34,70,0) 60%),
+        radial-gradient(1000px 500px at -10% 110%, #13204a 0%, rgba(19,32,74,0) 55%),
+        var(--bg);
+    }
+    .wrap{max-width:1100px;margin:40px auto;padding:0 20px}
+    .page-title{display:flex;align-items:center;gap:.8rem;margin:8px 0 22px;font-weight:700;letter-spacing:.2px;font-size:clamp(22px,2.4vw,28px)}
+    .page-title .emoji{font-size:1.2em}
+    .grid{display:grid;gap:16px;grid-template-columns:1.1fr .9fr}
+    @media (max-width:980px){.grid{grid-template-columns:1fr}}
+    .card{background:linear-gradient(180deg,var(--card) 0%,var(--card-2) 100%);border:1px solid rgba(255,255,255,.06);border-radius:var(--radius);box-shadow:var(--shadow)}
+    .card .card-h{padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.07);font-weight:600;color:#dfe6ff;letter-spacing:.3px}
+    .card .card-b{padding:18px}
+    form{display:grid;gap:14px}
+    .row{display:grid;gap:12px;grid-template-columns:repeat(12,1fr);align-items:end}
+    .col-12{grid-column:span 12}.col-6{grid-column:span 6}.col-4{grid-column:span 4}.col-3{grid-column:span 3}
+    @media (max-width:700px){.col-6,.col-4,.col-3{grid-column:span 12}}
+    label{display:block;color:var(--muted);font-size:.86rem;margin:2px 0 6px}
+    input[type="text"],input[type="number"],select{
+      width:100%;background:#0e1430;color:var(--text);
+      border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:14px 12px;outline:none;
+      transition:border-color .2s,box-shadow .2s,transform .02s;
+    }
+    input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 6px var(--ring)}
+    .hint{font-size:.82rem;color:var(--muted);margin-top:6px}
+    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+    .btn{appearance:none;border:1px solid transparent;border-radius:12px;padding:12px 16px;font-weight:600;letter-spacing:.2px;cursor:pointer;transition:transform .05s,box-shadow .2s,opacity .2s}
+    .btn:active{transform:translateY(1px)}
+    .btn-primary{background:linear-gradient(180deg,var(--primary) 0%,var(--primary-600) 100%);color:white;box-shadow:0 12px 28px rgba(91,140,255,.28)}
+    .btn-secondary{background:transparent;color:#dfe6ff;border-color:rgba(255,255,255,.14)}
+    .btn-ghost{background:rgba(255,255,255,.04);color:#dfe6ff;border-color:rgba(255,255,255,.08)}
+    .btn[disabled]{opacity:.6;cursor:not-allowed}
+    .pills{display:flex;gap:8px;flex-wrap:wrap}
+    .pill{padding:8px 12px;border-radius:999px;font-weight:600;font-size:.9rem;border:1px solid rgba(255,255,255,.12);color:#dfe6ff;background:rgba(255,255,255,.03);cursor:pointer;user-select:none}
+    .pill.is-active{border-color:var(--primary);box-shadow:0 0 0 5px var(--ring)}
+    .legs{display:grid;gap:10px}
+    .leg{display:grid;gap:10px;grid-template-columns:1fr 1fr auto}
+    .leg .remove{background:transparent;border:1px solid rgba(255,255,255,.12);color:#ff9c9c;border-radius:10px;padding:8px 10px;cursor:pointer}
+    @media (max-width:700px){.leg{grid-template-columns:1fr}}
+    #map,.map{height:420px;border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,.08);box-shadow:var(--shadow-soft)}
+    .pdf-grid{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+    @media (max-width:980px){.pdf-grid{grid-template-columns:1fr}}
+    .checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .check{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);padding:12px 14px;border-radius:12px;display:flex;gap:10px;align-items:center}
+    .check input{width:18px;height:18px}
+    table.preview{width:100%;border-collapse:collapse;overflow:hidden;border-radius:12px}
+    table.preview th,table.preview td{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.08)}
+    table.preview th{text-align:left;color:#cfd7ef;font-weight:700;background:#0f1633}
+    table.preview tr:last-child td{border-bottom:none}
+    .total{font-weight:800;color:var(--accent)}
+    .footer{margin-top:18px;color:var(--muted);font-size:.9rem;display:flex;gap:10px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="page-title"><span class="emoji">✈️</span> Cotação de Voo Executivo</div>
+
+    <div class="grid">
+      <!-- 🧭 FORM / CONTROLES -->
+      <div class="card">
+        <div class="card-h">Rota & Parâmetros</div>
+        <div class="card-b">
+          <!-- ⚠️ IDs mantidos genéricos: ajuste para os seus se necessário -->
+          <form id="cotacaoForm">
+            <div class="row">
+              <div class="col-6">
+                <label for="origem">Aeroporto 1 (Origem)</label>
+                <input type="text" id="origem" placeholder="SBBR, SBMT...">
+              </div>
+              <div class="col-6">
+                <label for="destino">Aeroporto 2 (Destino)</label>
+                <input type="text" id="destino" placeholder="SBEG, SBGL...">
+              </div>
+
+              <div class="col-6">
+                <label for="aeronave">Aeronave</label>
+                <select id="aeronave">
+                  <option value="">Selecione</option>
+                  <option>Hawker 400</option>
+                  <option>Phenom 100</option>
+                  <option>Citation II</option>
+                  <option>King Air C90</option>
+                  <option>Seneca IV</option>
+                  <option>Cirrus SR22</option>
+                </select>
+              </div>
+
+              <div class="col-3">
+                <label for="tarifa">R$/km</label>
+                <input type="number" id="tarifa" min="0" step="0.01" placeholder="36,00">
+              </div>
+
+              <div class="col-3">
+                <label>Ida/Volta?</label>
+                <div class="pills" id="tipoViagem">
+                  <div class="pill is-active" data-mode="oneway">Só ida</div>
+                  <div class="pill" data-mode="round">Ida e volta</div>
+                </div>
+              </div>
+
+              <div class="col-6">
+                <label>Ajuste</label>
+                <div class="pills" id="ajusteTipo">
+                  <div class="pill is-active" data-ajuste="none">Sem ajuste</div>
+                  <div class="pill" data-ajuste="add">Adicionar</div>
+                  <div class="pill" data-ajuste="sub">Subtrair</div>
+                </div>
+                <div class="hint">“Adicionar” → Despesas acessórias · “Subtrair” → Desconto</div>
+              </div>
+
+              <div class="col-6">
+                <label for="valorAjuste">Valor do ajuste (R$)</label>
+                <input type="number" id="valorAjuste" min="0" step="0.01" placeholder="0,00">
+              </div>
+            </div>
+
+            <div class="actions">
+              <!-- ⚠️ BOTÕES com IDs compatíveis -->
+              <button type="button" id="btnTraçar" class="btn btn-primary">Calcular & Traçar Rota</button>
+              <button type="button" id="btnPDF" class="btn btn-secondary">Gerar PDF</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- 🗺️ MAPA -->
+      <div class="card">
+        <div class="card-h">Mapa</div>
+        <div class="card-b">
+          <div id="map"></div>
+        </div>
+      </div>
+
+      <!-- ⚙️ PAINEL PDF -->
+      <div class="card" style="grid-column:1 / -1">
+        <div class="card-h">Configuração do PDF</div>
+        <div class="card-b pdf-grid">
+          <div class="checks">
+            <!-- Mantenha seus checkboxes originais; ids aqui são exemplos -->
+            <label class="check"><input type="checkbox" id="pdfMapa" checked> Incluir mapa</label>
+            <label class="check"><input type="checkbox" id="pdfRota" checked> Incluir rota</label>
+            <label class="check"><input type="checkbox" id="pdfDist" checked> Incluir distância</label>
+            <label class="check"><input type="checkbox" id="pdfAeronave" checked> Incluir aeronave</label>
+            <label class="check"><input type="checkbox" id="pdfTarifa" checked> Incluir tarifa</label>
+            <label class="check"><input type="checkbox" id="pdfPernas" checked> Incluir pernas</label>
+            <label class="check"><input type="checkbox" id="pdfSubtotal" checked> Incluir subtotal</label>
+            <label class="check"><input type="checkbox" id="pdfAjuste" checked> Incluir ajuste</label>
+            <label class="check"><input type="checkbox" id="pdfTotal" checked> Incluir total</label>
+            <label class="check"><input type="checkbox" id="pdfInfo" checked> Incluir informações gerais</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        DADOS PARA PAGAMENTO • INTER - 077 AUTOCON SUPRIMENTOS DE INFORMATICA • CNPJ: 36.326.772/0001-65 • Agência: 0001 • Conta: 25691815-5
+      </div>
+    </div>
+  </div>
+
+  <!-- 🧩 JS de UI (não altera sua lógica; apenas liga botões e exporta o PDF theme) -->
+  <script>
+    // Toggle pills (visual/estado)
+    function makePillsExclusive(container, attr){
+      const el = document.getElementById(container);
+      if(!el) return;
+      el.addEventListener('click', (ev)=>{
+        const pill = ev.target.closest('.pill'); if(!pill) return;
+        [...el.querySelectorAll('.pill')].forEach(p=>p.classList.remove('is-active'));
+        pill.classList.add('is-active');
+        el.dataset[attr] = pill.dataset[attr];
+      });
+    }
+    makePillsExclusive('tipoViagem', 'mode');
+    makePillsExclusive('ajusteTipo', 'ajuste');
+
+    // Map init (não muda sua lógica; só garante visual)
+    let map, routeLayer;
+    function ensureMap(){
+      if(map) return map;
+      map = L.map('map').setView([-15.78, -47.93], 4);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18, attribution: '&copy; OpenStreetMap'
+      }).addTo(map);
+      return map;
+    }
+    ensureMap();
+
+    // Adaptadores: se suas funções já existem, chamamos; senão, apenas console.log
+    document.getElementById('btnTraçar')?.addEventListener('click', ()=>{
+      if(typeof window.calcularTrajeto === 'function'){
+        window.calcularTrajeto(); // usa sua lógica existente
+      } else {
+        console.warn('calcularTrajeto() não encontrado. Conecte sua função existente aqui.');
+      }
+    });
+
+    document.getElementById('btnPDF')?.addEventListener('click', ()=>{
+      if(typeof window.gerarPDF === 'function'){
+        window.gerarPDF(); // usa sua lógica existente
+      } else {
+        try{
+          // Exemplo: se quiser testar rápido com o tema abaixo
+          const dd = window.buildDocDefinition({ incluirMapa:false, incluirInfo:true });
+          pdfMake.createPdf(dd).download('cotacao.pdf');
+        }catch(e){
+          console.warn('gerarPDF() não encontrado e teste local falhou:', e);
+        }
+      }
+    });
+
+    // ===== 🎨 TEMA PDF (exporta buildDocDefinition sem mudar seu cálculo) =====
+    (function(){
+      const BRAND = { primary:'#5b8cff', accent:'#14d1c5', ink:'#0b1020', text:'#20263a', muted:'#5a6b8f' };
+
+      // 🔧 MOCK de dados só pra preview. Sua lógica deve sobrescrever isso ao chamar buildDocDefinition()
+      const data = {
+        empresa:"AUTOCON SUPRIMENTOS DE INFORMATICA",
+        cnpj:"36.326.772/0001-65",
+        banco:"Banco Inter (077) • Ag. 0001 • Cc. 25691815-5",
+        cotacao:{
+          cliente:"Cliente Exemplo",
+          data: new Date().toLocaleDateString('pt-BR'),
+          aeronave: document.getElementById('aeronave')?.value || "Hawker 400",
+          tipo: (document.getElementById('tipoViagem')?.dataset.mode === 'round') ? "Ida e volta" : "Só ida",
+          tarifaKm: Number(document.getElementById('tarifa')?.value||36),
+          distanciaKm: 2140,
+          pernas: [
+            {origem:"SBBR", destino:"SBEG", distanciaKm:980},
+            {origem:"SBEG", destino:"SBBR", distanciaKm:1160},
+          ],
+          ajuste:{
+            tipo: (document.getElementById('ajusteTipo')?.dataset.ajuste)||'none',
+            valor: Number(document.getElementById('valorAjuste')?.value||0)
+          }
+        }
+      };
+
+      window.buildDocDefinition = function buildDocDefinition(opts, runtime){
+        // Se você passar "runtime", ele prevalece sobre o mock acima
+        const d = runtime?.data || data;
+        const c = d.cotacao;
+
+        const subtotal = +(c.distanciaKm * c.tarifaKm).toFixed(2);
+        const ajuste = c.ajuste?.tipo === 'add' ? c.ajuste.valor
+                     : c.ajuste?.tipo === 'sub' ? -c.ajuste.valor : 0;
+        const total = +(subtotal + ajuste).toFixed(2);
+
+        const legsRows = [
+          [{text:'Origem', style:'th'}, {text:'Destino', style:'th'}, {text:'Distância (km)', style:'th'}],
+          ...(c.pernas||[]).map(p => [p.origem, p.destino, {text: (p.distanciaKm||0).toLocaleString('pt-BR'), alignment:'right'}])
+        ];
+
+        const totalsTable = {
+          table:{ widths:['*','auto'], body:[
+            ['Subtotal', {text:`R$ ${subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, alignment:'right'}],
+            ...(c.ajuste?.tipo && c.ajuste.tipo!=='none' ? [[
+              c.ajuste.tipo==='add' ? 'Despesas acessórias' : 'Desconto',
+              {text:`R$ ${Math.abs(ajuste).toLocaleString('pt-BR',{minimumFractionDigits:2})}`, alignment:'right',
+               color: c.ajuste.tipo==='sub' ? '#ff6b6b' : BRAND.accent}
+            ]] : []),
+            [{text:'Total', bold:true}, {text:`R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, alignment:'right', bold:true, color:BRAND.primary}]
+          ]},
+          layout:{
+            fillColor:(row)=> row===0 ? '#f6f8ff' : null,
+            hLineColor:i => i===0 ? '#dfe5ff' : '#e8ecf6',
+            vLineColor:i => '#e8ecf6',
+            paddingTop:()=>8,paddingBottom:()=>8,paddingLeft:()=>10,paddingRight:()=>10
+          },
+          margin:[0,10,0,0]
+        };
+
+        return {
+          pageSize:'A4', pageMargins:[40,90,40,70],
+          background:[{canvas:[{type:'rect',x:0,y:0,w:595,h:80,color:'#0f1633'}]}],
+          header:()=>{
+            const tarifaFmt = `R$ ${c.tarifaKm.toLocaleString('pt-BR',{minimumFractionDigits:2})}/km`;
+            return {
+              margin:[40,20,40,0],
+              columns:[
+                { stack:[
+                    {text:'COTAÇÃO DE VOO EXECUTIVO', style:'hdrTitle'},
+                    {text:`${c.aeronave} • ${c.tipo} • Tarifa ${tarifaFmt}`, style:'hdrMeta'}
+                  ]
+                },
+                { alignment:'right', stack:[
+                    {text:d.empresa, style:'hdrBrand'},
+                    {text:`CNPJ ${d.cnpj}`, style:'hdrSmall'},
+                    {text:d.banco, style:'hdrSmall'}
+                  ]
+                }
+              ]
+            }
+          },
+          footer:(currentPage, pageCount)=>({
+            margin:[40,0,40,20],
+            columns:[
+              {text:`Cliente: ${c.cliente||'-'}`, color:BRAND.muted, fontSize:9},
+              {text:`Emitido em ${c.data}`, color:BRAND.muted, alignment:'center', fontSize:9},
+              {text:`Página ${currentPage} de ${pageCount}`, alignment:'right', color:BRAND.muted, fontSize:9}
+            ]
+          }),
+          content:[
+            ...(opts?.incluirMapa && opts?.mapaBase64 ? [{
+              image: opts.mapaBase64, width:515, margin:[0,0,0,14], opacity:0.98
+            }] : []),
+
+            { style:'card', table:{ widths:['*','*','*'], body:[[
+              { stack:[
+                  {text:'Resumo', style:'cardTitle'},
+                  {text:[
+                    {text:'Aeronave: ', bold:true}, c.aeronave, '\n',
+                    {text:'Tipo: ', bold:true}, c.tipo, '\n',
+                    {text:'Distância total: ', bold:true}, `${(c.distanciaKm||0).toLocaleString('pt-BR')} km`
+                  ], margin:[0,4,0,0]}
+                ]},
+              { stack:[
+                  {text:'Tarifação', style:'cardTitle'},
+                  {text:[
+                    {text:'R$/km: ', bold:true}, `R$ ${c.tarifaKm.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, '\n',
+                    {text:'Subtotal: ', bold:true}, `R$ ${( (c.distanciaKm||0)*c.tarifaKm ).toLocaleString('pt-BR',{minimumFractionDigits:2})}`
+                  ], margin:[0,4,0,0]}
+                ]},
+              totalsTable
+            ]]}, layout:'noBorders', margin:[0,0,0,12]},
+
+            { style:'tableBlock', table:{ widths:['*','*','auto'], body: legsRows },
+              layout:{
+                fillColor:(row)=> row===0 ? '#f6f8ff' : null,
+                hLineColor:i => i===0 ? '#dfe5ff' : '#e8ecf6',
+                vLineColor:i => '#e8ecf6',
+                paddingTop:(r)=> r===0?10:8,
+                paddingBottom:(r)=> r===0?10:8,
+                paddingLeft:()=>10,paddingRight:()=>10
+              },
+              margin:[0,0,0,10]
+            },
+
+            ...(opts?.incluirInfo ? [
+              {text:'Informações Gerais', style:'section', margin:[0,6,0,2]},
+              {ul:[
+                'Valores estimados sujeitos à confirmação de disponibilidade e condições operacionais.',
+                'Despesas aeroportuárias, taxas e pernoites podem variar conforme planejamento.',
+                'Condições meteorológicas e NOTAMs podem alterar rotas e tempos.'
+              ], color:BRAND.muted, fontSize:10, margin:[0,0,0,8]}
+            ] : [])
+          ],
+          styles:{
+            hdrTitle:{color:'#ffffff',fontSize:14,bold:true,letterSpacing:.2,margin:[0,6,0,2]},
+            hdrMeta:{color:'#dbe5ff',fontSize:10},
+            hdrBrand:{color:'#ffffff',fontSize:11,bold:true,alignment:'right'},
+            hdrSmall:{color:'#c9d3ff',fontSize:9,alignment:'right'},
+            section:{fontSize:12,bold:true,color:BRAND.primary},
+            card:{}, cardTitle:{fontSize:11,bold:true,color:BRAND.primary,margin:[0,0,0,4]},
+            tableBlock:{}, th:{bold:true,color:BRAND.primary}
+          },
+          defaultStyle:{fontSize:10,color:BRAND.text}
+        };
+      };
+      // Exponho uma paleta caso queira reaproveitar em outros pontos
+      window.UITheme = { BRAND };
+    })();
+  </script>
+</body>
+</html>
