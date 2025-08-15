@@ -188,7 +188,6 @@
 
         <div class="btns">
           <button id="btnPreOrcamento" class="btn primary" type="button">Gerar Pré-Orçamento</button>
-          <button id="btnPDF" class="btn" type="button">Gerar PDF</button>
           <button id="btnMaps" class="btn ghost" type="button" title="Abre rota no Google Maps">Traçar no Google Maps</button>
           <button id="btnReset" class="btn danger" type="button" title="Limpa o formulário">Limpar</button>
         </div>
@@ -231,7 +230,7 @@
       <div class="content">
         <h2>🚀 Recursos</h2>
         <ul>
-          <li>Botões funcionando (Pré-Orçamento, PDF, Maps, Limpar).</li>
+          <li>Botões funcionando (Pré-Orçamento com geração de PDF, Maps, Limpar).</li>
           <li>“Adicionar Aeroporto” adiciona campos com remover individual.</li>
           <li>Calendário de data: ida apenas <b>hoje</b>; volta travada = ida.</li>
           <li>Configurações finas do PDF (mostrar/ocultar cada item).</li>
@@ -410,6 +409,13 @@
     `;
 
     drawRouteOnMap(waypoints);
+
+    // Após a pré-visualização, perguntar se o usuário deseja gerar o PDF
+    setTimeout(() => {
+      if (confirm('Deseja gerar o PDF com esses dados?')) {
+        gerarPDF();
+      }
+    }, 0);
   }
 
   // ====== Captura do mapa (para PDF) ======
@@ -637,7 +643,6 @@
 
     // Botões
     $('#btnPreOrcamento').addEventListener('click', gerarPreOrcamento);
-    $('#btnPDF').addEventListener('click', gerarPDF);
     $('#btnMaps').addEventListener('click', openMaps);
     $('#btnReset').addEventListener('click', resetForm);
     $('#btnAddStop').addEventListener('click', ()=> addStopField(''));
