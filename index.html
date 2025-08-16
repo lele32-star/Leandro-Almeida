@@ -70,6 +70,10 @@
       <input type="number" id="nm" />
     </div>
     <div>
+      <label>Distância (KM):</label>
+      <input type="number" id="km" />
+    </div>
+    <div>
       <label>Origem (ICAO):</label>
       <input type="text" id="origem" />
     </div>
@@ -78,6 +82,9 @@
       <input type="text" id="destino" />
     </div>
   </div>
+
+  <div id="stops"></div>
+  <button id="addStop">Adicionar Aeroporto</button>
 
   <div class="linha">
     <div>
@@ -126,6 +133,55 @@
       SBGL: { lat: -22.8089, lon: -43.2436 }
     };
 
+    document.getElementById('nm').addEventListener('input', e => {
+      const val = parseFloat(e.target.value);
+      document.getElementById('km').value = isFinite(val) ? (val * 1.852).toFixed(1) : '';
+    });
+    document.getElementById('km').addEventListener('input', e => {
+      const val = parseFloat(e.target.value);
+      document.getElementById('nm').value = isFinite(val) ? (val / 1.852).toFixed(1) : '';
+    });
+
+    document.getElementById('addStop').addEventListener('click', () => {
+      const container = document.getElementById('stops');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'stop';
+      input.placeholder = 'Aeroporto ICAO';
+      input.addEventListener('input', updateDistanceFromAirports);
+      container.appendChild(input);
+    });
+
+    function getWaypoints() {
+      const origem = document.getElementById('origem').value;
+      const destino = document.getElementById('destino').value;
+      const stops = Array.from(document.querySelectorAll('#stops .stop')).map(i => i.value).filter(Boolean);
+      return [origem, destino, ...stops].filter(Boolean);
+    }
+
+    async function calcularRotaKm(waypoints) {
+      let totalKm = 0;
+      for (let i = 1; i < waypoints.length; i++) {
+        const c1 = await getCoordinates(waypoints[i-1]);
+        const c2 = await getCoordinates(waypoints[i]);
+        totalKm += distanciaKm(c1, c2);
+      }
+      return totalKm;
+    }
+
+    async function updateDistanceFromAirports() {
+      const waypoints = getWaypoints();
+      if (waypoints.length < 2) { return; }
+      try {
+        const totalKm = await calcularRotaKm(waypoints);
+        document.getElementById('km').value = totalKm.toFixed(1);
+        document.getElementById('nm').value = (totalKm / 1.852).toFixed(1);
+      } catch {}
+    }
+
+    document.getElementById('origem').addEventListener('input', updateDistanceFromAirports);
+    document.getElementById('destino').addEventListener('input', updateDistanceFromAirports);
+
     async function fetchAirportInfo(icao) {
       try {
         const response = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${icao}`, {
@@ -170,33 +226,27 @@
       return R * c;
     }
 
-    async function calcularDistanciaNm(origem, destino) {
-      const coordOrigem = await getCoordinates(origem);
-      const coordDestino = await getCoordinates(destino);
-      const km = distanciaKm(coordOrigem, coordDestino);
-      return { nm: km / 1.852, km };
-    }
-
     async function gerarPreOrcamento() {
       document.getElementById('erro').textContent = '';
       const aeronave = document.getElementById("aeronave").value;
       let nm = parseFloat(document.getElementById("nm").value);
-      const origem = document.getElementById("origem").value;
-      const destino = document.getElementById("destino").value;
+      const waypoints = getWaypoints();
       const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
       const tipoExtra = document.getElementById("tipoExtra").value;
-
-      if ((!nm || isNaN(nm)) && origem && destino) {
+      let km;
+      if ((!nm || isNaN(nm)) && waypoints.length >= 2) {
         try {
-          const distancia = await calcularDistanciaNm(origem, destino);
-          nm = distancia.nm;
-          document.getElementById("nm").value = nm.toFixed(1);
+          const totalKm = await calcularRotaKm(waypoints);
+          km = totalKm;
+          nm = totalKm / 1.852;
+          document.getElementById('km').value = km.toFixed(1);
+          document.getElementById('nm').value = nm.toFixed(1);
         } catch {
           return;
         }
+      } else {
+        km = nm * 1.852;
       }
-
-      const km = nm * 1.852;
       const valorKm = valoresKm[aeronave];
       let total = km * valorKm;
 
@@ -211,10 +261,10 @@
         }
       }
 
+      const rota = waypoints.join(' → ');
       document.getElementById("resultado").innerHTML = `
         <h3>Pré-Orçamento</h3>
-        <p><strong>Origem:</strong> ${origem}</p>
-        <p><strong>Destino:</strong> ${destino}</p>
+        <p><strong>Rota:</strong> ${rota}</p>
         <p><strong>Aeronave:</strong> ${aeronave}</p>
         <p><strong>Distância:</strong> ${nm.toFixed(1)} NM (${km.toFixed(1)} km)</p>
         ${valorExtra > 0 ? `<p><strong>Ajuste:</strong> ${labelExtra}</p>` : ""}
@@ -226,8 +276,7 @@
       document.getElementById('erro').textContent = '';
       const aeronave = document.getElementById("aeronave").value;
       let nm = parseFloat(document.getElementById("nm").value);
-      const origem = document.getElementById("origem").value;
-      const destino = document.getElementById("destino").value;
+      const waypoints = getWaypoints();
       const dataIda = document.getElementById("dataIda").value;
       const dataVolta = document.getElementById("dataVolta").value;
       const observacoes = document.getElementById("observacoes").value;
@@ -235,17 +284,20 @@
       const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
       const tipoExtra = document.getElementById("tipoExtra").value;
 
-      if ((!nm || isNaN(nm)) && origem && destino) {
+      let km;
+      if ((!nm || isNaN(nm)) && waypoints.length >= 2) {
         try {
-          const distancia = await calcularDistanciaNm(origem, destino);
-          nm = distancia.nm;
-          document.getElementById("nm").value = nm.toFixed(1);
+          const totalKm = await calcularRotaKm(waypoints);
+          km = totalKm;
+          nm = totalKm / 1.852;
+          document.getElementById('km').value = km.toFixed(1);
+          document.getElementById('nm').value = nm.toFixed(1);
         } catch {
           return;
         }
+      } else {
+        km = nm * 1.852;
       }
-
-      const km = nm * 1.852;
       const valorKm = valoresKm[aeronave];
       let total = km * valorKm;
 
@@ -260,10 +312,11 @@
         }
       }
 
+      const rota = waypoints.join(' → ');
       const docDefinition = {
         content: [
           { text: "Cotação de Voo Executivo", style: "header" },
-          { text: `Origem: ${origem} → Destino: ${destino}`, margin: [0, 10, 0, 0] },
+          { text: `Rota: ${rota}`, margin: [0, 10, 0, 0] },
           { text: `Aeronave: ${aeronave}` },
           { text: `Data Ida: ${dataIda} | Data Volta: ${dataVolta}` },
           ajustes,
@@ -278,7 +331,7 @@
         }
       };
 
-      const nomeArquivo = `Cotacao_${aeronave}_${origem}_${destino}.pdf`.replace(/\s+/g, "_");
+      const nomeArquivo = `Cotacao_${aeronave}.pdf`.replace(/\s+/g, "_");
       pdfMake.createPdf(docDefinition).open();
     }
   </script>
