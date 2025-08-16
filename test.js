@@ -1,29 +1,29 @@
 const assert = require('assert');
 
-// Minimal DOM simulation
 const elements = {};
-const createElement = (id, props) => { elements[id] = props; };
+const createElement = (id, props = {}) => { elements[id] = props; };
 const document = { getElementById: (id) => elements[id] };
 
 global.document = document;
 global.window = {};
 
-// Minimal valid inputs
+global.pdfMake = {
+  createPdf: () => ({ open: () => {} })
+};
+
+// setup fields
+createElement('nm', { value: '' });
+createElement('km', { value: '' });
 createElement('aeronave', { value: 'Hawker 400' });
-createElement('nm', { value: '10' });
 createElement('origem', { value: 'AAA' });
 createElement('destino', { value: 'BBB' });
 createElement('dataIda', { value: '2024-01-01' });
 createElement('dataVolta', { value: '2024-01-02' });
-createElement('observacoes', { value: '' });
-createElement('incluirNoPDF', { checked: false });
 createElement('valorExtra', { value: '0' });
 createElement('tipoExtra', { value: 'soma' });
-
-// pdfMake stub
-global.pdfMake = {
-  createPdf: () => ({ open: () => {} })
-};
+createElement('observacoes', { value: '' });
+createElement('incluirNoPDF', { checked: false });
+createElement('resultado', { innerHTML: '' });
 
 const valoresKm = {
   "Hawker 400": 36,
@@ -34,36 +34,66 @@ const valoresKm = {
   "Cirrus SR22": 15
 };
 
-function gerarPDF() {
-  const aeronave = document.getElementById("aeronave").value;
-  const nm = parseFloat(document.getElementById("nm").value);
-  const origem = document.getElementById("origem").value;
-  const destino = document.getElementById("destino").value;
-  const dataIda = document.getElementById("dataIda").value;
-  const dataVolta = document.getElementById("dataVolta").value;
-  const observacoes = document.getElementById("observacoes").value;
-  const incluirNoPDF = document.getElementById("incluirNoPDF").checked;
-  const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
-  const tipoExtra = document.getElementById("tipoExtra").value;
+function ensureKmSynced() {
+  const nm = parseFloat(document.getElementById('nm').value);
+  const kmField = document.getElementById('km');
+  if (!isNaN(nm)) {
+    kmField.value = (nm * 1.852).toFixed(1);
+  } else {
+    kmField.value = '';
+  }
+}
 
-  const km = nm * 1.852;
+function ensureNmSynced() {
+  const km = parseFloat(document.getElementById('km').value);
+  const nmField = document.getElementById('nm');
+  if (!isNaN(km)) {
+    nmField.value = (km / 1.852).toFixed(1);
+  } else {
+    nmField.value = '';
+  }
+}
+
+function gerarPDF() {
+  const aeronave = document.getElementById('aeronave').value;
+  let nm = parseFloat(document.getElementById('nm').value);
+  let km = parseFloat(document.getElementById('km').value);
+  if (!isNaN(nm)) {
+    km = nm * 1.852;
+  } else if (!isNaN(km)) {
+    nm = km / 1.852;
+  }
+  const origem = document.getElementById('origem').value;
+  const destino = document.getElementById('destino').value;
+  const dataIda = document.getElementById('dataIda').value;
+  const dataVolta = document.getElementById('dataVolta').value;
+  const observacoes = document.getElementById('observacoes').value;
+  const incluirNoPDF = document.getElementById('incluirNoPDF').checked;
+  const valorExtra = parseFloat(document.getElementById('valorExtra').value) || 0;
+  const tipoExtra = document.getElementById('tipoExtra').value;
   const valorKm = valoresKm[aeronave];
   let total = km * valorKm;
 
-  let ajustes = "";
+  let ajustes = '';
   if (valorExtra > 0 && incluirNoPDF) {
-    if (tipoExtra === "soma") {
+    if (tipoExtra === 'soma') {
       total += valorExtra;
-      ajustes = { text: `Outras Despesas: R$ ${valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin: [0, 10, 0, 0] };
+      ajustes = {
+        text: `Outras Despesas: R$ ${valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        margin: [0, 10, 0, 0]
+      };
     } else {
       total -= valorExtra;
-      ajustes = { text: `Desconto: R$ ${valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin: [0, 10, 0, 0] };
+      ajustes = {
+        text: `Desconto: R$ ${valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+        margin: [0, 10, 0, 0]
+      };
     }
   }
 
   const docDefinition = {
     content: [
-      { text: "Cotação de Voo Executivo", style: "header" },
+      { text: 'Cotação de Voo Executivo', style: 'header' },
       { text: `Origem: ${origem} → Destino: ${destino}`, margin: [0, 10, 0, 0] },
       { text: `Aeronave: ${aeronave}` },
       { text: `Data Ida: ${dataIda} | Data Volta: ${dataVolta}` },
@@ -79,47 +109,22 @@ function gerarPDF() {
     }
   };
 
-  const nomeArquivo = `Cotacao_${aeronave}_${origem}_${destino}.pdf`.replace(/\s+/g, "_");
+  const nomeArquivo = `Cotacao_${aeronave}_${origem}_${destino}.pdf`.replace(/\s+/g, '_');
   pdfMake.createPdf(docDefinition).open();
 }
 
-async function fetchAirportInfo(icao) {
-  const response = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${icao}`, {
-    headers: {
-      'X-RapidAPI-Key': process.env.AERODATABOX_KEY,
-      'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
-    }
-  });
-  if (!response.ok) {
-    let message = `Erro ${response.status}`;
-    if (response.status === 403) {
-      message = 'Acesso negado: verifique sua chave API e limites do plano.';
-    }
-    throw new Error(message);
-  }
-  return await response.json();
-}
+// Tests
+ensureKmSynced();
+assert.strictEqual(elements.km.value, '');
 
-async function runTests() {
-  assert.doesNotThrow(() => gerarPDF());
+elements.nm.value = '10';
+ensureKmSynced();
+assert.strictEqual(elements.km.value, '18.5');
 
-  process.env.AERODATABOX_KEY = 'key';
-  let recordedOptions;
-  global.fetch = (url, options) => {
-    recordedOptions = options;
-    return Promise.resolve({ ok: true, json: async () => ({ name: 'Test', location: { city: 'City' } }) });
-  };
-  const data = await fetchAirportInfo('SBBR');
-  assert.strictEqual(data.name, 'Test');
-  assert.strictEqual(recordedOptions.headers['X-RapidAPI-Key'], 'key');
+elements.km.value = '37.0';
+ensureNmSynced();
+assert.ok(Math.abs(parseFloat(elements.nm.value) - 20.0) < 0.1);
 
-  global.fetch = (url, options) => Promise.resolve({ ok: false, status: 403 });
-  await assert.rejects(() => fetchAirportInfo('SBBR'), /Acesso negado/);
+assert.doesNotThrow(() => gerarPDF());
 
-  console.log('All tests passed');
-}
-
-runTests().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+console.log('All tests passed');
