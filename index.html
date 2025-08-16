@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cotação de Voo Executivo</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
   <style>
@@ -45,9 +43,9 @@
       border-top: 1px solid #ccc;
       padding-top: 20px;
     }
-    #map {
-      height: 400px;
-      margin-top: 20px;
+    #erro {
+      color: red;
+      margin-top: 10px;
     }
   </style>
 </head>
@@ -72,11 +70,11 @@
       <input type="number" id="nm" />
     </div>
     <div>
-      <label>Origem:</label>
+      <label>Origem (ICAO):</label>
       <input type="text" id="origem" />
     </div>
     <div>
-      <label>Destino:</label>
+      <label>Destino (ICAO):</label>
       <input type="text" id="destino" />
     </div>
   </div>
@@ -108,8 +106,8 @@
     <button onclick="gerarPDF()">Gerar PDF</button>
   </div>
 
+  <div id="erro"></div>
   <div id="resultado"></div>
-  <div id="map"></div>
 
   <script>
     const valoresKm = {
@@ -121,63 +119,82 @@
       "Cirrus SR22": 15
     };
 
-    let map;
-    let routeLayer;
-    let markerGroup;
+    const icaoTable = {
+      SBSP: { lat: -23.6261, lon: -46.6564 },
+      SBGR: { lat: -23.4356, lon: -46.4731 },
+      SBRJ: { lat: -22.9105, lon: -43.1631 },
+      SBGL: { lat: -22.8089, lon: -43.2436 }
+    };
 
-    function initMap() {
-      map = L.map('map').setView([0, 0], 2);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      }).addTo(map);
-    }
-
-    async function getCoordinates(local) {
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(local)}`;
-      const resp = await fetch(url);
-      const data = await resp.json();
-      if (data && data[0]) {
-        return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
-      }
-      return null;
-    }
-
-    async function drawRouteOnMap(waypoints) {
-      if (!map) return;
-
-      if (!markerGroup) {
-        markerGroup = L.layerGroup().addTo(map);
-      }
-      markerGroup.clearLayers();
-      if (routeLayer) {
-        routeLayer.remove();
-        routeLayer = null;
-      }
-
-      const coords = [];
-      for (const wp of waypoints) {
-        const coord = await getCoordinates(wp);
-        if (coord) {
-          L.marker(coord).addTo(markerGroup).bindPopup(wp);
-          coords.push(coord);
+    async function fetchAirportInfo(icao) {
+      try {
+        const response = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${icao}`, {
+          headers: {
+            'X-RapidAPI-Key': '84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b',
+            'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
+          }
+        });
+        if (!response.ok) {
+          throw new Error(`${response.status} ${response.statusText}`);
         }
+        const data = await response.json();
+        const { lat, lon } = data.location;
+        icaoTable[icao] = { lat, lon };
+        return { lat, lon };
+      } catch (error) {
+        document.getElementById('erro').textContent = `Erro ao buscar dados do aeroporto (${icao}): ${error.message}`;
+        throw error;
       }
+    }
 
-      if (coords.length) {
-        map.fitBounds(coords);
+    async function getCoordinates(icao) {
+      const code = icao.toUpperCase();
+      if (icaoTable[code]) {
+        return icaoTable[code];
       }
-      if (coords.length >= 2) {
-        routeLayer = L.polyline(coords, { color: 'blue' }).addTo(map);
-      }
+      return await fetchAirportInfo(code);
+    }
+
+    function toRad(value) {
+      return value * Math.PI / 180;
+    }
+
+    function distanciaKm(coord1, coord2) {
+      const R = 6371;
+      const dLat = toRad(coord2.lat - coord1.lat);
+      const dLon = toRad(coord2.lon - coord1.lon);
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(toRad(coord1.lat)) * Math.cos(toRad(coord2.lat)) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    async function calcularDistanciaNm(origem, destino) {
+      const coordOrigem = await getCoordinates(origem);
+      const coordDestino = await getCoordinates(destino);
+      const km = distanciaKm(coordOrigem, coordDestino);
+      return { nm: km / 1.852, km };
     }
 
     async function gerarPreOrcamento() {
+      document.getElementById('erro').textContent = '';
       const aeronave = document.getElementById("aeronave").value;
-      const nm = parseFloat(document.getElementById("nm").value);
+      let nm = parseFloat(document.getElementById("nm").value);
       const origem = document.getElementById("origem").value;
       const destino = document.getElementById("destino").value;
       const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
       const tipoExtra = document.getElementById("tipoExtra").value;
+
+      if ((!nm || isNaN(nm)) && origem && destino) {
+        try {
+          const distancia = await calcularDistanciaNm(origem, destino);
+          nm = distancia.nm;
+          document.getElementById("nm").value = nm.toFixed(1);
+        } catch {
+          return;
+        }
+      }
 
       const km = nm * 1.852;
       const valorKm = valoresKm[aeronave];
@@ -199,17 +216,16 @@
         <p><strong>Origem:</strong> ${origem}</p>
         <p><strong>Destino:</strong> ${destino}</p>
         <p><strong>Aeronave:</strong> ${aeronave}</p>
-        <p><strong>Distância:</strong> ${nm} NM (${km.toFixed(1)} km)</p>
+        <p><strong>Distância:</strong> ${nm.toFixed(1)} NM (${km.toFixed(1)} km)</p>
         ${valorExtra > 0 ? `<p><strong>Ajuste:</strong> ${labelExtra}</p>` : ""}
         <p><strong>Total Estimado:</strong> R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
       `;
-
-      await drawRouteOnMap([origem, destino]);
     }
 
-    function gerarPDF() {
+    async function gerarPDF() {
+      document.getElementById('erro').textContent = '';
       const aeronave = document.getElementById("aeronave").value;
-      const nm = parseFloat(document.getElementById("nm").value);
+      let nm = parseFloat(document.getElementById("nm").value);
       const origem = document.getElementById("origem").value;
       const destino = document.getElementById("destino").value;
       const dataIda = document.getElementById("dataIda").value;
@@ -218,6 +234,16 @@
       const incluirNoPDF = document.getElementById("incluirNoPDF").checked;
       const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
       const tipoExtra = document.getElementById("tipoExtra").value;
+
+      if ((!nm || isNaN(nm)) && origem && destino) {
+        try {
+          const distancia = await calcularDistanciaNm(origem, destino);
+          nm = distancia.nm;
+          document.getElementById("nm").value = nm.toFixed(1);
+        } catch {
+          return;
+        }
+      }
 
       const km = nm * 1.852;
       const valorKm = valoresKm[aeronave];
@@ -255,8 +281,6 @@
       const nomeArquivo = `Cotacao_${aeronave}_${origem}_${destino}.pdf`.replace(/\s+/g, "_");
       pdfMake.createPdf(docDefinition).open();
     }
-
-    document.addEventListener('DOMContentLoaded', initMap);
   </script>
 
 </body>
