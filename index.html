@@ -429,13 +429,14 @@
     const row=document.createElement('div'); row.className='stop-row';
     const input=document.createElement('input'); input.type='text'; input.className='stop-input'; input.placeholder='ex.: SBMO'; input.maxLength=8; input.value=value||'';
     const btn=document.createElement('button'); btn.type='button'; btn.className='btn danger btnRemoveStop'; btn.textContent='Remover';
-    btn.addEventListener('click',()=>{ row.remove(); updateDistanceFromAirports(); });
+    btn.addEventListener('click',()=>{ row.remove(); updateDistanceFromAirports(); updateRoundTripAvailability(); });
     input.addEventListener('input', updateDistanceFromAirports);
     row.appendChild(input); row.appendChild(btn);
     container.appendChild(row);
     try{ input.focus({preventScroll:false}); }catch{}
     row.scrollIntoView({behavior:'smooth', block:'nearest'});
     updateDistanceFromAirports();
+    updateRoundTripAvailability();
   }
   function setCheckedSafe(id, val){ const el=$(id); if(el) el.checked = !!val; }
   function resetForm(){
@@ -457,7 +458,7 @@
     ids.forEach(id=> out.push({name:`Elemento #${id} presente`, pass: !!$(id)}));
     try{
       const before=document.querySelectorAll('#stops .stop-row').length;
-      addStopField('SBMO');
+      $('#btnAddStop')?.click();
       const after=document.querySelectorAll('#stops .stop-row').length;
       out.push({name:'Clique em Adicionar Aeroporto cria linha', pass: after===before+1});
       out.push({name:'Ida e volta desabilitado com paradas', pass: $('#idaVolta')?.disabled===true});
@@ -476,17 +477,11 @@
   async function tryLoad(localURL, cdnURL, kind){ try{ await (kind==='css'?loadCSS(localURL):loadScript(localURL)); return 'local'; } catch(_){ try{ await (kind==='css'?loadCSS(cdnURL):loadScript(cdnURL)); return 'cdn'; } catch(e){ return null; } } }
 
   function boot(){
-    document.addEventListener('click', (e)=>{
-      const t = e.target; if(!t) return;
-      if(t.id==='btnAddStop' || (t.closest && t.closest('#btnAddStop'))){ addStopField(''); }
-      if(t.classList && t.classList.contains('btnRemoveStop')){ const row=t.closest('.stop-row'); if(row) row.remove(); updateDistanceFromAirports(); }
-    });
-    document.addEventListener('input', (e)=>{ if(e.target && e.target.classList && e.target.classList.contains('stop-input')) updateDistanceFromAirports(); });
-
     on('btnPreOrcamento','click', gerarPreOrcamento);
     on('btnPDF','click', gerarPDF);
     on('btnMaps','click', ()=>{ const s=buildState(); if(!s.origem||!s.destino){ alert('Informe origem e destino.'); return; } const parts=[s.origem,...s.stops,s.destino].map(encodeURIComponent).join('/'); const url=`https://www.google.com/maps/dir/${parts}`; const w=window.open(url,'_blank','noopener'); if(!w) window.location.href=url; });
     on('btnReset','click', resetForm);
+    on('btnAddStop','click', ()=>{ addStopField(''); });
     on('nm','input', ensureKmSynced);
     on('aeronave','change', syncValorKmByAeronave);
     on('origem','input', updateDistanceFromAirports);
