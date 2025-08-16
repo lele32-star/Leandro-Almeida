@@ -1,0 +1,8 @@
+{
+  "name": "cotacao-voo",
+  "version": "1.0.0",
+  "description": "Cotação de Voo web app",
+  "scripts": {
+    "test": "node test.js"
+  }
+}
