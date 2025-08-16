@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Route Distance Calculator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 2rem; }
+    label { display:block; margin-top:1rem; }
+    input { width: 300px; }
+    #output { margin-top:2rem; }
+  </style>
+</head>
+<body>
+  <h1>Route Distance Calculator</h1>
+  <label>Origem: <input id="origem" /></label>
+  <label>Stops (comma separated): <input id="stops" /></label>
+  <label>Destino: <input id="destino" /></label>
+  <button onclick="showRoute()">Compute</button>
+  <div id="output"></div>
+
+  <script>
+    const airports = {
+      SBBR: { lat: -15.869167, lon: -47.920833 },
+      SBMO: { lat: -9.510808,  lon: -35.791667 },
+      SBBH: { lat: -19.851944, lon: -43.950833 }
+    };
+    const R_NM = 3440.065;
+    const toRad = deg => deg * Math.PI / 180;
+    const haversine = (a, b) => {
+      const dphi = toRad(b.lat - a.lat);
+      const dlambda = toRad(b.lon - a.lon);
+      const phi1 = toRad(a.lat);
+      const phi2 = toRad(b.lat);
+      const s = Math.sin(dphi/2)**2 + Math.cos(phi1)*Math.cos(phi2)*Math.sin(dlambda/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+      return R_NM * c;
+    };
+
+    // Build waypoint list as [origem, ...stops, destino]
+    function getWaypoints(origem, destino, stops = []) {
+      return [origem, ...stops, destino];
+    }
+
+    function calculateLegs(waypoints) {
+      const legs = [];
+      let total = 0;
+      for (let i = 0; i < waypoints.length - 1; i++) {
+        const from = waypoints[i];
+        const to = waypoints[i + 1];
+        const dist = haversine(airports[from], airports[to]);
+        legs.push({ from, to, dist });
+        total += dist;
+      }
+      return { legs, total };
+    }
+
+    function showRoute() {
+      const origem = document.getElementById('origem').value.trim();
+      const destino = document.getElementById('destino').value.trim();
+      const stopsRaw = document.getElementById('stops').value.trim();
+      const stops = stopsRaw ? stopsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+      const waypoints = getWaypoints(origem, destino, stops);
+      const { legs, total } = calculateLegs(waypoints);
+
+      const out = document.getElementById('output');
+      out.innerHTML = `<p>Sequência: ${waypoints.join(' → ')}</p>` +
+                      `<p>Distância Total: ${total.toFixed(1)} NM</p>` +
+                      legs.map(l => `<div>${l.from} → ${l.to}: ${l.dist.toFixed(1)} NM</div>`).join('');
+
+      generatePDF(waypoints, legs, total);
+    }
+
+    function generatePDF(waypoints, legs, total) {
+      const content = [
+        { text: 'Rota Calculada', style: 'header' },
+        { text: 'Sequência: ' + waypoints.join(' → '), margin: [0, 10, 0, 0] },
+        { text: 'Distância Total: ' + total.toFixed(1) + ' NM', margin: [0, 0, 0, 10] }
+      ];
+      legs.forEach(l => content.push({ text: `${l.from} → ${l.to}: ${l.dist.toFixed(1)} NM` }));
+
+      pdfMake.createPdf({
+        content,
+        styles: { header: { fontSize: 18, bold: true } }
+      });
+    }
+  </script>
+</body>
+</html>

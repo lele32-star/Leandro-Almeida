@@ -1,0 +1,10 @@
+{
+  "name": "leandro-almeida",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}
