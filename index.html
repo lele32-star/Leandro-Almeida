@@ -477,11 +477,29 @@
   async function tryLoad(localURL, cdnURL, kind){ try{ await (kind==='css'?loadCSS(localURL):loadScript(localURL)); return 'local'; } catch(_){ try{ await (kind==='css'?loadCSS(cdnURL):loadScript(cdnURL)); return 'cdn'; } catch(e){ return null; } } }
 
   function boot(){
+    document.addEventListener('click', (e)=>{
+      const t=e.target; if(!t) return;
+      if(t.id==='btnAddStop' || (t.closest && t.closest('#btnAddStop'))){ addStopField(''); }
+      if(t.classList && t.classList.contains('btnRemoveStop')){
+        const row=t.closest('.stop-row');
+        if(row) row.remove();
+        updateDistanceFromAirports();
+        updateRoundTripAvailability();
+        maybeRefreshPreview();
+      }
+    });
+
+    document.addEventListener('input', (e)=>{
+      if(e.target && e.target.classList && e.target.classList.contains('stop-input')){
+        updateDistanceFromAirports();
+        maybeRefreshPreview();
+      }
+    });
+
     on('btnPreOrcamento','click', gerarPreOrcamento);
     on('btnPDF','click', gerarPDF);
     on('btnMaps','click', ()=>{ const s=buildState(); if(!s.origem||!s.destino){ alert('Informe origem e destino.'); return; } const parts=[s.origem,...s.stops,s.destino].map(encodeURIComponent).join('/'); const url=`https://www.google.com/maps/dir/${parts}`; const w=window.open(url,'_blank','noopener'); if(!w) window.location.href=url; });
     on('btnReset','click', resetForm);
-    on('btnAddStop','click', ()=>{ addStopField(''); });
     on('nm','input', ensureKmSynced);
     on('aeronave','change', syncValorKmByAeronave);
     on('origem','input', updateDistanceFromAirports);
