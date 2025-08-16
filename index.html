@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cotação de Voo Executivo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
   <style>
@@ -46,6 +48,10 @@
     #erro {
       color: red;
       margin-top: 10px;
+    }
+    #map {
+      height: 400px;
+      margin-top: 20px;
     }
   </style>
 </head>
@@ -115,6 +121,7 @@
 
   <div id="erro"></div>
   <div id="resultado"></div>
+  <div id="map"></div>
 
   <script>
     const valoresKm = {
@@ -126,7 +133,7 @@
       "Cirrus SR22": 15
     };
 
-    const icaoTable = {
+  const icaoTable = {
       SBSP: { lat: -23.6261, lon: -46.6564 },
       SBGR: { lat: -23.4356, lon: -46.4731 },
       SBRJ: { lat: -22.9105, lon: -43.1631 },
@@ -137,12 +144,12 @@
       const val = parseFloat(e.target.value);
       document.getElementById('km').value = isFinite(val) ? (val * 1.852).toFixed(1) : '';
     });
-    document.getElementById('km').addEventListener('input', e => {
+  document.getElementById('km').addEventListener('input', e => {
       const val = parseFloat(e.target.value);
       document.getElementById('nm').value = isFinite(val) ? (val / 1.852).toFixed(1) : '';
     });
 
-    document.getElementById('addStop').addEventListener('click', () => {
+  document.getElementById('addStop').addEventListener('click', () => {
       const container = document.getElementById('stops');
       const input = document.createElement('input');
       input.type = 'text';
@@ -169,18 +176,46 @@
       return totalKm;
     }
 
-    async function updateDistanceFromAirports() {
+  async function updateDistanceFromAirports() {
       const waypoints = getWaypoints();
-      if (waypoints.length < 2) { return; }
+      if (waypoints.length < 2) {
+        if (routeLayer) { routeLayer.remove(); routeLayer = null; }
+        return;
+      }
       try {
         const totalKm = await calcularRotaKm(waypoints);
         document.getElementById('km').value = totalKm.toFixed(1);
         document.getElementById('nm').value = (totalKm / 1.852).toFixed(1);
+        drawRouteOnMap(waypoints);
       } catch {}
     }
 
     document.getElementById('origem').addEventListener('input', updateDistanceFromAirports);
     document.getElementById('destino').addEventListener('input', updateDistanceFromAirports);
+
+    let map;
+    let routeLayer;
+
+    function initMap() {
+      map = L.map('map').setView([0, 0], 2);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      }).addTo(map);
+    }
+
+    function drawRouteOnMap(waypoints) {
+      if (!map) return;
+      if (routeLayer) { routeLayer.remove(); routeLayer = null; }
+      const coords = [];
+      for (const wp of waypoints) {
+        const c = icaoTable[wp];
+        if (c) coords.push([c.lat, c.lon]);
+      }
+      if (coords.length < 2) return;
+      routeLayer = L.polyline(coords, { color: 'blue' }).addTo(map);
+      coords.forEach((p,i) => L.marker(p).addTo(routeLayer).bindPopup(waypoints[i]));
+      map.fitBounds(routeLayer.getBounds());
+    }
 
     async function fetchAirportInfo(icao) {
       try {
@@ -270,6 +305,7 @@
         ${valorExtra > 0 ? `<p><strong>Ajuste:</strong> ${labelExtra}</p>` : ""}
         <p><strong>Total Estimado:</strong> R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
       `;
+      drawRouteOnMap(waypoints);
     }
 
     async function gerarPDF() {
@@ -334,6 +370,8 @@
       const nomeArquivo = `Cotacao_${aeronave}.pdf`.replace(/\s+/g, "_");
       pdfMake.createPdf(docDefinition).open();
     }
+
+    document.addEventListener('DOMContentLoaded', initMap);
   </script>
 
 </body>
