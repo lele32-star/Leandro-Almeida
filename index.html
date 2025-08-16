@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cotação de Voo Executivo</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
   <style>
@@ -45,13 +43,15 @@
       border-top: 1px solid #ccc;
       padding-top: 20px;
     }
-    #erro {
-      color: red;
-      margin-top: 10px;
-    }
-    #map {
-      height: 400px;
+    #pdfFilters {
       margin-top: 20px;
+      border: 1px solid #ccc;
+      padding: 10px;
+    }
+    #pdfFilters label {
+      font-weight: normal;
+      display: inline-block;
+      margin-right: 10px;
     }
   </style>
 </head>
@@ -76,21 +76,14 @@
       <input type="number" id="nm" />
     </div>
     <div>
-      <label>Distância (KM):</label>
-      <input type="number" id="km" />
-    </div>
-    <div>
-      <label>Origem (ICAO):</label>
+      <label>Origem:</label>
       <input type="text" id="origem" />
     </div>
     <div>
-      <label>Destino (ICAO):</label>
+      <label>Destino:</label>
       <input type="text" id="destino" />
     </div>
   </div>
-
-  <div id="stops"></div>
-  <button id="addStop">Adicionar Aeroporto</button>
 
   <div class="linha">
     <div>
@@ -114,270 +107,25 @@
   <label>Observações:</label>
   <textarea id="observacoes" rows="4"></textarea>
 
+  <div id="pdfFilters">
+    <h4>Campos do PDF</h4>
+    <label><input type="checkbox" id="showRota" checked /> Rota</label>
+    <label><input type="checkbox" id="showAeronave" checked /> Aeronave</label>
+    <label><input type="checkbox" id="showTarifa" checked /> Tarifa</label>
+    <label><input type="checkbox" id="showDistancia" checked /> Distância</label>
+    <label><input type="checkbox" id="showDatas" checked /> Datas</label>
+    <label><input type="checkbox" id="showAjuste" checked /> Ajuste</label>
+    <label><input type="checkbox" id="showObservacoes" checked /> Observações</label>
+    <label><input type="checkbox" id="showMapa" checked /> Mapa</label>
+  </div>
+
   <div class="botoes">
     <button onclick="gerarPreOrcamento()">Gerar Pré-Orçamento</button>
     <button onclick="gerarPDF()">Gerar PDF</button>
   </div>
 
-  <div id="erro"></div>
   <div id="resultado"></div>
-  <div id="map"></div>
 
-  <script>
-    const valoresKm = {
-      "Hawker 400": 36,
-      "Phenom 100": 36,
-      "Citation II": 36,
-      "King Air C90": 30,
-      "Sêneca IV": 22,
-      "Cirrus SR22": 15
-    };
-
-  const icaoTable = {
-      SBSP: { lat: -23.6261, lon: -46.6564 },
-      SBGR: { lat: -23.4356, lon: -46.4731 },
-      SBRJ: { lat: -22.9105, lon: -43.1631 },
-      SBGL: { lat: -22.8089, lon: -43.2436 }
-    };
-
-    document.getElementById('nm').addEventListener('input', e => {
-      const val = parseFloat(e.target.value);
-      document.getElementById('km').value = isFinite(val) ? (val * 1.852).toFixed(1) : '';
-    });
-  document.getElementById('km').addEventListener('input', e => {
-      const val = parseFloat(e.target.value);
-      document.getElementById('nm').value = isFinite(val) ? (val / 1.852).toFixed(1) : '';
-    });
-
-  document.getElementById('addStop').addEventListener('click', () => {
-      const container = document.getElementById('stops');
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'stop';
-      input.placeholder = 'Aeroporto ICAO';
-      input.addEventListener('input', updateDistanceFromAirports);
-      container.appendChild(input);
-    });
-
-    function getWaypoints() {
-      const origem = document.getElementById('origem').value;
-      const destino = document.getElementById('destino').value;
-      const stops = Array.from(document.querySelectorAll('#stops .stop')).map(i => i.value).filter(Boolean);
-      return [origem, ...stops, destino].filter(Boolean);
-    }
-
-    async function calcularRotaKm(waypoints) {
-      let totalKm = 0;
-      for (let i = 1; i < waypoints.length; i++) {
-        const c1 = await getCoordinates(waypoints[i-1]);
-        const c2 = await getCoordinates(waypoints[i]);
-        totalKm += distanciaKm(c1, c2);
-      }
-      return totalKm;
-    }
-
-  async function updateDistanceFromAirports() {
-      const s = {
-        origem: document.getElementById('origem').value,
-        stops: Array.from(document.querySelectorAll('#stops .stop')).map(i => i.value).filter(Boolean),
-        destino: document.getElementById('destino').value
-      };
-      const waypoints = [s.origem, ...s.stops, s.destino].filter(Boolean);
-      if (waypoints.length < 2) {
-        if (routeLayer) { routeLayer.remove(); routeLayer = null; }
-        return;
-      }
-      try {
-        const totalKm = await calcularRotaKm(waypoints);
-        document.getElementById('km').value = totalKm.toFixed(1);
-        document.getElementById('nm').value = (totalKm / 1.852).toFixed(1);
-        drawRouteOnMap(waypoints);
-      } catch {}
-    }
-
-    document.getElementById('origem').addEventListener('input', updateDistanceFromAirports);
-    document.getElementById('destino').addEventListener('input', updateDistanceFromAirports);
-
-    let map;
-    let routeLayer;
-
-    function initMap() {
-      map = L.map('map').setView([0, 0], 2);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      }).addTo(map);
-    }
-
-    function drawRouteOnMap(waypoints) {
-      if (!map) return;
-      if (routeLayer) { routeLayer.remove(); routeLayer = null; }
-      const coords = [];
-      for (const wp of waypoints) {
-        const c = icaoTable[wp];
-        if (c) coords.push([c.lat, c.lon]);
-      }
-      if (coords.length < 2) return;
-      routeLayer = L.polyline(coords, { color: 'blue' }).addTo(map);
-      coords.forEach((p,i) => L.marker(p).addTo(routeLayer).bindPopup(waypoints[i]));
-      map.fitBounds(routeLayer.getBounds());
-    }
-
-    async function fetchAirportInfo(icao) {
-      try {
-        const response = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${icao}`, {
-          headers: {
-            'X-RapidAPI-Key': '84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b',
-            'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
-          }
-        });
-        if (!response.ok) {
-          throw new Error(`${response.status} ${response.statusText}`);
-        }
-        const data = await response.json();
-        const { lat, lon } = data.location;
-        icaoTable[icao] = { lat, lon };
-        return { lat, lon };
-      } catch (error) {
-        document.getElementById('erro').textContent = `Erro ao buscar dados do aeroporto (${icao}): ${error.message}`;
-        throw error;
-      }
-    }
-
-    async function getCoordinates(icao) {
-      const code = icao.toUpperCase();
-      if (icaoTable[code]) {
-        return icaoTable[code];
-      }
-      return await fetchAirportInfo(code);
-    }
-
-    function toRad(value) {
-      return value * Math.PI / 180;
-    }
-
-    function distanciaKm(coord1, coord2) {
-      const R = 6371;
-      const dLat = toRad(coord2.lat - coord1.lat);
-      const dLon = toRad(coord2.lon - coord1.lon);
-      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(toRad(coord1.lat)) * Math.cos(toRad(coord2.lat)) *
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-      return R * c;
-    }
-
-    async function gerarPreOrcamento() {
-      document.getElementById('erro').textContent = '';
-      const aeronave = document.getElementById("aeronave").value;
-      let nm = parseFloat(document.getElementById("nm").value);
-      const waypoints = getWaypoints();
-      const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
-      const tipoExtra = document.getElementById("tipoExtra").value;
-      let km;
-      if ((!nm || isNaN(nm)) && waypoints.length >= 2) {
-        try {
-          const totalKm = await calcularRotaKm(waypoints);
-          km = totalKm;
-          nm = totalKm / 1.852;
-          document.getElementById('km').value = km.toFixed(1);
-          document.getElementById('nm').value = nm.toFixed(1);
-        } catch {
-          return;
-        }
-      } else {
-        km = nm * 1.852;
-      }
-      const valorKm = valoresKm[aeronave];
-      let total = km * valorKm;
-
-      let labelExtra = "";
-      if (valorExtra > 0) {
-        if (tipoExtra === "soma") {
-          total += valorExtra;
-          labelExtra = `+ R$ ${valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (outras despesas)`;
-        } else {
-          total -= valorExtra;
-          labelExtra = `- R$ ${valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} (desconto)`;
-        }
-      }
-
-      const rota = waypoints.join(' → ');
-      document.getElementById("resultado").innerHTML = `
-        <h3>Pré-Orçamento</h3>
-        <p><strong>Rota:</strong> ${rota}</p>
-        <p><strong>Aeronave:</strong> ${aeronave}</p>
-        <p><strong>Distância:</strong> ${nm.toFixed(1)} NM (${km.toFixed(1)} km)</p>
-        ${valorExtra > 0 ? `<p><strong>Ajuste:</strong> ${labelExtra}</p>` : ""}
-        <p><strong>Total Estimado:</strong> R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-      `;
-      drawRouteOnMap(waypoints);
-    }
-
-    async function gerarPDF() {
-      document.getElementById('erro').textContent = '';
-      const aeronave = document.getElementById("aeronave").value;
-      let nm = parseFloat(document.getElementById("nm").value);
-      const waypoints = getWaypoints();
-      const dataIda = document.getElementById("dataIda").value;
-      const dataVolta = document.getElementById("dataVolta").value;
-      const observacoes = document.getElementById("observacoes").value;
-      const incluirNoPDF = document.getElementById("incluirNoPDF").checked;
-      const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
-      const tipoExtra = document.getElementById("tipoExtra").value;
-
-      let km;
-      if ((!nm || isNaN(nm)) && waypoints.length >= 2) {
-        try {
-          const totalKm = await calcularRotaKm(waypoints);
-          km = totalKm;
-          nm = totalKm / 1.852;
-          document.getElementById('km').value = km.toFixed(1);
-          document.getElementById('nm').value = nm.toFixed(1);
-        } catch {
-          return;
-        }
-      } else {
-        km = nm * 1.852;
-      }
-      const valorKm = valoresKm[aeronave];
-      let total = km * valorKm;
-
-      let ajustes = "";
-      if (valorExtra > 0 && incluirNoPDF) {
-        if (tipoExtra === "soma") {
-          total += valorExtra;
-          ajustes = { text: `Outras Despesas: R$ ${valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin: [0, 10, 0, 0] };
-        } else {
-          total -= valorExtra;
-          ajustes = { text: `Desconto: R$ ${valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin: [0, 10, 0, 0] };
-        }
-      }
-
-      const rota = waypoints.join(' → ');
-      const docDefinition = {
-        content: [
-          { text: "Cotação de Voo Executivo", style: "header" },
-          { text: `Rota: ${rota}`, margin: [0, 10, 0, 0] },
-          { text: `Aeronave: ${aeronave}` },
-          { text: `Data Ida: ${dataIda} | Data Volta: ${dataVolta}` },
-          ajustes,
-          { text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, bold: true, margin: [0, 10, 0, 0] },
-          observacoes ? { text: `Observações: ${observacoes}`, margin: [0, 10, 0, 0] } : null
-        ],
-        styles: {
-          header: {
-            fontSize: 18,
-            bold: true
-          }
-        }
-      };
-
-      const nomeArquivo = `Cotacao_${aeronave}.pdf`.replace(/\s+/g, "_");
-      pdfMake.createPdf(docDefinition).open();
-    }
-
-    document.addEventListener('DOMContentLoaded', initMap);
-  </script>
-
+  <script src="app.js"></script>
 </body>
 </html>
