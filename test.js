@@ -17,8 +17,8 @@ createElement('km', { value: '' });
 createElement('aeronave', { value: 'Hawker 400' });
 createElement('origem', { value: 'AAA' });
 createElement('destino', { value: 'BBB' });
-createElement('dataIda', { value: '2024-01-01' });
-createElement('dataVolta', { value: '2024-01-02' });
+createElement('dataIda', { value: '', min: '' });
+createElement('dataVolta', { value: '', min: '' });
 createElement('valorExtra', { value: '0' });
 createElement('tipoExtra', { value: 'soma' });
 createElement('observacoes', { value: '' });
@@ -33,6 +33,25 @@ const valoresKm = {
   "Sêneca IV": 22,
   "Cirrus SR22": 15
 };
+
+function lockDatesToToday() {
+  const dataIda = document.getElementById('dataIda');
+  const today = new Date().toISOString().split('T')[0];
+  dataIda.value = today;
+  dataIda.min = today;
+}
+
+function enforceDateOrder() {
+  const dataIda = document.getElementById('dataIda');
+  const dataVolta = document.getElementById('dataVolta');
+  const idaValue = dataIda.value;
+  if (idaValue) {
+    dataVolta.min = idaValue;
+    if (dataVolta.value && dataVolta.value < idaValue) {
+      dataVolta.value = idaValue;
+    }
+  }
+}
 
 function ensureKmSynced() {
   const nm = parseFloat(document.getElementById('nm').value);
@@ -124,6 +143,17 @@ assert.strictEqual(elements.km.value, '18.5');
 elements.km.value = '37.0';
 ensureNmSynced();
 assert.ok(Math.abs(parseFloat(elements.nm.value) - 20.0) < 0.1);
+
+lockDatesToToday();
+const today = new Date().toISOString().split('T')[0];
+assert.strictEqual(elements.dataIda.value, today);
+assert.strictEqual(elements.dataIda.min, today);
+
+elements.dataIda.value = '2024-01-05';
+elements.dataVolta.value = '2024-01-01';
+enforceDateOrder();
+assert.strictEqual(elements.dataVolta.value, '2024-01-05');
+assert.strictEqual(elements.dataVolta.min, '2024-01-05');
 
 assert.doesNotThrow(() => gerarPDF());
 

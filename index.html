@@ -118,6 +118,44 @@
       "Cirrus SR22": 15
     };
 
+    function lockDatesToToday() {
+      const dataIda = document.getElementById('dataIda');
+      const today = new Date().toISOString().split('T')[0];
+      dataIda.value = today;
+      dataIda.min = today;
+    }
+
+    function enforceDateOrder() {
+      const dataIda = document.getElementById('dataIda');
+      const dataVolta = document.getElementById('dataVolta');
+      const idaValue = dataIda.value;
+      if (idaValue) {
+        dataVolta.min = idaValue;
+        if (dataVolta.value && dataVolta.value < idaValue) {
+          dataVolta.value = idaValue;
+        }
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const dataIda = document.getElementById('dataIda');
+      const dataVolta = document.getElementById('dataVolta');
+
+      lockDatesToToday();
+      enforceDateOrder();
+
+      ['change', 'input'].forEach(evt => {
+        dataIda.addEventListener(evt, () => {
+          lockDatesToToday();
+          enforceDateOrder();
+        });
+        dataVolta.addEventListener(evt, enforceDateOrder);
+      });
+
+      dataIda.addEventListener('focus', lockDatesToToday);
+      dataIda.addEventListener('click', lockDatesToToday);
+    });
+
     function ensureKmSynced() {
       const nm = parseFloat(document.getElementById("nm").value);
       const kmField = document.getElementById("km");
