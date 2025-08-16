@@ -1,5 +1,3 @@
-Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas e geração de PDF.
-# Leandro-Almeida
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -45,6 +43,10 @@ Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas e g
       border-top: 1px solid #ccc;
       padding-top: 20px;
     }
+    #erro {
+      color: red;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
@@ -72,14 +74,17 @@ Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas e g
       <input type="number" id="km" />
     </div>
     <div>
-      <label>Origem:</label>
+      <label>Origem (ICAO):</label>
       <input type="text" id="origem" />
     </div>
     <div>
-      <label>Destino:</label>
+      <label>Destino (ICAO):</label>
       <input type="text" id="destino" />
     </div>
   </div>
+
+  <div id="stops"></div>
+  <button id="addStop">Adicionar Aeroporto</button>
 
   <div class="linha">
     <div>
@@ -108,6 +113,7 @@ Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas e g
     <button onclick="gerarPDF()">Gerar PDF</button>
   </div>
 
+  <div id="erro"></div>
   <div id="resultado"></div>
 
   <script>
@@ -120,70 +126,127 @@ Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas e g
       "Cirrus SR22": 15
     };
 
-    document.getElementById('nm').addEventListener('input', (e) => {
+    const icaoTable = {
+      SBSP: { lat: -23.6261, lon: -46.6564 },
+      SBGR: { lat: -23.4356, lon: -46.4731 },
+      SBRJ: { lat: -22.9105, lon: -43.1631 },
+      SBGL: { lat: -22.8089, lon: -43.2436 }
+    };
+
+    document.getElementById('nm').addEventListener('input', e => {
       const val = parseFloat(e.target.value);
-      const kmInput = document.getElementById('km');
-      kmInput.value = Number.isFinite(val) ? (val * 1.852).toFixed(1) : '';
+      document.getElementById('km').value = isFinite(val) ? (val * 1.852).toFixed(1) : '';
+    });
+    document.getElementById('km').addEventListener('input', e => {
+      const val = parseFloat(e.target.value);
+      document.getElementById('nm').value = isFinite(val) ? (val / 1.852).toFixed(1) : '';
     });
 
-    document.getElementById('km').addEventListener('input', (e) => {
-      const val = parseFloat(e.target.value);
-      const nmInput = document.getElementById('nm');
-      nmInput.value = Number.isFinite(val) ? (val / 1.852).toFixed(1) : '';
+    document.getElementById('addStop').addEventListener('click', () => {
+      const container = document.getElementById('stops');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'stop';
+      input.placeholder = 'Aeroporto ICAO';
+      input.addEventListener('input', updateDistanceFromAirports);
+      container.appendChild(input);
     });
 
-    let routeLayer = null;
-
-    function haversine(a, b) {
-      const R = 6371; // Earth radius in km
-      const toRad = (deg) => deg * Math.PI / 180;
-      const dLat = toRad(b.lat - a.lat);
-      const dLon = toRad(b.lng - a.lng);
-      const lat1 = toRad(a.lat);
-      const lat2 = toRad(b.lat);
-      const h = Math.sin(dLat / 2) ** 2 +
-                Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-      return 2 * R * Math.asin(Math.sqrt(h));
+    function getWaypoints() {
+      const origem = document.getElementById('origem').value;
+      const destino = document.getElementById('destino').value;
+      const stops = Array.from(document.querySelectorAll('#stops .stop')).map(i => i.value).filter(Boolean);
+      return [origem, destino, ...stops].filter(Boolean);
     }
 
-    function updateDistanceFromAirports(waypoints) {
-      const nmInput = document.getElementById('nm');
-      const kmInput = document.getElementById('km');
-      const points = (waypoints || []).filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    async function calcularRotaKm(waypoints) {
+      let totalKm = 0;
+      for (let i = 1; i < waypoints.length; i++) {
+        const c1 = await getCoordinates(waypoints[i-1]);
+        const c2 = await getCoordinates(waypoints[i]);
+        totalKm += distanciaKm(c1, c2);
+      }
+      return totalKm;
+    }
 
-      if (points.length < 2) {
-        if (routeLayer && typeof routeLayer.remove === 'function') {
-          routeLayer.remove();
+    async function updateDistanceFromAirports() {
+      const waypoints = getWaypoints();
+      if (waypoints.length < 2) { return; }
+      try {
+        const totalKm = await calcularRotaKm(waypoints);
+        document.getElementById('km').value = totalKm.toFixed(1);
+        document.getElementById('nm').value = (totalKm / 1.852).toFixed(1);
+      } catch {}
+    }
+
+    document.getElementById('origem').addEventListener('input', updateDistanceFromAirports);
+    document.getElementById('destino').addEventListener('input', updateDistanceFromAirports);
+
+    async function fetchAirportInfo(icao) {
+      try {
+        const response = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${icao}`, {
+          headers: {
+            'X-RapidAPI-Key': '84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b',
+            'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
+          }
+        });
+        if (!response.ok) {
+          throw new Error(`${response.status} ${response.statusText}`);
         }
-        routeLayer = null;
-        if (nmInput) nmInput.value = '';
-        if (kmInput) kmInput.value = '';
-        return;
-      }
-
-      let kmTotal = 0;
-      for (let i = 1; i < points.length; i++) {
-        kmTotal += haversine(points[i - 1], points[i]);
-      }
-      const nmTotal = kmTotal / 1.852;
-
-      if (nmInput) nmInput.value = nmTotal.toFixed(1);
-      if (kmInput) kmInput.value = kmTotal.toFixed(1);
-
-      if (typeof L !== 'undefined' && typeof map !== 'undefined') {
-        if (routeLayer) routeLayer.remove();
-        routeLayer = L.polyline(points.map(p => [p.lat, p.lng]), { color: 'blue' }).addTo(map);
+        const data = await response.json();
+        const { lat, lon } = data.location;
+        icaoTable[icao] = { lat, lon };
+        return { lat, lon };
+      } catch (error) {
+        document.getElementById('erro').textContent = `Erro ao buscar dados do aeroporto (${icao}): ${error.message}`;
+        throw error;
       }
     }
 
-    function gerarPreOrcamento() {
+    async function getCoordinates(icao) {
+      const code = icao.toUpperCase();
+      if (icaoTable[code]) {
+        return icaoTable[code];
+      }
+      return await fetchAirportInfo(code);
+    }
+
+    function toRad(value) {
+      return value * Math.PI / 180;
+    }
+
+    function distanciaKm(coord1, coord2) {
+      const R = 6371;
+      const dLat = toRad(coord2.lat - coord1.lat);
+      const dLon = toRad(coord2.lon - coord1.lon);
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(toRad(coord1.lat)) * Math.cos(toRad(coord2.lat)) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    async function gerarPreOrcamento() {
+      document.getElementById('erro').textContent = '';
       const aeronave = document.getElementById("aeronave").value;
-      const nm = parseFloat(document.getElementById("nm").value);
-      const km = parseFloat(document.getElementById("km").value);
-      const origem = document.getElementById("origem").value;
-      const destino = document.getElementById("destino").value;
+      let nm = parseFloat(document.getElementById("nm").value);
+      const waypoints = getWaypoints();
       const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
       const tipoExtra = document.getElementById("tipoExtra").value;
+      let km;
+      if ((!nm || isNaN(nm)) && waypoints.length >= 2) {
+        try {
+          const totalKm = await calcularRotaKm(waypoints);
+          km = totalKm;
+          nm = totalKm / 1.852;
+          document.getElementById('km').value = km.toFixed(1);
+          document.getElementById('nm').value = nm.toFixed(1);
+        } catch {
+          return;
+        }
+      } else {
+        km = nm * 1.852;
+      }
       const valorKm = valoresKm[aeronave];
       let total = km * valorKm;
 
@@ -198,23 +261,22 @@ Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas e g
         }
       }
 
+      const rota = waypoints.join(' → ');
       document.getElementById("resultado").innerHTML = `
         <h3>Pré-Orçamento</h3>
-        <p><strong>Origem:</strong> ${origem}</p>
-        <p><strong>Destino:</strong> ${destino}</p>
+        <p><strong>Rota:</strong> ${rota}</p>
         <p><strong>Aeronave:</strong> ${aeronave}</p>
-        <p><strong>Distância:</strong> ${nm} NM (${km.toFixed(1)} km)</p>
+        <p><strong>Distância:</strong> ${nm.toFixed(1)} NM (${km.toFixed(1)} km)</p>
         ${valorExtra > 0 ? `<p><strong>Ajuste:</strong> ${labelExtra}</p>` : ""}
         <p><strong>Total Estimado:</strong> R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
       `;
     }
 
-    function gerarPDF() {
+    async function gerarPDF() {
+      document.getElementById('erro').textContent = '';
       const aeronave = document.getElementById("aeronave").value;
-      const nm = parseFloat(document.getElementById("nm").value);
-      const km = parseFloat(document.getElementById("km").value);
-      const origem = document.getElementById("origem").value;
-      const destino = document.getElementById("destino").value;
+      let nm = parseFloat(document.getElementById("nm").value);
+      const waypoints = getWaypoints();
       const dataIda = document.getElementById("dataIda").value;
       const dataVolta = document.getElementById("dataVolta").value;
       const observacoes = document.getElementById("observacoes").value;
@@ -222,6 +284,20 @@ Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas e g
       const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
       const tipoExtra = document.getElementById("tipoExtra").value;
 
+      let km;
+      if ((!nm || isNaN(nm)) && waypoints.length >= 2) {
+        try {
+          const totalKm = await calcularRotaKm(waypoints);
+          km = totalKm;
+          nm = totalKm / 1.852;
+          document.getElementById('km').value = km.toFixed(1);
+          document.getElementById('nm').value = nm.toFixed(1);
+        } catch {
+          return;
+        }
+      } else {
+        km = nm * 1.852;
+      }
       const valorKm = valoresKm[aeronave];
       let total = km * valorKm;
 
@@ -236,10 +312,11 @@ Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas e g
         }
       }
 
+      const rota = waypoints.join(' → ');
       const docDefinition = {
         content: [
           { text: "Cotação de Voo Executivo", style: "header" },
-          { text: `Origem: ${origem} → Destino: ${destino}`, margin: [0, 10, 0, 0] },
+          { text: `Rota: ${rota}`, margin: [0, 10, 0, 0] },
           { text: `Aeronave: ${aeronave}` },
           { text: `Data Ida: ${dataIda} | Data Volta: ${dataVolta}` },
           ajustes,
@@ -254,8 +331,8 @@ Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas e g
         }
       };
 
-      const nomeArquivo = `Cotacao_${aeronave}_${origem}_${destino}.pdf`.replace(/\s+/g, "_");
-      pdfMake.createPdf(docDefinition).open(); // Abre em nova aba
+      const nomeArquivo = `Cotacao_${aeronave}.pdf`.replace(/\s+/g, "_");
+      pdfMake.createPdf(docDefinition).open();
     }
   </script>
 
