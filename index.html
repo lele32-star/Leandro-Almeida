@@ -66,6 +66,10 @@
       <input type="number" id="nm" />
     </div>
     <div>
+      <label>Distância (KM):</label>
+      <input type="number" id="km" />
+    </div>
+    <div>
       <label>Origem:</label>
       <input type="text" id="origem" />
     </div>
@@ -114,17 +118,91 @@
       "Cirrus SR22": 15
     };
 
+    // Pequena tabela de ICAO para cálculo automático de distâncias
+    const icaoTable = {
+      SBGR: { lat: -23.435556, lng: -46.473056 },
+      SBSP: { lat: -23.626111, lng: -46.656389 },
+      SBRJ: { lat: -22.910556, lng: -43.163056 },
+      SBGL: { lat: -22.809999, lng: -43.250556 },
+      SBBR: { lat: -15.871111, lng: -47.918611 },
+      SBPA: { lat: -30.000556, lng: -51.171389 }
+    };
+
+    function getCoords(icao) {
+      return icaoTable[(icao || "").toUpperCase()];
+    }
+
+    function haversineKm(a, b) {
+      const R = 6371; // km
+      const toRad = deg => (deg * Math.PI) / 180;
+      const dLat = toRad(b.lat - a.lat);
+      const dLng = toRad(b.lng - a.lng);
+      const lat1 = toRad(a.lat);
+      const lat2 = toRad(b.lat);
+      const h = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    }
+
+    function updateDistanceFromAirports() {
+      const origem = getCoords(document.getElementById('origem').value);
+      const destino = getCoords(document.getElementById('destino').value);
+      const nmField = document.getElementById('nm');
+      const kmField = document.getElementById('km');
+      if (origem && destino) {
+        const km = haversineKm(origem, destino);
+        if (nmField) nmField.value = (km / 1.852).toFixed(1);
+        if (kmField) kmField.value = km.toFixed(1);
+      } else {
+        if (nmField) nmField.value = '';
+        if (kmField) kmField.value = '';
+      }
+    }
+
+    document.getElementById('nm').addEventListener('input', e => {
+      const val = parseFloat(e.target.value);
+      const kmInput = document.getElementById('km');
+      kmInput.value = isFinite(val) ? (val * 1.852).toFixed(1) : '';
+    });
+
+    document.getElementById('km').addEventListener('input', e => {
+      const val = parseFloat(e.target.value);
+      const nmInput = document.getElementById('nm');
+      nmInput.value = isFinite(val) ? (val / 1.852).toFixed(1) : '';
+    });
+
+    document.getElementById('origem').addEventListener('input', updateDistanceFromAirports);
+    document.getElementById('destino').addEventListener('input', updateDistanceFromAirports);
+
     function gerarPreOrcamento() {
       const aeronave = document.getElementById("aeronave").value;
-      const distanciaNm = parseFloat(document.getElementById("nm").value);
+      let nm = parseFloat(document.getElementById("nm").value);
+      let km = parseFloat(document.getElementById("km").value);
       const origem = document.getElementById("origem").value;
       const destino = document.getElementById("destino").value;
       const valorExtra = parseFloat(document.getElementById("valorExtra").value);
       const tipoExtra = document.getElementById("tipoExtra").value;
 
-      const distanciaKm = distanciaNm * 1.852;
+      if (isFinite(nm)) {
+        km = nm * 1.852;
+      } else if (isFinite(km)) {
+        nm = km / 1.852;
+      } else {
+        const origCoords = getCoords(origem);
+        const destCoords = getCoords(destino);
+        if (origCoords && destCoords) {
+          km = haversineKm(origCoords, destCoords);
+          nm = km / 1.852;
+          document.getElementById('nm').value = nm.toFixed(1);
+          document.getElementById('km').value = km.toFixed(1);
+        } else {
+          alert('Informe a distância ou aeroportos válidos.');
+          return;
+        }
+      }
+
       const valorKm = valoresKm[aeronave];
-      const valorParcial = distanciaKm * valorKm;
+      const valorParcial = km * valorKm;
 
       let valorTotal = valorParcial;
       let ajuste = "";
@@ -143,7 +221,7 @@
         <p><strong>Origem:</strong> ${origem}</p>
         <p><strong>Destino:</strong> ${destino}</p>
         <p><strong>Aeronave:</strong> ${aeronave}</p>
-        <p><strong>Distância:</strong> ${distanciaNm} NM (${distanciaKm.toFixed(1)} km)</p>
+        <p><strong>Distância:</strong> ${nm.toFixed(1)} NM (${km.toFixed(1)} km)</p>
         <p><strong>Valor Parcial:</strong> R$ ${valorParcial.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
         ${ajuste ? `<p><strong>Ajuste:</strong> ${ajuste}</p>` : ""}
         <p><strong>Total:</strong> R$ ${valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
@@ -152,7 +230,8 @@
 
     function gerarPDF() {
       const aeronave = document.getElementById("aeronave").value;
-      const nm = parseFloat(document.getElementById("nm").value);
+      let nm = parseFloat(document.getElementById("nm").value);
+      let km = parseFloat(document.getElementById("km").value);
       const origem = document.getElementById("origem").value;
       const destino = document.getElementById("destino").value;
       const dataIda = document.getElementById("dataIda").value;
@@ -162,7 +241,22 @@
       const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
       const tipoExtra = document.getElementById("tipoExtra").value;
 
-      const km = nm * 1.852;
+      if (isFinite(nm)) {
+        km = nm * 1.852;
+      } else if (isFinite(km)) {
+        nm = km / 1.852;
+      } else {
+        const origCoords = getCoords(origem);
+        const destCoords = getCoords(destino);
+        if (origCoords && destCoords) {
+          km = haversineKm(origCoords, destCoords);
+          nm = km / 1.852;
+        } else {
+          alert('Informe a distância ou aeroportos válidos.');
+          return;
+        }
+      }
+
       const valorKm = valoresKm[aeronave];
       let total = km * valorKm;
 
