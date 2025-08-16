@@ -163,7 +163,7 @@
       const origem = document.getElementById('origem').value;
       const destino = document.getElementById('destino').value;
       const stops = Array.from(document.querySelectorAll('#stops .stop')).map(i => i.value).filter(Boolean);
-      return [origem, destino, ...stops].filter(Boolean);
+      return [origem, ...stops, destino].filter(Boolean);
     }
 
     async function calcularRotaKm(waypoints) {
@@ -177,7 +177,12 @@
     }
 
   async function updateDistanceFromAirports() {
-      const waypoints = getWaypoints();
+      const s = {
+        origem: document.getElementById('origem').value,
+        stops: Array.from(document.querySelectorAll('#stops .stop')).map(i => i.value).filter(Boolean),
+        destino: document.getElementById('destino').value
+      };
+      const waypoints = [s.origem, ...s.stops, s.destino].filter(Boolean);
       if (waypoints.length < 2) {
         if (routeLayer) { routeLayer.remove(); routeLayer = null; }
         return;
