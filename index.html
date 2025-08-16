@@ -278,16 +278,25 @@
   function updateDistanceFromAirports(){
     updateRoundTripAvailability();
     const s = buildState();
-    if(!s.origem || !s.destino) return;
     const waypoints = [s.origem, ...s.stops, s.destino];
     if(s.roundTrip && s.stops.length===0) waypoints.push(s.origem);
-    const autoKm = computeRouteKm(waypoints);
+
+    const filled = waypoints.filter(Boolean);
+    if(filled.length < 2){
+      if(routeLayer){ try{ routeLayer.remove(); }catch{} routeLayer=null; }
+      applyCfgToUI(s, false, []);
+      maybeRefreshPreview();
+      return;
+    }
+
+    const autoKm = computeRouteKm(filled);
     if(autoKm && isFinite(autoKm)){
       const kmEl = $('#km'); const nmEl = $('#nm');
       if(kmEl) kmEl.value = autoKm.toFixed(1);
       if(nmEl) nmEl.value = (autoKm/1.852).toFixed(1);
+      drawRouteOnMap(filled);
     }
-    applyCfgToUI(s, true, waypoints);
+    applyCfgToUI(s, true, filled);
     maybeRefreshPreview();
   }
 
