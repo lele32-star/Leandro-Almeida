@@ -83,5 +83,43 @@ function gerarPDF() {
   pdfMake.createPdf(docDefinition).open();
 }
 
-assert.doesNotThrow(() => gerarPDF());
-console.log('gerarPDF executed without throwing');
+async function fetchAirportInfo(icao) {
+  const response = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${icao}`, {
+    headers: {
+      'X-RapidAPI-Key': process.env.AERODATABOX_KEY,
+      'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
+    }
+  });
+  if (!response.ok) {
+    let message = `Erro ${response.status}`;
+    if (response.status === 403) {
+      message = 'Acesso negado: verifique sua chave API e limites do plano.';
+    }
+    throw new Error(message);
+  }
+  return await response.json();
+}
+
+async function runTests() {
+  assert.doesNotThrow(() => gerarPDF());
+
+  process.env.AERODATABOX_KEY = 'key';
+  let recordedOptions;
+  global.fetch = (url, options) => {
+    recordedOptions = options;
+    return Promise.resolve({ ok: true, json: async () => ({ name: 'Test', location: { city: 'City' } }) });
+  };
+  const data = await fetchAirportInfo('SBBR');
+  assert.strictEqual(data.name, 'Test');
+  assert.strictEqual(recordedOptions.headers['X-RapidAPI-Key'], 'key');
+
+  global.fetch = (url, options) => Promise.resolve({ ok: false, status: 403 });
+  await assert.rejects(() => fetchAirportInfo('SBBR'), /Acesso negado/);
+
+  console.log('All tests passed');
+}
+
+runTests().catch(err => {
+  console.error(err);
+  process.exit(1);
+});
