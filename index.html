@@ -109,6 +109,12 @@
           </div>
 
           <div class="col-6">
+            <label class="cfg-item"><input type="checkbox" id="idaVolta" /> Ida e volta</label>
+            <div class="hint">Retorna ao aeroporto de origem</div>
+          </div>
+          <div class="col-6"></div>
+
+          <div class="col-6">
             <label for="dataIda">Data ida</label>
             <input id="dataIda" type="date" />
             <div class="hint">O calendário abre com o dia atual como padrão.</div>
@@ -209,6 +215,14 @@
   function syncValorKmByAeronave(){ const a=$("aeronave")?.value; const d=valoresKm[a]||0; if(d>0 && $("valorKm")) $("valorKm").value=d.toFixed(2); }
   function getStops(){ return Array.from(document.querySelectorAll('#stops .stop-input')).map(i=>toICAO(i.value)).filter(Boolean); }
 
+  function updateRoundTripAvailability(){
+    const cb=$('#idaVolta');
+    if(!cb) return;
+    const haveStops=document.querySelectorAll('#stops .stop-row').length>0;
+    cb.disabled=haveStops;
+    if(haveStops) cb.checked=false;
+  }
+
   function lockDatesToToday(){
     const ida=$('#dataIda'), volta=$('#dataVolta');
     const now = new Date(); const base = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -235,6 +249,7 @@
     const origem = toICAO($("origem")?.value);
     const destino = toICAO($("destino")?.value);
     const stops = getStops();
+    const roundTrip = !!$("idaVolta")?.checked;
     const dataIda = $("dataIda")?.value || '';
     const dataVolta = $("dataVolta")?.value || '';
     const observacoes = $("observacoes")?.value?.trim() || '';
@@ -251,7 +266,7 @@
       showAjuste: !!$('#cfgShowAjuste')?.checked,
       showObs:    !!($('#cfgShowObs')?.checked),
     };
-    return { aeronave, nm, km, origem, destino, stops, dataIda, dataVolta, observacoes, valorExtra, tipoExtra, valorKmCustom, cfg };
+    return { aeronave, nm, km, origem, destino, stops, roundTrip, dataIda, dataVolta, observacoes, valorExtra, tipoExtra, valorKmCustom, cfg };
   }
 
   function on(id, type, handler){ const el=$(id); if(!el) return false; el.addEventListener(type, handler); return true; }
@@ -261,9 +276,11 @@
   function computeRouteKm(waypoints){ const coords=waypoints.map(getCoords); if(coords.some(c=>!c)) return null; let total=0; for(let i=0;i<coords.length-1;i++) total+=haversineKm(coords[i], coords[i+1]); return total; }
 
   function updateDistanceFromAirports(){
+    updateRoundTripAvailability();
     const s = buildState();
     if(!s.origem || !s.destino) return;
     const waypoints = [s.origem, ...s.stops, s.destino];
+    if(s.roundTrip && s.stops.length===0) waypoints.push(s.origem);
     const autoKm = computeRouteKm(waypoints);
     if(autoKm && isFinite(autoKm)){
       const kmEl = $('#km'); const nmEl = $('#nm');
@@ -271,6 +288,7 @@
       if(nmEl) nmEl.value = (autoKm/1.852).toFixed(1);
     }
     applyCfgToUI(s, true, waypoints);
+    maybeRefreshPreview();
   }
 
   let map, routeLayer;
@@ -301,6 +319,7 @@
 
     const haveAirports = !!(s.origem && s.destino);
     const waypoints = haveAirports ? [s.origem, ...s.stops, s.destino] : [];
+    if(s.roundTrip && s.stops.length===0 && haveAirports) waypoints.push(s.origem);
     const autoKm = haveAirports && waypoints.length>=2 ? computeRouteKm(waypoints) : null;
 
     const manual=(s.nm>0 || s.km>0);
@@ -317,13 +336,15 @@
       return;
     }
 
+    if(s.roundTrip){ useKm*=2; useNm*=2; }
+
     const valorKm = s.valorKmCustom>0 ? s.valorKmCustom : (valoresKm[s.aeronave]||0);
     const kmToUse=useKm || asKM(useNm); let total=kmToUse*valorKm; let labelExtra='';
     if(s.valorExtra>0){ if(s.tipoExtra==='soma'){ total+=s.valorExtra; labelExtra=`+ ${asCurrency(s.valorExtra)} (outras despesas)`; } else { total-=s.valorExtra; labelExtra=`- ${asCurrency(s.valorExtra)} (desconto)`; } }
 
     const rotaStr = haveAirports ? waypoints.join(' → ') : '— (distância manual)';
     const cfg=s.cfg;
-    const distStr = `${useNm ? useNm.toFixed(1)+' NM' : '-'} ${kmToUse ? '('+kmToUse.toFixed(1)+' km)' : ''}${sourceLabel}`;
+    const distStr = `${useNm ? useNm.toFixed(1)+' NM' : '-'} ${kmToUse ? '('+kmToUse.toFixed(1)+' km)' : ''}${sourceLabel}${s.roundTrip?' (ida e volta)':''}`;
     const linhas = [
       cfg.showRota      ? `<tr><td>Rota</td><td>${rotaStr}</td></tr>` : '',
       cfg.showModelo    ? `<tr><td>Modelo</td><td>${s.aeronave}</td></tr>` : '',
@@ -334,7 +355,7 @@
       (cfg.showObs && s.observacoes) ? `<tr><td>Observações</td><td>${s.observacoes}</td></tr>` : ''
     ].filter(Boolean).join('');
 
-    const fullDist = `${useNm.toFixed(1)} NM (${kmToUse.toFixed(1)} km)${sourceLabel}`;
+    const fullDist = `${useNm.toFixed(1)} NM (${kmToUse.toFixed(1)} km)${sourceLabel}${s.roundTrip?' (ida e volta)':''}`;
     const cfgFull = `
       <h4 style="margin:10px 0 6px;">Resumo completo das configurações</h4>
       <table class="preview">
@@ -344,6 +365,7 @@
         <tr><td>Modelo (selecionado)</td><td>${s.aeronave||'—'}</td></tr>
         <tr><td>Tarifa por km</td><td>${asCurrency(valorKm)}</td></tr>
         <tr><td>Distância escolhida</td><td>${fullDist}</td></tr>
+        <tr><td>Ida e volta</td><td>${s.roundTrip?'Sim':'Não'}</td></tr>
         <tr><td>Datas</td><td>Ida: ${s.dataIda||'—'} | Volta: ${s.dataVolta||'—'}</td></tr>
         <tr><td>Ajuste</td><td>${s.valorExtra>0 ? (s.tipoExtra==='soma'? '+':'-')+asCurrency(s.valorExtra) : '—'}</td></tr>
         <tr><td>Observações</td><td>${s.observacoes||'—'}</td></tr>
@@ -377,6 +399,7 @@
 
     const haveAirports = !!(s.origem && s.destino);
     const waypoints = haveAirports ? [s.origem, ...s.stops, s.destino] : [];
+    if(s.roundTrip && s.stops.length===0 && haveAirports) waypoints.push(s.origem);
     const autoKm = haveAirports && waypoints.length>=2 ? computeRouteKm(waypoints) : null;
 
     if(!window.pdfMake){ alert('Biblioteca de PDF não carregou.'); return; }
@@ -386,11 +409,13 @@
     else if(autoKm){ useKm=autoKm; useNm=autoKm/1.852; sourceLabel=' — automático (mapa)'; if($('#nm')) $('#nm').value=useNm.toFixed(1); if($('#km')) $('#km').value=useKm.toFixed(1); }
     else { alert('Informe a distância (NM/km) ou forneça origem e destino.'); return; }
 
+    if(s.roundTrip){ useKm*=2; useNm*=2; }
+
     const valorKm=s.valorKmCustom>0 ? s.valorKmCustom : (valoresKm[s.aeronave]||0); const kmToUse=useKm || asKM(useNm);
     let total=kmToUse*valorKm; let ajusteNode=null; if(s.valorExtra>0 && s.cfg.showAjuste){ if(s.tipoExtra==='soma'){ total+=s.valorExtra; ajusteNode={text:`Outras despesas: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0]}; } else { total-=s.valorExtra; ajusteNode={text:`Desconto: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0]}; } }
 
     const rotaStr = haveAirports ? waypoints.join(' → ') : '— (distância manual)';
-    const distStr = `${useNm ? useNm.toFixed(1)+' NM' : '-'} ${kmToUse ? '('+kmToUse.toFixed(1)} km)' : ''}${sourceLabel}`;
+    const distStr = `${useNm ? useNm.toFixed(1)+' NM' : '-'} ${kmToUse ? '('+kmToUse.toFixed(1)} km)' : ''}${sourceLabel}${s.roundTrip?' (ida e volta)':''}`;
     const mapImage = (s.cfg.showMapa && haveAirports) ? (await generateMapImageData(waypoints)) : null;
     const content=[ {text:'Cotação de Voo Executivo', style:'header'}, s.cfg.showRota?{text:rotaStr, margin:[0,6,0,0], style:'route'}:null, (s.cfg.showMapa && mapImage)?{image:mapImage, width:500, margin:[0,8,0,8]}:null, s.cfg.showModelo?{text:`Aeronave: ${s.aeronave}`}:null, s.cfg.showTarifa?{text:`Tarifa por km: ${asCurrency(valorKm)}`}:null, s.cfg.showDistancia?{text:`Distância: ${distStr}`} : null, s.cfg.showDatas?{text:`Data ida: ${s.dataIda || '-'}   |   Data volta: ${s.dataVolta || '-'}`} : null, ajusteNode, {text:`Total final: ${asCurrency(total)}`, style:'total', margin:[0,8,0,0]}, (s.cfg.showObs && s.observacoes)?{text:`Observações: ${s.observacoes}`, margin:[0,8,0,0]}:null ].filter(Boolean);
 
@@ -415,9 +440,11 @@
   function setCheckedSafe(id, val){ const el=$(id); if(el) el.checked = !!val; }
   function resetForm(){
     ["aeronave","nm","km","origem","destino","dataIda","dataVolta","observacoes","valorExtra","valorKm"].forEach(id=>{ const el=$(id); if(el) el.value=''; });
+    setCheckedSafe('idaVolta', false);
     setCheckedSafe('cfgShowRota', true); setCheckedSafe('cfgShowMapa', true); setCheckedSafe('cfgShowModelo', true); setCheckedSafe('cfgShowTarifa', true); setCheckedSafe('cfgShowDistancia', true); setCheckedSafe('cfgShowDatas', true); setCheckedSafe('cfgShowAjuste', false); setCheckedSafe('cfgShowObs', false);
     ensureEl('resultado').innerHTML='';
     ensureEl('stops').innerHTML='';
+    updateRoundTripAvailability();
     if(routeLayer){ try{ routeLayer.remove(); }catch{} routeLayer=null; }
     if(map){ try{ map.setView([-14.2350,-51.9253],4); }catch{} }
     lockDatesToToday();
@@ -426,9 +453,16 @@
 
   function runDiagnostics(){
     const out = [];
-    const ids = ['btnPreOrcamento','btnPDF','btnMaps','btnReset','btnAddStop','dataIda','dataVolta','aeronave','origem','destino','nm','km','valorKm','stops','resultado','cfgShowRota'];
+    const ids = ['btnPreOrcamento','btnPDF','btnMaps','btnReset','btnAddStop','dataIda','dataVolta','aeronave','origem','destino','nm','km','valorKm','stops','resultado','cfgShowRota','idaVolta'];
     ids.forEach(id=> out.push({name:`Elemento #${id} presente`, pass: !!$(id)}));
-    try{ const before=document.querySelectorAll('#stops .stop-row').length; addStopField('SBMO'); const after=document.querySelectorAll('#stops .stop-row').length; out.push({name:'Clique em Adicionar Aeroporto cria linha', pass: after===before+1}); }catch(e){ out.push({name:'Adicionar Aeroporto', pass:false, info:String(e)}); }
+    try{
+      const before=document.querySelectorAll('#stops .stop-row').length;
+      addStopField('SBMO');
+      const after=document.querySelectorAll('#stops .stop-row').length;
+      out.push({name:'Clique em Adicionar Aeroporto cria linha', pass: after===before+1});
+      out.push({name:'Ida e volta desabilitado com paradas', pass: $('#idaVolta')?.disabled===true});
+      const last=document.querySelector('#stops .stop-row:last-child'); if(last) last.remove(); updateRoundTripAvailability();
+    }catch(e){ out.push({name:'Adicionar Aeroporto', pass:false, info:String(e)}); }
     const diag = out.map(t=> `${t.pass?'✅':'❌'} ${t.name}${t.info?` — ${t.info}`:''}`).join('\n');
     const el = $('#diagOut'); if(el){ el.textContent = diag; } else { alert(diag); }
   }
@@ -457,6 +491,7 @@
     on('aeronave','change', syncValorKmByAeronave);
     on('origem','input', updateDistanceFromAirports);
     on('destino','input', updateDistanceFromAirports);
+    on('idaVolta','change', ()=>{ updateDistanceFromAirports(); maybeRefreshPreview(); });
 
     on('btnReadme','click', ()=>{ const m=$('#readmeModal'); if(m) m.style.display='block'; });
     on('btnCloseReadme','click', ()=>{ const m=$('#readmeModal'); if(m) m.style.display='none'; });
@@ -473,6 +508,7 @@
     });
 
     lockDatesToToday();
+    updateRoundTripAvailability();
     attachDatePicker('dataIda');
     attachDatePicker('dataVolta');
 

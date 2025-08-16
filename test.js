@@ -13,5 +13,7 @@ assert.strictEqual(asKM(1), 1.852);
 assert.strictEqual(parseNum('2,5'), 2.5);
 const dist = computeRouteKm(['SBBR','SBGL']);
 assert(dist && Math.abs(dist - 913.5767) < 1);
+const round = computeRouteKm(['SBBR','SBGL','SBBR']);
+assert(round && Math.abs(round - dist*2) < 1);
 
 console.log('Testes básicos concluídos com sucesso.');
