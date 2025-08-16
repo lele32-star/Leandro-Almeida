@@ -415,7 +415,7 @@
     let total=kmToUse*valorKm; let ajusteNode=null; if(s.valorExtra>0 && s.cfg.showAjuste){ if(s.tipoExtra==='soma'){ total+=s.valorExtra; ajusteNode={text:`Outras despesas: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0]}; } else { total-=s.valorExtra; ajusteNode={text:`Desconto: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0]}; } }
 
     const rotaStr = haveAirports ? waypoints.join(' → ') : '— (distância manual)';
-    const distStr = `${useNm ? useNm.toFixed(1)+' NM' : '-'} ${kmToUse ? '('+kmToUse.toFixed(1)} km)' : ''}${sourceLabel}${s.roundTrip?' (ida e volta)':''}`;
+    const distStr = `${useNm ? useNm.toFixed(1) + ' NM' : '-'} ${kmToUse ? '(' + kmToUse.toFixed(1) + ' km)' : ''}${sourceLabel}${s.roundTrip ? ' (ida e volta)' : ''}`;
     const mapImage = (s.cfg.showMapa && haveAirports) ? (await generateMapImageData(waypoints)) : null;
     const content=[ {text:'Cotação de Voo Executivo', style:'header'}, s.cfg.showRota?{text:rotaStr, margin:[0,6,0,0], style:'route'}:null, (s.cfg.showMapa && mapImage)?{image:mapImage, width:500, margin:[0,8,0,8]}:null, s.cfg.showModelo?{text:`Aeronave: ${s.aeronave}`}:null, s.cfg.showTarifa?{text:`Tarifa por km: ${asCurrency(valorKm)}`}:null, s.cfg.showDistancia?{text:`Distância: ${distStr}`} : null, s.cfg.showDatas?{text:`Data ida: ${s.dataIda || '-'}   |   Data volta: ${s.dataVolta || '-'}`} : null, ajusteNode, {text:`Total final: ${asCurrency(total)}`, style:'total', margin:[0,8,0,0]}, (s.cfg.showObs && s.observacoes)?{text:`Observações: ${s.observacoes}`, margin:[0,8,0,0]}:null ].filter(Boolean);
 
