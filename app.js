@@ -240,8 +240,9 @@ async function gerarPreOrcamento(cfg) {
     html += `<p><strong>Observações:</strong> ${observacoes}</p>`;
   }
   if (cfg.showTarifa) {
-    html += `<p><strong>Total Estimado:</strong> R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`;
+    html += `<p><strong>Tarifa por km:</strong> R$ ${tarifa.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`;
   }
+  html += `<p><strong>Total Estimado:</strong> R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`;
   if (cfg.showMapa) {
     html += `<div id="mapa"></div>`;
   }
@@ -292,12 +293,9 @@ function buildDocDefinition(cfg, mapDataUrl) {
     cfg.showDatas ? { text: `Datas: ${dataIda} - ${dataVolta}` } : null,
     cfg.showDistancia ? { text: `Distância: ${nm} NM (${km.toFixed(1)} km)` } : null,
     ajustes,
-    cfg.showTarifa ? {
-      text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      bold: true,
-      margin: [0, 10, 0, 0]
-    } : null,
+    cfg.showTarifa ? { text: `Tarifa por km: R$ ${tarifa.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` } : null,
     (cfg.showObservacoes && observacoes) ? { text: `Observações: ${observacoes}`, margin: [0, 10, 0, 0] } : null,
+    { text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, bold: true, margin: [0, 10, 0, 0] },
     cfg.showMapa ? { text: 'Mapa:', margin: [0, 10, 0, 0] } : null,
     (cfg.showMapa && mapDataUrl) ? { image: mapDataUrl, width: 500, margin: [0, 5, 0, 0] } : null,
     (cfg.showMapa && !mapDataUrl) ? { text: '[mapa indisponível]' } : null

@@ -32,7 +32,7 @@ const baseState = {
 const expectations = {
   showRota: 'Rota:',
   showAeronave: 'Aeronave:',
-  showTarifa: 'Total Final:',
+  showTarifa: 'Tarifa por km:',
   showDistancia: 'Distância:',
   showDatas: 'Datas:',
   showAjuste: 'Outras Despesas',
