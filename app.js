@@ -137,8 +137,11 @@ function buildState() {
   const observacoes = document.getElementById("observacoes").value;
   const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
   const tipoExtra = document.getElementById("tipoExtra").value;
-  const tarifaInput = parseFloat(document.getElementById("tarifa").value);
-  const valorKm = !isNaN(tarifaInput) ? tarifaInput : valoresKm[aeronave];
+  const tarifaEl = document.getElementById("tarifa");
+  const rawTarifa = tarifaEl ? tarifaEl.value.replace(',', '.') : '';
+  const tarifaNum = parseFloat(rawTarifa);
+  const valorKm = !isNaN(tarifaNum) ? tarifaNum : valoresKm[aeronave];
+  if (tarifaEl) tarifaEl.value = valorKm ? valorKm.toFixed(2) : "";
   return {
     aeronave,
     nm,

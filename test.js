@@ -81,6 +81,15 @@ console.log('KM to NM conversion test passed.');
 assert.deepStrictEqual(stateConv.stops, ['SBBH'], 'Stops should include dynamically added airports');
 console.log('Stops collection test passed.');
 
+// tariff field respects manual override
+elements.tarifa.value = '50';
+const stateTar = buildState();
+assert.strictEqual(stateTar.valorKm, 50, 'Tariff input should override default');
+elements.tarifa.value = '';
+const stateTarFallback = buildState();
+assert.strictEqual(stateTarFallback.valorKm, 36, 'Empty tariff reverts to default');
+console.log('Tariff override test passed.');
+
 // custom tariff affects total
 const customDoc = buildDocDefinition({ ...baseState, valorKm: 50 });
 const textCustom = extractText(customDoc);
