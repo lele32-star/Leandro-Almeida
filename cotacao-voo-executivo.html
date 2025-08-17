@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cotação de Voo Executivo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <style>
+    :root { --gap: 12px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 32px auto; max-width: 980px; padding: 0 16px; color: #111; }
+    h1 { margin: 0 0 16px; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 1px 2px rgba(16,24,40,.06); }
+    label { font-weight: 600; display: block; margin-top: 14px; font-size: 14px; }
+    input, select, textarea { width: 100%; padding: 10px 12px; margin-top: 6px; border: 1px solid #e5e7eb; border-radius: 12px; font-size: 14px; }
+    textarea { resize: vertical; }
+    .linha { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--gap); }
+    .linha.two { grid-template-columns: repeat(2, 1fr); }
+    @media (max-width: 860px){ .linha{ grid-template-columns: 1fr; } }
+    .botoes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+    button { padding: 12px 18px; font-size: 15px; border-radius: 12px; cursor: pointer; border: 1px solid #0ea5e9; background: #0ea5e9; color: #fff; font-weight: 600; }
+    button.secondary { background: #fff; color: #0ea5e9; }
+    #resultado { margin-top: 20px; }
+    #pdfFilters { margin-top: 16px; border: 1px dashed #cbd5e1; border-radius: 12px; padding: 12px; }
+    #pdfFilters h4 { margin: 0 0 8px; font-size: 14px; color: #334155; }
+    #pdfFilters label { display: inline-flex; align-items: center; gap: 6px; margin: 6px 10px 0 0; font-weight: 500; }
+    .muted { color:#6b7280; font-size: 13px; }
+    #map { height: 380px; border-radius: 12px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <h1>✈️ Cotação de Voo Executivo</h1>
+  <p class="muted">NM↔KM, PDF, e rota no mapa via Leaflet. Integração AeroDataBox para resolver aeroportos por IATA/ICAO e calcular distância.</p>
+
+  <div class="card">
+    <label>Aeronave</label>
+    <select id="aeronave">
+      <option value="" disabled selected>Escolha uma aeronave</option>
+      <option value="Hawker 400">Hawker 400 — R$36,00/km</option>
+      <option value="Phenom 100">Phenom 100 — R$36,00/km</option>
+      <option value="Citation II">Citation II — R$36,00/km</option>
+      <option value="King Air C90">King Air C90 — R$30,00/km</option>
+      <option value="Sêneca IV">Sêneca IV — R$22,00/km</option>
+      <option value="Cirrus SR22">Cirrus SR22 — R$15,00/km</option>
+    </select>
+
+    <div class="linha" style="margin-top: var(--gap)">
+      <div>
+        <label>Distância (NM)</label>
+        <input type="number" id="nm" placeholder="Ex.: 250" />
+      </div>
+      <div>
+        <label>Distância (KM)</label>
+        <input type="number" id="km" placeholder="Ex.: 463.0" />
+      </div>
+      <div>
+        <label>Origem</label>
+        <input type="text" id="origem" placeholder="Ex.: SBBR ou BSB" />
+      </div>
+      <div>
+        <label>Destino</label>
+        <input type="text" id="destino" placeholder="Ex.: SBSP ou CGH" />
+      </div>
+    </div>
+
+    <div class="linha two" style="margin-top: var(--gap)">
+      <div>
+        <label>Data Ida</label>
+        <input type="date" id="dataIda" />
+      </div>
+      <div>
+        <label>Data Volta</label>
+        <input type="date" id="dataVolta" />
+      </div>
+    </div>
+
+    <label style="margin-top: var(--gap)">Acréscimo ou Desconto</label>
+    <div class="linha two">
+      <input type="number" id="valorExtra" placeholder="Valor em R$" />
+      <select id="tipoExtra">
+        <option value="soma">Adicionar</option>
+        <option value="subtrai">Subtrair</option>
+      </select>
+    </div>
+    <label class="muted" style="margin-top:6px"><input type="checkbox" id="incluirNoPDF" /> Incluir ajuste no PDF</label>
+
+    <label style="margin-top: var(--gap)">Observações</label>
+    <textarea id="observacoes" rows="3" placeholder="Informações adicionais relevantes para a cotação..."></textarea>
+
+    <div id="pdfFilters">
+      <h4>Campos do PDF</h4>
+      <label><input type="checkbox" id="showRota" checked /> Rota</label>
+      <label><input type="checkbox" id="showAeronave" checked /> Aeronave</label>
+      <label><input type="checkbox" id="showTarifa" checked /> Tarifa</label>
+      <label><input type="checkbox" id="showDistancia" checked /> Distância</label>
+      <label><input type="checkbox" id="showDatas" checked /> Datas</label>
+      <label><input type="checkbox" id="showAjuste" checked /> Ajuste</label>
+      <label><input type="checkbox" id="showObservacoes" checked /> Observações</label>
+      <label><input type="checkbox" id="showMapa" checked /> Mapa</label>
+    </div>
+
+    <div class="botoes">
+      <button id="btnPre">Gerar Pré‑Orçamento</button>
+      <button id="btnPDF" class="secondary">Gerar PDF</button>
+    </div>
+
+    <div id="resultado"></div>
+  </div>
+
+  <script>
+  const valoresKm = { "Hawker 400": 36, "Phenom 100": 36, "Citation II": 36, "King Air C90": 30, "Sêneca IV": 22, "Cirrus SR22": 15 };
+
+  const RAPID_HOST = 'aerodatabox.p.rapidapi.com';
+  const RAPID_KEY = '84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b';
+
+  const AIRPORTS = {
+    SBBR: { iata: 'BSB', name: 'Brasília', lat: -15.8711, lon: -47.9186 },
+    SBSP: { iata: 'CGH', name: 'Congonhas', lat: -23.6261, lon: -46.6566 },
+    SBGR: { iata: 'GRU', name: 'Guarulhos', lat: -23.4323, lon: -46.4695 },
+    SBRJ: { iata: 'SDU', name: 'Santos Dumont', lat: -22.9105, lon: -43.1631 },
+    SBCF: { iata: 'CNF', name: 'Confins', lat: -19.6337, lon: -43.9689 },
+    SBEG: { iata: 'MAO', name: 'Manaus', lat: -3.0386, lon: -60.0497 },
+    SBFL: { iata: 'FLN', name: 'Florianópolis', lat: -27.6703, lon: -48.5452 },
+    SBSV: { iata: 'SSA', name: 'Salvador', lat: -12.9086, lon: -38.3225 },
+    SBFZ: { iata: 'FOR', name: 'Fortaleza', lat: -3.7763, lon: -38.5326 },
+    SBPA: { iata: 'POA', name: 'Porto Alegre', lat: -29.9939, lon: -51.1711 },
+    SBCT: { iata: 'CWB', name: 'Curitiba', lat: -25.5285, lon: -49.1758 },
+    SBKP: { iata: 'VCP', name: 'Viracopos', lat: -23.0074, lon: -47.1345 },
+    SBRF: { iata: 'REC', name: 'Recife', lat: -8.1265, lon: -34.9236 },
+    SBNT: { iata: 'NAT', name: 'Natal', lat: -5.7681, lon: -35.3768 },
+    SBSJ: { iata: 'SJK', name: 'São José dos Campos', lat: -23.2282, lon: -45.8627 }
+  };
+
+  function codeTypeOf(code){ const c=code.trim().toUpperCase(); return /^[A-Z]{4}$/.test(c)?'icao':'iata'; }
+
+  function fromApiAirport(json){
+    const loc = json.location || json.locationLatLon || {};
+    const lat = Number(loc.latitude ?? loc.lat ?? json.latitude ?? json.lat);
+    const lon = Number(loc.longitude ?? loc.lon ?? json.longitude ?? json.lon);
+    const icao = (json.icao || json.icaoCode || '').toUpperCase() || undefined;
+    const iata = (json.iata || json.iataCode || '').toUpperCase() || undefined;
+    const name = json.name || json.municipalityName || json.shortName || '';
+    return { icao, iata, name, lat, lon };
+  }
+
+  async function apiGet(path){
+    const res = await fetch(`https://${RAPID_HOST}${path}`, { headers: { 'x-rapidapi-key': RAPID_KEY, 'x-rapidapi-host': RAPID_HOST } });
+    if(!res.ok) throw new Error(`API ${res.status}`);
+    return res.json();
+  }
+
+  async function resolveAirport(code){
+    if(!code) return null;
+    const c = code.trim().toUpperCase();
+    if (AIRPORTS[c]) return { icao: c, ...AIRPORTS[c] };
+    const icaoLocal = Object.keys(AIRPORTS).find(k => AIRPORTS[k].iata === c);
+    if (icaoLocal) return { icao: icaoLocal, ...AIRPORTS[icaoLocal] };
+    const ct = codeTypeOf(c);
+    try{
+      const data = await apiGet(`/airports/${ct}/${c}`);
+      const a = Array.isArray(data)? data[0]: data;
+      if(!a) return null;
+      return fromApiAirport(a);
+    }catch(e){
+      return null;
+    }
+  }
+
+  async function apiDistanceNM(from, to){
+    const fromCode = (from.icao || from.iata || '').toUpperCase();
+    const toCode = (to.icao || to.iata || '').toUpperCase();
+    const useType = from.icao && to.icao ? 'icao' : 'iata';
+    try{
+      const data = await apiGet(`/airports/${useType}/${useType==='icao'?from.icao:from.iata}/distance-time/${useType==='icao'?to.icao:to.iata}`);
+      const distKm = Number(data.greatCircleDistance?.km ?? data.distance?.km ?? data.km);
+      if(Number.isFinite(distKm)) return distKm/1.852;
+    }catch(e){}
+    const R=6371; const toRad=d=>d*Math.PI/180; const dLat=toRad(to.lat-from.lat); const dLon=toRad(to.lon-from.lon); const lat1=toRad(from.lat); const lat2=toRad(to.lat); const h=Math.sin(dLat/2)**2+Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLon/2)**2; const km=2*R*Math.asin(Math.sqrt(h)); return km/1.852;
+  }
+
+  (function(){
+    const nmInput=document.getElementById('nm'); const kmInput=document.getElementById('km');
+    nmInput.addEventListener('input',(e)=>{const v=parseFloat(e.target.value); kmInput.value=Number.isFinite(v)?(v*1.852).toFixed(1):'';});
+    kmInput.addEventListener('input',(e)=>{const v=parseFloat(e.target.value); nmInput.value=Number.isFinite(v)?(v/1.852).toFixed(1):'';});
+  })();
+
+  function buildFilters(){
+    return { showRota: showRota.checked, showAeronave: showAeronave.checked, showTarifa: showTarifa.checked, showDistancia: showDistancia.checked, showDatas: showDatas.checked, showAjuste: showAjuste.checked, showObservacoes: showObservacoes.checked, showMapa: showMapa.checked };
+  }
+
+  function buildState(){
+    const aeronave=aeronaveEl.value; const nmRaw=parseFloat(nm.value); const kmRaw=parseFloat(km.value); const origem=origemEl.value; const destino=destinoEl.value; const dataIda=dataIdaEl.value; const dataVolta=dataVoltaEl.value; const observacoes=observacoesEl.value; const incluirNoPDF=incluirNoPDFEl.checked; const valorExtra=parseFloat(valorExtraEl.value)||0; const tipoExtra=tipoExtraEl.value; const nmVal=Number.isFinite(nmRaw)?nmRaw:(Number.isFinite(kmRaw)?+(kmRaw/1.852).toFixed(1):0); const kmVal=Number.isFinite(kmRaw)?kmRaw:+(nmVal*1.852).toFixed(1); return { aeronave, nm: nmVal, km: kmVal, origem, destino, dataIda, dataVolta, observacoes, incluirNoPDF, valorExtra, tipoExtra, ...buildFilters() };
+  }
+
+  let map=null, routeLayer=null, markers=[];
+  function ensureMap(){ if(map) return map; map=L.map('map'); L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18, attribution:'&copy; OpenStreetMap'}).addTo(map); return map; }
+  function clearMap(){ if(!map) return; if(routeLayer){map.removeLayer(routeLayer); routeLayer=null;} markers.forEach(m=>map.removeLayer(m)); markers=[]; }
+  function drawRoute(aOrig,aDest){ ensureMap(); clearMap(); const p1=[aOrig.lat,aOrig.lon]; const p2=[aDest.lat,aDest.lon]; markers.push(L.marker(p1).addTo(map).bindPopup(`${aOrig.icao||''}${aOrig.iata?` (${aOrig.iata})`:''}`)); markers.push(L.marker(p2).addTo(map).bindPopup(`${aDest.icao||''}${aDest.iata?` (${aDest.iata})`:''}`)); routeLayer=L.polyline([p1,p2],{color:'#2563eb',weight:4}).addTo(map); map.fitBounds(L.latLngBounds([p1,p2]).pad(0.2)); }
+
+  function buildDocDefinition(cfg){ const { aeronave, nm, km, origem, destino, dataIda, dataVolta, observacoes, incluirNoPDF, valorExtra, tipoExtra }=cfg; const tarifa=Number.isFinite(valoresKm[aeronave])?valoresKm[aeronave]:0; let total=km*tarifa; let ajustes=null; if(cfg.showAjuste&&valorExtra>0&&incluirNoPDF){ const val=valorExtra.toLocaleString('pt-BR',{ minimumFractionDigits:2 }); if(tipoExtra==='soma'){ total+=valorExtra; ajustes={ text:`Outras Despesas: R$ ${val}`, margin:[0,10,0,0] }; } else { total-=valorExtra; ajustes={ text:`Desconto: R$ ${val}`, margin:[0,10,0,0] }; } } total=Number.isFinite(total)?total:0; const content=[ { text:'Cotação de Voo Executivo', style:'header' }, cfg.showRota?{ text:`Rota: ${origem||'-'} → ${destino||'-'}`, margin:[0,10,0,0] }:null, cfg.showAeronave?{ text:`Aeronave: ${aeronave||'-'}` }:null, cfg.showDatas?{ text:`Datas: ${dataIda||'-'} - ${dataVolta||'-'}` }:null, cfg.showDistancia?{ text:`Distância: ${nm.toFixed(1)} NM (${km.toFixed(1)} km)` }:null, ajustes, cfg.showTarifa?{ text:`Total Final: R$ ${total.toLocaleString('pt-BR',{ minimumFractionDigits:2 })}`, bold:true, margin:[0,10,0,0] }:null, (cfg.showObservacoes&&observacoes)?{ text:`Observações: ${observacoes}`, margin:[0,10,0,0] }:null ].filter(Boolean); return { content, styles:{ header:{ fontSize:18, bold:true } } }
+
+  function htmlPreco(cfg){ const { aeronave, nm, km, origem, destino, dataIda, dataVolta, observacoes, valorExtra, tipoExtra }=cfg; const tarifa=Number.isFinite(valoresKm[aeronave])?valoresKm[aeronave]:0; let total=km*tarifa; let labelExtra=''; if(valorExtra>0){ if(tipoExtra==='soma'){ total+=valorExtra; labelExtra=`+ R$ ${valorExtra.toLocaleString('pt-BR',{ minimumFractionDigits:2 })} (outras despesas)`; } else { total-=valorExtra; labelExtra=`- R$ ${valorExtra.toLocaleString('pt-BR',{ minimumFractionDigits:2 })} (desconto)`; } } total=Number.isFinite(total)?total:0; let html=`<h3>Pré-Orçamento</h3>`; if(cfg.showRota){ html+=`<p><strong>Origem:</strong> ${origem||'-'}</p><p><strong>Destino:</strong> ${destino||'-'}</p>`; } if(cfg.showAeronave){ html+=`<p><strong>Aeronave:</strong> ${aeronave||'-'}</p>`; } if(cfg.showDistancia){ html+=`<p><strong>Distância:</strong> ${nm.toFixed(1)} NM (${km.toFixed(1)} km)</p>`; } if(cfg.showDatas){ html+=`<p><strong>Datas:</strong> ${dataIda||'-'} - ${dataVolta||'-'}</p>`; } if(labelExtra&&cfg.showAjuste){ html+=`<p><strong>Ajuste:</strong> ${labelExtra}</p>`; } if(cfg.showTarifa){ html+=`<p><strong>Total Estimado:</strong> R$ ${total.toLocaleString('pt-BR',{ minimumFractionDigits:2 })}</p>`; } return html; }
+
+  async function gerarPreOrcamento(cfg){ cfg=cfg||buildState(); const { origem, destino, showMapa }=cfg; const aOrig=await resolveAirport(origem); const aDest=await resolveAirport(destino); let nmVal=cfg.nm; let kmVal=cfg.km; const canShow=showMapa && aOrig && aDest && Number.isFinite(aOrig.lat) && Number.isFinite(aDest.lat);
+    if(canShow){ const nmApi=await apiDistanceNM(aOrig,aDest); if(Number.isFinite(nmApi)){ nmVal=+nmApi.toFixed(1); kmVal=+(nmVal*1.852).toFixed(1); } }
+    const cfg2={...cfg, nm:nmVal, km:kmVal}; let html=htmlPreco(cfg2); if(canShow) html+=`<div id="map"></div>`; document.getElementById('resultado').innerHTML=html; if(canShow) drawRoute(aOrig,aDest); else clearMap(); return html; }
+
+  function gerarPDF(cfg){ cfg=cfg||buildState(); const dd=buildDocDefinition(cfg); if(typeof pdfMake!=='undefined'&&pdfMake.createPdf){ pdfMake.createPdf(dd).open(); } return dd; }
+
+  const aeronaveEl=document.getElementById('aeronave'); const nm=document.getElementById('nm'); const km=document.getElementById('km'); const origemEl=document.getElementById('origem'); const destinoEl=document.getElementById('destino'); const dataIdaEl=document.getElementById('dataIda'); const dataVoltaEl=document.getElementById('dataVolta'); const observacoesEl=document.getElementById('observacoes'); const incluirNoPDFEl=document.getElementById('incluirNoPDF'); const valorExtraEl=document.getElementById('valorExtra'); const tipoExtraEl=document.getElementById('tipoExtra'); const showRota=document.getElementById('showRota'); const showAeronave=document.getElementById('showAeronave'); const showTarifa=document.getElementById('showTarifa'); const showDistancia=document.getElementById('showDistancia'); const showDatas=document.getElementById('showDatas'); const showAjuste=document.getElementById('showAjuste'); const showObservacoes=document.getElementById('showObservacoes'); const showMapa=document.getElementById('showMapa');
+
+  document.getElementById('btnPre').addEventListener('click', async ()=>{ await gerarPreOrcamento(buildState()); });
+  document.getElementById('btnPDF').addEventListener('click', ()=> gerarPDF(buildState()));
+  </script>
+</body>
+</html>
