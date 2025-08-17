@@ -112,6 +112,13 @@ mv jsdom-24.0.0.tgz vendor/
   <label>Observações:</label>
   <textarea id="observacoes" rows="4"></textarea>
 
+  <label>Dados para pagamento:</label>
+  <textarea id="pagamento" rows="5">INTER - 077
+AUTOCON SUPRIMENTOS DE INFORMATICA
+CNPJ: 36.326.772/0001-65
+Agência: 0001
+Conta: 25691815-5</textarea>
+
   <div class="botoes">
     <button onclick="gerarPreOrcamento()">Gerar Pré-Orçamento</button>
     <button onclick="gerarPDF()">Gerar PDF</button>

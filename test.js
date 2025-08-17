@@ -16,6 +16,7 @@ const baseState = {
   dataIda: '2024-01-01',
   dataVolta: '2024-01-02',
   observacoes: 'Teste',
+  pagamento: 'INTER - 077\nAUTOCON SUPRIMENTOS DE INFORMATICA\nCNPJ: 36.326.772/0001-65\nAgência: 0001\nConta: 25691815-5',
   valorExtra: 50,
   tipoExtra: 'soma',
   valorKm: 36,
@@ -26,6 +27,7 @@ const baseState = {
   showDatas: true,
   showAjuste: true,
   showObservacoes: true,
+  showPagamento: true,
   showMapa: true
 };
 
@@ -37,6 +39,7 @@ const expectations = {
   showDatas: 'Datas:',
   showAjuste: 'Outras Despesas',
   showObservacoes: 'Observações:',
+  showPagamento: 'Dados de pagamento:',
   showMapa: 'Mapa:'
 };
 
@@ -59,6 +62,7 @@ const elements = {
   dataIda: { value: '' },
   dataVolta: { value: '' },
   observacoes: { value: '' },
+  pagamento: { value: 'INTER - 077\nAUTOCON SUPRIMENTOS DE INFORMATICA\nCNPJ: 36.326.772/0001-65\nAgência: 0001\nConta: 25691815-5' },
   valorExtra: { value: '0' },
   tipoExtra: { value: 'soma' },
   tarifa: { value: '36' },
@@ -69,6 +73,7 @@ const elements = {
   showDatas: { checked: true },
   showAjuste: { checked: true },
   showObservacoes: { checked: true },
+  showPagamento: { checked: true },
   showMapa: { checked: true }
 };
 global.document = {

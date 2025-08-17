@@ -7,6 +7,8 @@ const valoresKm = {
   "Cirrus SR22": 15
 };
 
+const DEFAULT_PAGAMENTO = `INTER - 077\nAUTOCON SUPRIMENTOS DE INFORMATICA\nCNPJ: 36.326.772/0001-65\nAgência: 0001\nConta: 25691815-5`;
+
 const AERODATABOX_KEY = "84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b";
 const AERODATABOX_HOST = "aerodatabox.p.rapidapi.com";
 const coordCache = {};
@@ -115,6 +117,7 @@ function buildFilters() {
     showDatas: document.getElementById("showDatas").checked,
     showAjuste: document.getElementById("showAjuste").checked,
     showObservacoes: document.getElementById("showObservacoes").checked,
+    showPagamento: document.getElementById("showPagamento").checked,
     showMapa: document.getElementById("showMapa").checked
   };
 }
@@ -136,6 +139,8 @@ function buildState() {
   const dataIda = document.getElementById("dataIda").value;
   const dataVolta = document.getElementById("dataVolta").value;
   const observacoes = document.getElementById("observacoes").value;
+  const pagamentoEl = document.getElementById("pagamento");
+  const pagamento = pagamentoEl ? pagamentoEl.value : DEFAULT_PAGAMENTO;
   const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
   const tipoExtra = document.getElementById("tipoExtra").value;
   const tarifaEl = document.getElementById("tarifa");
@@ -152,6 +157,7 @@ function buildState() {
     dataIda,
     dataVolta,
     observacoes,
+    pagamento,
     valorExtra,
     tipoExtra,
     valorKm,
@@ -172,6 +178,7 @@ async function gerarPreOrcamento(cfg) {
     dataIda,
     dataVolta,
     observacoes,
+    pagamento,
     valorExtra,
     tipoExtra,
     valorKm
@@ -243,6 +250,9 @@ async function gerarPreOrcamento(cfg) {
   if (cfg.showObservacoes && observacoes) {
     html += `<p><strong>Observações:</strong> ${observacoes}</p>`;
   }
+  if (cfg.showPagamento && pagamento) {
+    html += `<p><strong>Dados de pagamento:</strong><br>${pagamento.replace(/\n/g, '<br>')}</p>`;
+  }
   if (cfg.showTarifa) {
     html += `<p><strong>Tarifa por km:</strong> R$ ${tarifa.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`;
   }
@@ -271,6 +281,7 @@ function buildDocDefinition(cfg, mapDataUrl) {
     dataIda,
     dataVolta,
     observacoes,
+    pagamento,
     valorExtra,
     tipoExtra,
     valorKm
@@ -299,6 +310,7 @@ function buildDocDefinition(cfg, mapDataUrl) {
     ajustes,
     cfg.showTarifa ? { text: `Tarifa por km: R$ ${tarifa.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` } : null,
     (cfg.showObservacoes && observacoes) ? { text: `Observações: ${observacoes}`, margin: [0, 10, 0, 0] } : null,
+    (cfg.showPagamento && pagamento) ? { text: `Dados de pagamento:\n${pagamento}`, margin: [0, 10, 0, 0] } : null,
     { text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, bold: true, margin: [0, 10, 0, 0] },
     cfg.showMapa ? { text: 'Mapa:', margin: [0, 10, 0, 0] } : null,
     (cfg.showMapa && mapDataUrl) ? { image: mapDataUrl, width: 500, margin: [0, 5, 0, 0] } : null,
@@ -368,12 +380,15 @@ function limparCampos() {
     "dataIda",
     "dataVolta",
     "valorExtra",
-    "observacoes"
+    "observacoes",
+    "pagamento"
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
+  const pagEl = document.getElementById("pagamento");
+  if (pagEl) pagEl.value = DEFAULT_PAGAMENTO;
   const tipoExtra = document.getElementById("tipoExtra");
   if (tipoExtra) tipoExtra.value = "soma";
   [
@@ -384,6 +399,7 @@ function limparCampos() {
     "showDatas",
     "showAjuste",
     "showObservacoes",
+    "showPagamento",
     "showMapa"
   ].forEach(id => {
     const cb = document.getElementById(id);
