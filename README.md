@@ -1,4 +1,15 @@
+Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas e geração de PDF.
 # Leandro-Almeida
+
+To regenerate the vendored jsdom tarball, run:
+
+```
+npm pack jsdom@24.0.0
+mkdir -p vendor
+mv jsdom-24.0.0.tgz vendor/
+```
+
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -67,6 +78,10 @@
       <input type="number" id="nm" />
     </div>
     <div>
+      <label>Distância (KM):</label>
+      <input type="number" id="km" />
+    </div>
+    <div>
       <label>Origem:</label>
       <input type="text" id="origem" />
     </div>
@@ -115,15 +130,70 @@
       "Cirrus SR22": 15
     };
 
+    document.getElementById('nm').addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      const kmInput = document.getElementById('km');
+      kmInput.value = Number.isFinite(val) ? (val * 1.852).toFixed(1) : '';
+    });
+
+    document.getElementById('km').addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      const nmInput = document.getElementById('nm');
+      nmInput.value = Number.isFinite(val) ? (val / 1.852).toFixed(1) : '';
+    });
+
+    let routeLayer = null;
+
+    function haversine(a, b) {
+      const R = 6371; // Earth radius in km
+      const toRad = (deg) => deg * Math.PI / 180;
+      const dLat = toRad(b.lat - a.lat);
+      const dLon = toRad(b.lng - a.lng);
+      const lat1 = toRad(a.lat);
+      const lat2 = toRad(b.lat);
+      const h = Math.sin(dLat / 2) ** 2 +
+                Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(h));
+    }
+
+    function updateDistanceFromAirports(waypoints) {
+      const nmInput = document.getElementById('nm');
+      const kmInput = document.getElementById('km');
+      const points = (waypoints || []).filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+
+      if (points.length < 2) {
+        if (routeLayer && typeof routeLayer.remove === 'function') {
+          routeLayer.remove();
+        }
+        routeLayer = null;
+        if (nmInput) nmInput.value = '';
+        if (kmInput) kmInput.value = '';
+        return;
+      }
+
+      let kmTotal = 0;
+      for (let i = 1; i < points.length; i++) {
+        kmTotal += haversine(points[i - 1], points[i]);
+      }
+      const nmTotal = kmTotal / 1.852;
+
+      if (nmInput) nmInput.value = nmTotal.toFixed(1);
+      if (kmInput) kmInput.value = kmTotal.toFixed(1);
+
+      if (typeof L !== 'undefined' && typeof map !== 'undefined') {
+        if (routeLayer) routeLayer.remove();
+        routeLayer = L.polyline(points.map(p => [p.lat, p.lng]), { color: 'blue' }).addTo(map);
+      }
+    }
+
     function gerarPreOrcamento() {
       const aeronave = document.getElementById("aeronave").value;
       const nm = parseFloat(document.getElementById("nm").value);
+      const km = parseFloat(document.getElementById("km").value);
       const origem = document.getElementById("origem").value;
       const destino = document.getElementById("destino").value;
       const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
       const tipoExtra = document.getElementById("tipoExtra").value;
-
-      const km = nm * 1.852;
       const valorKm = valoresKm[aeronave];
       let total = km * valorKm;
 
@@ -152,6 +222,7 @@
     function gerarPDF() {
       const aeronave = document.getElementById("aeronave").value;
       const nm = parseFloat(document.getElementById("nm").value);
+      const km = parseFloat(document.getElementById("km").value);
       const origem = document.getElementById("origem").value;
       const destino = document.getElementById("destino").value;
       const dataIda = document.getElementById("dataIda").value;
@@ -161,7 +232,6 @@
       const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
       const tipoExtra = document.getElementById("tipoExtra").value;
 
-      const km = nm * 1.852;
       const valorKm = valoresKm[aeronave];
       let total = km * valorKm;
 
