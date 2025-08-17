@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cotação de Voo Executivo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 30px;
+      max-width: 800px;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 15px;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+    }
+    .linha {
+      display: flex;
+      gap: 10px;
+    }
+    .linha > div {
+      flex: 1;
+    }
+    .botoes {
+      margin-top: 30px;
+    }
+    button {
+      padding: 12px 20px;
+      font-size: 16px;
+      margin-right: 10px;
+      cursor: pointer;
+    }
+    #resultado {
+      margin-top: 30px;
+      border-top: 1px solid #ccc;
+      padding-top: 20px;
+    }
+    #pdfFilters {
+      margin-top: 20px;
+      border: 1px solid #ccc;
+      padding: 10px;
+    }
+    #pdfFilters label {
+      font-weight: normal;
+      display: inline-block;
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Cotação de Voo Executivo</h1>
+
+  <label>Aeronave:</label>
+  <select id="aeronave">
+    <option value="" disabled selected>Escolha uma aeronave</option>
+    <option value="Hawker 400">Hawker 400 — R$36,00/km</option>
+    <option value="Phenom 100">Phenom 100 — R$36,00/km</option>
+    <option value="Citation II">Citation II — R$36,00/km</option>
+    <option value="King Air C90">King Air C90 — R$30,00/km</option>
+    <option value="Sêneca IV">Sêneca IV — R$22,00/km</option>
+    <option value="Cirrus SR22">Cirrus SR22 — R$15,00/km</option>
+  </select>
+
+  <div class="linha">
+    <div>
+      <label>Distância (NM):</label>
+      <input type="number" id="nm" />
+    </div>
+    <div>
+      <label>Origem:</label>
+      <input type="text" id="origem" />
+    </div>
+    <div>
+      <label>Destino:</label>
+      <input type="text" id="destino" />
+    </div>
+  </div>
+
+  <div class="linha">
+    <div>
+      <label>Data Ida:</label>
+      <input type="date" id="dataIda" />
+    </div>
+    <div>
+      <label>Data Volta:</label>
+      <input type="date" id="dataVolta" />
+    </div>
+  </div>
+
+  <label>Acréscimo ou Desconto:</label>
+  <input type="number" id="valorExtra" placeholder="Valor em R$" />
+  <select id="tipoExtra">
+    <option value="soma">Adicionar</option>
+    <option value="subtrai">Subtrair</option>
+  </select>
+  <label><input type="checkbox" id="incluirNoPDF" /> Incluir no PDF</label>
+
+  <label>Observações:</label>
+  <textarea id="observacoes" rows="4"></textarea>
+
+  <div id="pdfFilters">
+    <h4>Campos do PDF</h4>
+    <label><input type="checkbox" id="showRota" checked /> Rota</label>
+    <label><input type="checkbox" id="showAeronave" checked /> Aeronave</label>
+    <label><input type="checkbox" id="showTarifa" checked /> Tarifa</label>
+    <label><input type="checkbox" id="showDistancia" checked /> Distância</label>
+    <label><input type="checkbox" id="showDatas" checked /> Datas</label>
+    <label><input type="checkbox" id="showAjuste" checked /> Ajuste</label>
+    <label><input type="checkbox" id="showObservacoes" checked /> Observações</label>
+    <label><input type="checkbox" id="showMapa" checked /> Mapa</label>
+  </div>
+
+  <div class="botoes">
+    <button onclick="gerarPreOrcamento()">Gerar Pré-Orçamento</button>
+    <button onclick="gerarPDF()">Gerar PDF</button>
+  </div>
+
+  <div id="resultado"></div>
+
+  <div id="map" style="height: 400px; margin-top: 20px;"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
