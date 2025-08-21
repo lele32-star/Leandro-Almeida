@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Cotação de Voo Executivo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
   <style>
@@ -43,7 +45,16 @@
       border-top: 1px solid #ccc;
       padding-top: 20px;
     }
-    #comissaoArea { display:none; }
+    #pdfFilters {
+      margin-top: 20px;
+      border: 1px solid #ccc;
+      padding: 10px;
+    }
+    #pdfFilters label {
+      font-weight: normal;
+      display: inline-block;
+      margin-right: 10px;
+    }
   </style>
 </head>
 <body>
@@ -61,10 +72,17 @@
     <option value="Cirrus SR22">Cirrus SR22 — R$15,00/km</option>
   </select>
 
+  <label>Tarifa por km (R$):</label>
+  <input type="number" id="tarifa" step="0.01" />
+
   <div class="linha">
     <div>
       <label>Distância (NM):</label>
       <input type="number" id="nm" />
+    </div>
+    <div>
+      <label>Distância (KM):</label>
+      <input type="number" id="km" />
     </div>
     <div>
       <label>Origem:</label>
@@ -95,18 +113,20 @@
   </select>
   <label><input type="checkbox" id="incluirNoPDF" /> Incluir no PDF</label>
 
-  <button id="btnAddComissao" type="button">Adicionar comissão</button>
-  <div id="comissaoArea">
-    <label>Comissão (%)</label>
-    <input id="comissao" type="number" min="0" step="0.01" />
-  </div>
-
-  <div id="pdfFilters">
-    <label><input id="showComissao" type="checkbox" checked /> Comissão</label>
-  </div>
-
   <label>Observações:</label>
   <textarea id="observacoes" rows="4"></textarea>
+
+  <div id="pdfFilters">
+    <h4>Campos do PDF</h4>
+    <label><input type="checkbox" id="showRota" checked /> Rota</label>
+    <label><input type="checkbox" id="showAeronave" checked /> Aeronave</label>
+    <label><input type="checkbox" id="showTarifa" checked /> Tarifa</label>
+    <label><input type="checkbox" id="showDistancia" checked /> Distância</label>
+    <label><input type="checkbox" id="showDatas" checked /> Datas</label>
+    <label><input type="checkbox" id="showAjuste" checked /> Ajuste</label>
+    <label><input type="checkbox" id="showObservacoes" checked /> Observações</label>
+    <label><input type="checkbox" id="showMapa" checked /> Mapa</label>
+  </div>
 
   <div class="botoes">
     <button onclick="gerarPreOrcamento()">Gerar Pré-Orçamento</button>
@@ -114,6 +134,8 @@
   </div>
 
   <div id="resultado"></div>
+
+  <div id="map" style="height: 400px; margin-top: 20px;"></div>
 
   <script src="app.js"></script>
 </body>
