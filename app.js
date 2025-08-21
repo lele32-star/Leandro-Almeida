@@ -115,7 +115,6 @@ function buildState() {
   const dataIda = document.getElementById("dataIda").value;
   const dataVolta = document.getElementById("dataVolta").value;
   const observacoes = document.getElementById("observacoes").value;
-  const incluirNoPDF = document.getElementById("incluirNoPDF").checked;
   const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
   const tipoExtra = document.getElementById("tipoExtra").value;
   const tarifaInput = parseFloat(document.getElementById("tarifa").value);
@@ -129,7 +128,6 @@ function buildState() {
     dataIda,
     dataVolta,
     observacoes,
-    incluirNoPDF,
     valorExtra,
     tipoExtra,
     valorKm,
@@ -238,7 +236,6 @@ function buildDocDefinition(cfg) {
     dataIda,
     dataVolta,
     observacoes,
-    incluirNoPDF,
     valorExtra,
     tipoExtra,
     valorKm
@@ -247,14 +244,18 @@ function buildDocDefinition(cfg) {
   const tarifa = !isNaN(valorKm) ? valorKm : valoresKm[aeronave];
   let total = km * tarifa;
   let ajustes = null;
-  if (cfg.showAjuste && valorExtra > 0 && incluirNoPDF) {
+  if (valorExtra > 0) {
     const val = valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
     if (tipoExtra === "soma") {
       total += valorExtra;
-      ajustes = { text: `Outras Despesas: R$ ${val}`, margin: [0, 10, 0, 0] };
+      if (cfg.showAjuste) {
+        ajustes = { text: `Outras Despesas: R$ ${val}`, margin: [0, 10, 0, 0] };
+      }
     } else {
       total -= valorExtra;
-      ajustes = { text: `Desconto: R$ ${val}`, margin: [0, 10, 0, 0] };
+      if (cfg.showAjuste) {
+        ajustes = { text: `Desconto: R$ ${val}`, margin: [0, 10, 0, 0] };
+      }
     }
   }
   const content = [
