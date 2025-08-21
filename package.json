@@ -1,7 +1,13 @@
 {
   "name": "leandro-almeida",
   "version": "1.0.0",
+  "description": "Ferramenta de cotação de voo executivo",
+  "main": "app.js",
   "scripts": {
     "test": "node test.js"
-  }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs"
 }
