@@ -385,25 +385,23 @@ function limparCampos() {
   const commissionComp = document.getElementById('commission-component');
   if (commissionComp) {
     const btnAdd = commissionComp.querySelector('#btnAddCommission');
-    const btnPdf = commissionComp.querySelector('#btnCommissionPdf');
     const panel = commissionComp.querySelector('#commissionPanel');
     const percent = commissionComp.querySelector('#commissionPercent');
     const preview = commissionComp.querySelector('#commissionPreview');
     const amountHidden = commissionComp.querySelector('#commissionAmount');
-    const showHidden = commissionComp.querySelector('#commissionShowInPdf');
     panel.hidden = true;
     if (btnAdd) {
       btnAdd.setAttribute('aria-pressed', 'false');
       btnAdd.textContent = 'Adicionar comissão';
     }
-    if (btnPdf) {
-      btnPdf.setAttribute('aria-pressed', 'true');
-      btnPdf.textContent = 'Comissão no PDF: Ativar';
-    }
     if (percent) percent.value = '5';
     if (preview) preview.textContent = 'Comissão: R$ 0,00';
     if (amountHidden) amountHidden.value = '0';
-    if (showHidden) showHidden.value = '1';
+  }
+  const pdfCommission = document.getElementById('pdfCommissionToggle');
+  if (pdfCommission) {
+    pdfCommission.checked = true;
+    pdfCommission.dispatchEvent(new Event('change'));
   }
 }
 
