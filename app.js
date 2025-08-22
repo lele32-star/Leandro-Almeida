@@ -244,11 +244,8 @@ function updateDistanceFromAirports(waypoints) {
   }
 }
 
-function calcularComissao(subtotal, valorExtra, tipoExtra, commissions) {
-  let base = subtotal;
-  if (valorExtra > 0 && tipoExtra === 'subtrai') {
-    base -= valorExtra;
-  }
+function calcularComissao(subtotal, _valorExtra, _tipoExtra, commissions) {
+  const base = subtotal; // km × tarifa
   let totalComissao = 0;
   const detalhesComissao = [];
   for (const perc of commissions || []) {
@@ -332,7 +329,7 @@ function buildDocDefinition(state) {
   if (typeof document !== 'undefined') {
     const comp = document.getElementById('commission-component');
     if (comp && typeof comp.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
-      const base = subtotal - (state.valorExtra > 0 && state.tipoExtra === 'subtrai' ? state.valorExtra : 0);
+      const base = subtotal; // km × tarifa
       comp.dispatchEvent(new CustomEvent('commission:base', { detail: base }));
       const amtEl = document.getElementById('commissionAmount');
       if (amtEl) commissionAmount = parseFloat(amtEl.value) || 0;
@@ -414,7 +411,7 @@ async function gerarPreOrcamento() {
   if (typeof document !== 'undefined') {
     const comp = document.getElementById('commission-component');
     if (comp && typeof comp.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
-      const base = subtotal - (state.valorExtra > 0 && state.tipoExtra === 'subtrai' ? state.valorExtra : 0);
+      const base = subtotal; // km × tarifa
       comp.dispatchEvent(new CustomEvent('commission:base', { detail: base }));
       const amtEl = document.getElementById('commissionAmount');
       if (amtEl) commissionAmount = parseFloat(amtEl.value) || 0;

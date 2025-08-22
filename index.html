@@ -255,20 +255,14 @@
         state.percent = Math.max(0, isNaN(v) ? 0 : v);
       });
 
-      function calculate({ km, tarifa, ajusteValor = 0 }) {
+      function calculate({ km, tarifa /*, ajusteValor = 0 */ }) {
         if (!state.enabled) {
           const payload = snapshot({ amount: 0, base: 0 });
           dispatch('commission:changed', payload);
           return payload;
         }
-        const basePura = Number(km) * Number(tarifa); // km x tarifa
-        let base;
-        if (Number(ajusteValor) < 0) {
-          base = basePura + Number(ajusteValor); // desconto reduz base
-        } else {
-          base = basePura; // acréscimo não aumenta base da comissão
-        }
-        base = Math.max(0, base);
+        // Base SEMPRE = km × tarifa (ignora acréscimo/desconto)
+        const base = Math.max(0, Number(km) * Number(tarifa));
         const amount = clamp2(base * (Number(state.percent) / 100));
         amountHidden.value = String(amount);
         preview.textContent = 'Comissão: ' + fmtBRL(amount);

@@ -129,11 +129,11 @@ assert(textComm.includes('Comissão 1: R$ 666,72'), 'First percentage commission
 assert(textComm.includes('Comissão 2: R$ 333,36'), 'Second percentage commission should be displayed');
 assert(textComm.includes('Total Final: R$ 7.867,28'), 'Total should include commissions and extras');
 const commissionDiscount = calcularComissao(6667.2, 200, 'subtrai', [10]);
-assert(Math.abs(commissionDiscount.totalComissao - 646.72) < 1e-2, 'Commission with discount should reduce base before percentage');
+assert(Math.abs(commissionDiscount.totalComissao - 666.72) < 1e-2, 'Commission ignores discount when calculating base');
 const docCommDisc = buildDocDefinition({ ...baseState, valorExtra: 200, tipoExtra: 'subtrai', commissions: [10] });
 const textCommDisc = extractText(docCommDisc);
-assert(textCommDisc.includes('Comissão 1: R$ 646,72'), 'Discount should reduce commission base');
-assert(textCommDisc.includes('Total Final: R$ 7.113,92'), 'Total should consider discount and commission');
+assert(textCommDisc.includes('Comissão 1: R$ 666,72'), 'Discount should not reduce commission base');
+assert(textCommDisc.includes('Total Final: R$ 7.133,92'), 'Total should consider discount and commission');
 
 const docCommHidden = buildDocDefinition({ ...baseState, commissions: [10], showComissao: false });
 const textCommHidden = extractText(docCommHidden);
