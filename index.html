@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cotação de Voo Executivo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
+  <style>
+    :root{--bg:#0f1115;--panel:#151922;--panel2:#0f1320;--stroke:#202534;--muted:#98a2b3;--text:#e9edf1;--brand:#1f6feb;--radius:14px;--gap:12px;--maxw:1120px}
+    *,*:before,*:after{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans"}
+    img{max-width:100%;height:auto;display:block}
+    header.site-header{position:sticky;top:0;z-index:10;background:rgba(15,17,21,.8);backdrop-filter:blur(6px);border-bottom:1px solid var(--stroke)}
+    .header-inner{max-width:var(--maxw);margin:0 auto;padding:14px 16px;display:flex;align-items:center;gap:12px}
+    .brand-dot{width:10px;height:10px;border-radius:999px;background:var(--brand);display:inline-block}
+    .brand-title{margin:0;font-size:clamp(18px,2.5vw,22px);font-weight:700}
+    main{max-width:var(--maxw);margin:24px auto 56px;padding:0 16px}
+    section.card{background:var(--panel);border:1px solid var(--stroke);border-radius:var(--radius);padding:18px}
+    .row{display:grid;grid-template-columns:1fr;gap:var(--gap)}
+    @media (min-width:720px){.row{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (min-width:980px){.row-3{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    label{font-size:.92rem;margin-bottom:6px;display:block;color:#c9d3e0}
+    input,select,textarea,button{width:100%;padding:10px 12px;border-radius:10px;border:1px solid #283049;background:var(--panel2);color:var(--text);outline:none;transition:border-color .15s ease}
+    input:focus,select:focus,textarea:focus{border-color:var(--brand)}
+    textarea{resize:vertical;min-height:88px}
+    .muted{color:var(--muted);font-size:.95rem}
+    .actions{display:flex;flex-wrap:wrap;gap:10px}
+    .btn{cursor:pointer;font-weight:600;border-color:var(--brand);background:var(--brand)}
+    .btn.ghost{background:transparent;border-color:#32405f}
+    .inline{display:flex;gap:10px;align-items:center}
+    #map{height:360px;background:#0b0e16;border:1px solid var(--stroke);border-radius:var(--radius)}
+    #resultado h3{margin-top:0}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    [aria-live]{min-height:1.2em}
+    @media (max-width:400px){.actions>*{flex:1 1 100%}}
+    .hide{display:none}
+  </style>
+</head>
+<body>
+  <header class="site-header" role="banner">
+    <div class="header-inner">
+      <span class="brand-dot" aria-hidden="true"></span>
+      <h1 class="brand-title">Cotação de Voo Executivo</h1>
+      <span class="sr-only">Aplicativo de orçamento de voos</span>
+    </div>
+  </header>
+  <main id="conteudo" role="main">
+    <form id="quote-form" novalidate>
+      <section class="card" aria-labelledby="sec-aeronave">
+        <h2 id="sec-aeronave" class="sr-only">Aeronave e Tarifa</h2>
+        <div class="row">
+          <div>
+            <label for="aeronave">Aeronave</label>
+            <select id="aeronave" required>
+              <option value="" selected>Escolha uma aeronave</option>
+              <option value="Hawker 400">Hawker 400 — R$36,00/km</option>
+              <option value="Phenom 100">Phenom 100 — R$36,00/km</option>
+              <option value="Citation II">Citation II — R$36,00/km</option>
+              <option value="King Air C90">King Air C90 — R$30,00/km</option>
+              <option value="Sêneca IV">Sêneca IV — R$22,00/km</option>
+              <option value="Cirrus SR22">Cirrus SR22 — R$15,00/km</option>
+            </select>
+          </div>
+          <div>
+            <label for="rate">Tarifa por km (R$)</label>
+            <input id="rate" type="number" step="0.01" inputmode="decimal" placeholder="Ex.: 36,00" />
+          </div>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="sec-rota">
+        <h2 id="sec-rota" class="sr-only">Distâncias e Rota</h2>
+        <div class="row">
+          <div>
+            <label for="distanceNM">Distância (NM)</label>
+            <input id="distanceNM" type="number" step="0.1" inputmode="decimal" placeholder="Ex.: 450" />
+          </div>
+          <div>
+            <label for="distanceKM">Distância (KM)</label>
+            <input id="distanceKM" type="number" step="0.1" inputmode="decimal" placeholder="Ex.: 834" />
+          </div>
+        </div>
+        <p class="muted">Preencha KM ou NM. Se você informar ICAO de origem/destino/waypoints, a distância é calculada automaticamente via Haversine (coordenadas Aerodatabox).</p>
+        <div id="waypoints" class="row" style="margin-top:12px">
+          <div>
+            <label for="icao-0">Origem (ICAO)</label>
+            <input id="icao-0" name="icao[]" maxlength="4" placeholder="SBBR" pattern="[A-Za-z]{4}" />
+          </div>
+          <div>
+            <label for="icao-1">Destino (ICAO)</label>
+            <input id="icao-1" name="icao[]" maxlength="4" placeholder="SBMO" pattern="[A-Za-z]{4}" />
+          </div>
+        </div>
+        <div class="actions" style="margin-top:12px">
+          <button type="button" id="add-airport" class="btn ghost">Adicionar Aeroporto</button>
+          <button type="button" id="calc-from-icao" class="btn ghost">Calcular distância pelos ICAO</button>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="sec-datas">
+        <h2 id="sec-datas" class="sr-only">Datas</h2>
+        <div class="row">
+          <div>
+            <label for="dateOut">Data Ida</label>
+            <input id="dateOut" type="date" />
+          </div>
+          <div>
+            <label for="dateBack">Data Volta</label>
+            <input id="dateBack" type="date" />
+          </div>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="sec-ajuste">
+        <h2 id="sec-ajuste" class="sr-only">Acréscimo ou Desconto</h2>
+        <label>Acréscimo ou Desconto</label>
+        <div class="actions">
+          <label class="inline" style="flex:0 0 auto"><input type="radio" name="adjType" value="add" checked /> Adicionar</label>
+          <label class="inline" style="flex:0 0 auto"><input type="radio" name="adjType" value="sub" /> Subtrair</label>
+          <input id="adjValue" type="number" step="0.01" inputmode="decimal" placeholder="Valor" />
+          <select id="adjMode" style="flex:0 0 120px">
+            <option value="amount">R$</option>
+            <option value="percent">%</option>
+          </select>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="sec-comissao">
+        <h2 id="sec-comissao" class="sr-only">Comissão</h2>
+        <div class="actions" style="margin-bottom:8px">
+          <button type="button" id="btn-toggle-commission" class="btn ghost">Adicionar comissão</button>
+        </div>
+        <div id="commission-fields" class="hide" aria-hidden="true">
+          <div class="row">
+            <div>
+              <label for="commissionPercent">Comissão (%)</label>
+              <input id="commissionPercent" type="number" step="0.1" min="0" max="100" placeholder="Ex.: 5" />
+            </div>
+          </div>
+          <p class="muted">A comissão incide sobre:<br>• (KM × Tarifa) quando houver acréscimo ou nenhum ajuste.<br>• ((KM × Tarifa) − subtração) quando houver desconto.</p>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="sec-outros">
+        <h2 id="sec-outros" class="sr-only">Pagamento e Observações</h2>
+        <div class="row">
+          <div>
+            <h3 style="margin:0 0 8px">Dados para pagamento</h3>
+            <textarea id="pagamento" rows="5">INTER - 077
+AUTOCON SUPRIMENTOS DE INFORMATICA
+CNPJ: 36.326.772/0001-65
+Agência: 0001
+Conta: 25691815-5</textarea>
+          </div>
+          <div>
+            <label for="notes">Observações</label>
+            <textarea id="notes" placeholder="Instruções, preferências, FBO, horários, etc."></textarea>
+          </div>
+        </div>
+      </section>
+      <section class="card" aria-labelledby="sec-pdf">
+        <h2 id="sec-pdf" class="sr-only">Campos do PDF</h2>
+        <details open>
+          <summary>Campos do PDF</summary>
+          <div class="row row-3" style="margin-top:10px">
+            <label class="inline"><input type="checkbox" id="showRota" checked> Rota</label>
+            <label class="inline"><input type="checkbox" id="showAeronave" checked> Aeronave</label>
+            <label class="inline"><input type="checkbox" id="showTarifa" checked> Total/Tarifa</label>
+            <label class="inline"><input type="checkbox" id="showDistancia" checked> Distância</label>
+            <label class="inline"><input type="checkbox" id="showDatas" checked> Datas</label>
+            <label class="inline"><input type="checkbox" id="showAjuste" checked> Ajuste</label>
+            <label class="inline"><input type="checkbox" id="showObservacoes" checked> Observações</label>
+            <label class="inline"><input type="checkbox" id="showPagamento" checked> Pagamento</label>
+            <label class="inline"><input type="checkbox" id="showMapa" checked> Mapa</label>
+            <label class="inline"><input type="checkbox" id="commissionInPdf" checked> Comissão</label>
+          </div>
+        </details>
+      </section>
+      <section class="card" aria-labelledby="sec-acoes">
+        <h2 id="sec-acoes" class="sr-only">Ações</h2>
+        <div class="actions">
+          <button type="button" id="btn-pre" class="btn">Gerar Pré-Orçamento</button>
+          <button type="button" id="btn-pdf" class="btn ghost">Gerar PDF</button>
+          <button type="reset" id="btn-clear" class="btn ghost">Limpar</button>
+        </div>
+        <div id="messages" class="muted" aria-live="polite"></div>
+      </section>
+    </form>
+    <section id="resultado" class="card" aria-live="polite"></section>
+    <section aria-label="Mapa da rota"><div id="map"></div></section>
+  </main>
+  <footer role="contentinfo" style="max-width:var(--maxw);margin:24px auto 32px;padding:0 16px;color:var(--muted)"><small>© Cotação de Voo Executivo — Documento gerado automaticamente. Revise antes de enviar ao cliente.</small></footer>
+  <script>
+    const valoresKm={"Hawker 400":36,"Phenom 100":36,"Citation II":36,"King Air C90":30,"Sêneca IV":22,"Cirrus SR22":15};
+    const AERODATABOX_KEY='84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b';
+    const AERODATABOX_HOST='aerodatabox.p.rapidapi.com';
+    const coordCache={};
+    const $=id=>document.getElementById(id);
+    const parseNum=v=>{const n=parseFloat(String(v).replace(',', '.'));return isNaN(n)?0:n};
+    const money=v=>'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const setMsg=t=>{const el=$('messages');if(el)el.textContent=t||''};
+    function setTodayMinDates(){const t=new Date().toISOString().slice(0,10);$('dateOut').min=t;$('dateBack').min=t;$('dateOut').addEventListener('change',()=>{$('dateBack').min=$('dateOut').value||t;if($('dateBack').value&&$('dateBack').value<$('dateOut').value)$('dateBack').value=$('dateOut').value})}
+    function initDistanceSync(){let s=false;const nm=$('distanceNM'),km=$('distanceKM');nm.addEventListener('input',()=>{if(s)return;s=true;const v=parseNum(nm.value);km.value=v?(v*1.852).toFixed(1):'';s=false});km.addEventListener('input',()=>{if(s)return;s=true;const v=parseNum(km.value);nm.value=v?(v/1.852).toFixed(1):'';s=false})}
+    function initTarifaSync(){const sel=$('aeronave'),tarifa=$('rate');sel.addEventListener('change',()=>{const v=valoresKm[sel.value];tarifa.value=v?v.toFixed(2):''})}
+    function initWaypoints(){let c=2;const w=$('waypoints');$('add-airport').addEventListener('click',()=>{const d=document.createElement('div');const id=`icao-${c++}`;d.innerHTML=`<label for="${id}">Aeroporto<\/label><input id="${id}" name="icao[]" maxlength="4" placeholder="SBSP" pattern="[A-Za-z]{4}" />`;w.appendChild(d)})}
+    function initCommission(){const b=$('btn-toggle-commission'),x=$('commission-fields');b.addEventListener('click',()=>{const h=x.classList.toggle('hide');x.setAttribute('aria-hidden',h?'true':'false');b.textContent=h?'Adicionar comissão':'Remover comissão'})}
+    let map,routeLayer;function ensureMap(){if(!map){map=L.map('map').setView([-15.8,-47.9],4);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap'}).addTo(map)}}
+    async function getCoordinates(icao){if(!icao)return null;const code=icao.toUpperCase();if(coordCache[code])return coordCache[code];const r=await fetch(`https://${AERODATABOX_HOST}/airports/icao/${code}`,{headers:{'X-RapidAPI-Key':AERODATABOX_KEY,'X-RapidAPI-Host':AERODATABOX_HOST}});if(!r.ok)throw new Error('Falha ao buscar ICAO '+code+': '+r.status);const data=await r.json();const pt={lat:data.location.lat,lon:data.location.lon};coordCache[code]=pt;return pt}
+    const toRad=d=>d*Math.PI/180;function distKm(a,b){const R=6371,dLat=toRad(b.lat-a.lat),dLon=toRad(b.lon-a.lon),h=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;return 2*R*Math.asin(Math.sqrt(h))}
+    async function calcDistanceFromICAO(){const ins=[...document.querySelectorAll('input[name="icao[]"]')];const codes=ins.map(i=>i.value.trim()).filter(Boolean);if(codes.length<2){setMsg('Informe pelo menos Origem e Destino.');return{km:0,nm:0,points:[]}}const pts=[];for(const c of codes){const p=await getCoordinates(c);if(!p)continue;pts.push(p)}if(pts.length<2){setMsg('Não foi possível obter coordenadas suficientes.');return{km:0,nm:0,points:[]}}let km=0;for(let i=1;i<pts.length;i++){km+=distKm(pts[i-1],pts[i])}const nm=km/1.852;$('distanceKM').value=km.toFixed(1);$('distanceNM').value=nm.toFixed(1);ensureMap();if(routeLayer){map.removeLayer(routeLayer);routeLayer=null}routeLayer=L.polyline(pts.map(p=>[p.lat,p.lon])).addTo(map);map.fitBounds(routeLayer.getBounds(),{padding:[20,20]});setMsg('Distância calculada pelos ICAO.');return{km,nm,points:pts}}
+    function computeAdjust(base){const mode=$('adjMode').value;const type=[...document.querySelectorAll('input[name="adjType"]')].find(r=>r.checked)?.value||null;const val=parseNum($('adjValue').value);if(!val||!type)return{adjusted:base,delta:0,type:null};const delta=(mode==='percent')?(base*(val/100)):val;const adjusted=(type==='add')?base+delta:Math.max(0,base-delta);return{adjusted,delta,type}}
+    function computeCommission(base,adjust){const enabled=!$('commission-fields').classList.contains('hide');const pct=parseNum($('commissionPercent').value);if(!enabled||!pct)return{commission:0,baseForCommission:base};let commissionBase=base;if(adjust.type==='sub')commissionBase=Math.max(0,adjust.adjusted);const commission=commissionBase*(pct/100);return{commission,baseForCommission:commissionBase}}
+    function gatherFilters(){return{showRota:$('showRota').checked,showAeronave:$('showAeronave').checked,showTarifa:$('showTarifa').checked,showDistancia:$('showDistancia').checked,showDatas:$('showDatas').checked,showAjuste:$('showAjuste').checked,showObservacoes:$('showObservacoes').checked,showPagamento:$('showPagamento').checked,showMapa:$('showMapa').checked,showCommission:$('commissionInPdf').checked}}
+    function getKm(){const km=parseNum($('distanceKM').value);if(km>0)return km;const nm=parseNum($('distanceNM').value);return nm>0?nm*1.852:0}
+    function getRate(){const sel=$('aeronave').value;const custom=parseNum($('rate').value);return custom||valoresKm[sel]||0}
+    async function computeQuote(){const hasIcao=[...document.querySelectorAll('input[name="icao[]"]')].some(i=>i.value.trim());if(hasIcao){try{await calcDistanceFromICAO()}catch(e){console.error('Falha ICAO',e);setMsg('Não foi possível calcular por ICAO. Verifique os códigos.')}}const km=getKm();const rate=getRate();const base=km*rate;const adjust=computeAdjust(base);const commissionInfo=computeCommission(base,adjust);const total=adjust.adjusted+commissionInfo.commission;return{km,rate,base,adjust,commissionInfo,total}}
+    function buildPreviewHTML(state,filters){const ins=[...document.querySelectorAll('input[name="icao[]"]')];const rota=ins.map(i=>i.value.trim()).filter(Boolean).join(' → ');const blocks=[];if(filters.showRota&&rota)blocks.push(`<p><strong>Rota:</strong> ${rota}</p>`);if(filters.showAeronave)blocks.push(`<p><strong>Aeronave:</strong> ${$('aeronave').value||'-'}</p>`);if(filters.showDistancia)blocks.push(`<p><strong>Distância:</strong> ${$('distanceNM').value||'-'} NM (${$('distanceKM').value||'-'} km)</p>`);if(filters.showDatas)blocks.push(`<p><strong>Datas:</strong> ${$('dateOut').value||'-'} - ${$('dateBack').value||'-'}</p>`);if(filters.showAjuste){const d=state.adjust.adjusted-state.base;if(Math.abs(d)>0.0001){blocks.push(`<p><strong>Ajuste:</strong> ${d>=0?'+':'-'} ${money(Math.abs(d))}</p>`)}}if(filters.showCommission)blocks.push(`<p><strong>Comissão:</strong> ${money(state.commissionInfo.commission)} (base: ${money(state.commissionInfo.baseForCommission)})</p>`);if(filters.showTarifa)blocks.push(`<p><strong>Total Estimado:</strong> ${money(state.total)}</p>`);if(filters.showObservacoes&&$('notes').value)blocks.push(`<p><strong>Observações:</strong> ${$('notes').value}</p>`);if(filters.showPagamento&&$('pagamento').value)blocks.push(`<p><strong>Pagamento:</strong><br>${$('pagamento').value.replace(/\n/g,'<br>')}</p>`);return `<h3 style="margin-top:0">Pré-Orçamento</h3>`+blocks.join('')}
+    function buildPDFDefinition(state,filters){const ins=[...document.querySelectorAll('input[name=\"icao[]\"]')];const rota=ins.map(i=>i.value.trim()).filter(Boolean).join(' → ');const d=state.adjust.adjusted-state.base;const rows=[[{text:'Base (KM × Tarifa)',bold:true},money(state.base)],[{text:(d>=0?'Acréscimos':'Descontos'),bold:true},(d>=0?'+ ':'- ')+money(Math.abs(d))]];if(filters.showCommission){rows.push([{text:'Comissão',bold:true},money(state.commissionInfo.commission)])}rows.push([{text:'Total',bold:true},{text:money(state.total),bold:true}]);const content=[{text:'Proposta Comercial — Cotação de Voo Executivo',style:'header'}];const summary=[];if(filters.showRota&&rota)summary.push({text:`Rota: ${rota}`});if(filters.showAeronave)summary.push({text:`Aeronave: ${$('aeronave').value||'-'}`});if(filters.showDistancia)summary.push({text:`Distância: ${$('distanceNM').value||'-'} NM (${$('distanceKM').value||'-'} km)`});if(filters.showDatas)summary.push({text:`Datas: ${$('dateOut').value||'-'} - ${$('dateBack').value||'-'}`});if(summary.length)content.push({columns:summary.map(s=>({text:s.text,margin:[0,10,0,0]}))});content.push({table:{widths:['*','auto'],body:[[{text:'Resumo de Valores',colSpan:2,style:'tableHeader',alignment:'left'},{}],...rows]},layout:{fillColor:r=>r===0?'#1b2437':null,hLineColor:'#3a455e',vLineColor:'#3a455e',paddingLeft:8,paddingRight:8,paddingTop:6,paddingBottom:6},margin:[0,12,0,0]});if(filters.showObservacoes&&$('notes').value)content.push({text:`Observações: ${$('notes').value}`,margin:[0,10,0,0]});if(filters.showPagamento&&$('pagamento').value)content.push({text:`Pagamento:\n${$('pagamento').value}`,margin:[0,10,0,0]});if(filters.showMapa)content.push({text:'Mapa: [visualização apenas na página]'});return{content,styles:{header:{fontSize:18,bold:true},tableHeader:{bold:true}}}
+document.addEventListener('DOMContentLoaded',()=>{setTodayMinDates();initDistanceSync();initTarifaSync();initWaypoints();initCommission();ensureMap();$('calc-from-icao').addEventListener('click',async()=>{setMsg('Calculando distância...');try{await calcDistanceFromICAO()}catch(e){console.error(e);setMsg('Erro ao calcular distância pelos ICAO.')}});$('btn-pre').addEventListener('click',async()=>{setMsg('Calculando pré-orçamento...');try{const st=await computeQuote();const fl=gatherFilters();$('resultado').innerHTML=buildPreviewHTML(st,fl);setMsg('')}catch(e){console.error(e);setMsg('Erro ao calcular pré-orçamento.');alert(e.message)}});$('btn-pdf').addEventListener('click',async()=>{setMsg('Gerando PDF...');try{const st=await computeQuote();const fl=gatherFilters();const doc=buildPDFDefinition(st,fl);if(window.pdfMake&&pdfMake.createPdf){pdfMake.createPdf(doc).open();setMsg('')}else{setMsg('pdfMake não carregou. Verifique a conexão.')}}catch(e){console.error(e);setMsg('Erro ao gerar PDF.');alert(e.message)}});$('quote-form').addEventListener('reset',()=>{setTimeout(()=>{$('resultado').innerHTML='';setMsg('Formulário limpo.');if(routeLayer&&map){try{map.removeLayer(routeLayer)}catch(_){ }routeLayer=null}const box=$('commission-fields');if(box&&!box.classList.contains('hide')){box.classList.add('hide');box.setAttribute('aria-hidden','true');$('btn-toggle-commission').textContent='Adicionar comissão'}},0)})});
+  </script>
+</body>
+</html>
