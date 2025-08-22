@@ -47,6 +47,7 @@
       border-radius: 4px;
       background: var(--surface);
     }
+    input.icao { text-transform: uppercase; letter-spacing: .04em; }
     input:focus,
     select:focus,
     textarea:focus {
@@ -145,11 +146,11 @@
       </div>
       <div>
         <label for="origem">Origem:</label>
-        <input type="text" id="origem" />
+        <input type="text" id="origem" class="icao" maxlength="4" />
       </div>
       <div>
         <label for="destino">Destino:</label>
-        <input type="text" id="destino" />
+        <input type="text" id="destino" class="icao" maxlength="4" />
       </div>
     </div>
 

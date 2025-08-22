@@ -55,16 +55,117 @@ if (typeof document !== 'undefined') {
     });
   }
 
+  // ====== [ADD] ICAO uppercase + cálculo instantâneo de rota/distância ======
+  const ICAO_RE = /^[A-Z]{4}$/;
+
+  const enforceICAO = (el) => {
+    if (!el) return;
+    el.value = String(el.value || '')
+      .toUpperCase()
+      .replace(/[^A-Z]/g, '')
+      .slice(0, 4);
+  };
+
+  function debounce(fn, ms) {
+    let t;
+    return (...args) => {
+      clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  }
+
+  async function fetchAirportByCode(code) {
+    const icao = String(code || '').toUpperCase();
+    if (!ICAO_RE.test(icao)) return null;
+    try {
+      const res = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${icao}`, {
+        headers: {
+          'X-RapidAPI-Key': API_KEY,
+          'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
+        }
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const loc = data && data.location;
+      if (loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lon)) {
+        return { lat: Number(loc.lat), lng: Number(loc.lon) };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function refreshRouteFromInputs() {
+    const origemEl = document.getElementById('origem');
+    const destinoEl = document.getElementById('destino');
+    const stopEls = Array.from(document.querySelectorAll('.stop-input'));
+
+    [origemEl, destinoEl, ...stopEls].forEach(enforceICAO);
+
+    const origem = origemEl ? origemEl.value : '';
+    const destino = destinoEl ? destinoEl.value : '';
+    const stops  = stopEls.map(i => i.value).filter(Boolean);
+
+    const codes = [origem, destino, ...stops].filter(Boolean);
+    const valid = codes.filter(c => ICAO_RE.test(c));
+    if (valid.length < 2) {
+      updateDistanceFromAirports([]);
+      return;
+    }
+
+    const coords = await Promise.all(valid.map(fetchAirportByCode));
+    const waypoints = coords.filter(Boolean);
+    updateDistanceFromAirports(waypoints);
+  }
+
+  const debouncedRefresh = debounce(refreshRouteFromInputs, 400);
+
+  const origemEl = document.getElementById('origem');
+  const destinoEl = document.getElementById('destino');
+  if (origemEl) {
+    origemEl.addEventListener('input', (e) => { enforceICAO(e.target); debouncedRefresh(); });
+    origemEl.addEventListener('blur', (e) => enforceICAO(e.target));
+  }
+  if (destinoEl) {
+    destinoEl.addEventListener('input', (e) => { enforceICAO(e.target); debouncedRefresh(); });
+    destinoEl.addEventListener('blur', (e) => enforceICAO(e.target));
+  }
+
+  const stopsContainer = document.getElementById('stops');
+  if (stopsContainer) {
+    stopsContainer.addEventListener('input', (e) => {
+      if (e.target && e.target.classList.contains('stop-input')) {
+        enforceICAO(e.target);
+        debouncedRefresh();
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => debouncedRefresh());
+
+  window.__refreshRouteNow = refreshRouteFromInputs;
+  // ====== [FIM ADD] ==========================================================
+
   const addStop = document.getElementById('addStop');
   if (addStop) {
     addStop.addEventListener('click', () => {
       const div = document.createElement('div');
       const input = document.createElement('input');
       input.type = 'text';
-      input.className = 'stop-input';
-      input.placeholder = 'Aeroporto';
+      input.className = 'stop-input icao';
+      input.placeholder = 'Aeroporto (ICAO)';
+      input.maxLength = 4;
       div.appendChild(input);
       document.getElementById('stops').appendChild(div);
+
+      if (typeof enforceICAO === 'function') enforceICAO(input);
+      if (typeof __refreshRouteNow === 'function') setTimeout(__refreshRouteNow, 0);
+
+      input.addEventListener('input', (e) => {
+        if (typeof enforceICAO === 'function') enforceICAO(e.target);
+        if (typeof __refreshRouteNow === 'function') __refreshRouteNow();
+      });
     });
   }
 
@@ -290,6 +391,7 @@ function buildDocDefinition(state) {
 }
 
 async function gerarPreOrcamento() {
+  if (typeof __refreshRouteNow === 'function') { await __refreshRouteNow(); }
   const state = buildState();
   const km = state.nm * 1.852;
   const subtotal = valorParcialFn(km, state.valorKm);
