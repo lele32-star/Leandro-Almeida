@@ -230,7 +230,6 @@
       const preview = root.querySelector('#commissionPreview');
       const amountHidden = root.querySelector('#commissionAmount');
       const showInPdfHidden = root.querySelector('#commissionShowInPdf');
-      const showComissaoFilter = document.getElementById('showComissao');
 
       // Estado interno isolado deste módulo
       const state = {
@@ -269,17 +268,7 @@
         btnPdf.setAttribute('aria-pressed', String(state.showInPdf));
         btnPdf.textContent = state.showInPdf ? 'Comissão no PDF: Ativar' : 'Comissão no PDF: Ocultar';
         showInPdfHidden.value = state.showInPdf ? '1' : '0';
-        if (showComissaoFilter) showComissaoFilter.checked = state.showInPdf;
       });
-
-      if (showComissaoFilter) {
-        showComissaoFilter.addEventListener('change', () => {
-          state.showInPdf = showComissaoFilter.checked;
-          btnPdf.setAttribute('aria-pressed', String(state.showInPdf));
-          btnPdf.textContent = state.showInPdf ? 'Comissão no PDF: Ativar' : 'Comissão no PDF: Ocultar';
-          showInPdfHidden.value = state.showInPdf ? '1' : '0';
-        });
-      }
 
       percentInput.addEventListener('input', () => {
         state.percent = clamp2(percentInput.value);
@@ -324,7 +313,6 @@ Conta: 25691815-5</textarea>
       <label><input type="checkbox" id="showDistancia" checked /> Distância</label>
       <label><input type="checkbox" id="showDatas" checked /> Datas</label>
       <label><input type="checkbox" id="showAjuste" checked /> Ajuste</label>
-      <label><input type="checkbox" id="showComissao" checked /> Comissão</label>
       <label><input type="checkbox" id="showObservacoes" checked /> Observações</label>
       <label><input type="checkbox" id="showPagamento" checked /> Pagamento</label>
       <label><input type="checkbox" id="showMapa" checked /> Mapa</label>

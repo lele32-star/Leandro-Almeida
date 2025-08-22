@@ -90,11 +90,11 @@ const elements = {
   showDistancia: { checked: true },
   showDatas: { checked: true },
   showAjuste: { checked: true },
-  showComissao: { checked: true },
   showObservacoes: { checked: true },
   showPagamento: { checked: true },
   showMapa: { checked: true }
 };
+elements.commissionShowInPdf = { value: '1' };
 global.document = {
   getElementById: id => elements[id],
   querySelectorAll: sel => (sel === '.stop-input' ? [{ value: 'SBBH' }] : sel === '.commission-percent' ? [{ value: '10' }] : [])

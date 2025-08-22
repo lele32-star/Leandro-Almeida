@@ -182,8 +182,7 @@ function buildState() {
   const commissions = Array.from(document.querySelectorAll('.commission-percent')).map(input => parseFloat(input.value) || 0);
   const commissionAmountEl = document.getElementById('commissionAmount');
   const commissionShowEl = document.getElementById('commissionShowInPdf');
-  const showComissaoEl = document.getElementById('showComissao');
-  const showComissao = showComissaoEl ? showComissaoEl.checked : commissionShowEl ? commissionShowEl.value !== '0' : true;
+  const showComissao = commissionShowEl ? commissionShowEl.value !== '0' : true;
   const commissionAmount = commissionAmountEl ? parseFloat(commissionAmountEl.value) || 0 : 0;
 
   return {
@@ -374,8 +373,6 @@ function limparCampos() {
   document.getElementById('showDistancia').checked = true;
   document.getElementById('showDatas').checked = true;
   document.getElementById('showAjuste').checked = true;
-  const showComissaoEl = document.getElementById('showComissao');
-  if (showComissaoEl) showComissaoEl.checked = true;
   document.getElementById('showObservacoes').checked = true;
   document.getElementById('showPagamento').checked = true;
   document.getElementById('showMapa').checked = true;
