@@ -122,6 +122,14 @@
             <input id="dataVolta" type="date" />
             <div class="hint">Nunca pode ser anterior à ida.</div>
           </div>
+          <div class="col-12">
+            <label for="pagamento">Dados para pagamento</label>
+            <textarea id="pagamento" rows="4">INTER - 077
+AUTOCON SUPRIMENTOS DE INFORMATICA
+CNPJ: 36.326.772/0001-65
+Agência: 0001
+Conta: 25691815-5</textarea>
+          </div>
 
           <div class="col-12">
             <label for="observacoes">Observações</label>
@@ -138,6 +146,14 @@
               <option value="soma">Adicionar</option>
               <option value="subtrai">Subtrair</option>
             </select>
+          </div>
+
+          <div class="col-12">
+            <button id="btnAddComissao" class="btn ghost" type="button">Adicionar comissão</button>
+            <div id="comissaoWrap" style="display:none; margin-top:8px;">
+              <label for="comissaoPercent">Comissão (%)</label>
+              <input id="comissaoPercent" type="number" step="0.1" min="0" max="100" placeholder="Ex.: 5" />
+            </div>
           </div>
         </div>
 
@@ -166,6 +182,8 @@
             <label class="cfg-item"><input type="checkbox" id="cfgShowDatas" checked />Mostrar datas (ida/volta)</label>
             <label class="cfg-item"><input type="checkbox" id="cfgShowAjuste" />Mostrar ajuste (acr./desc.)</label>
             <label class="cfg-item"><input type="checkbox" id="cfgShowObs" />Mostrar observações</label>
+            <label class="cfg-item"><input type="checkbox" id="cfgShowPagamento" checked />Mostrar pagamento</label>
+            <label class="cfg-item"><input type="checkbox" id="cfgShowComissao" checked />Mostrar comissão</label>
           </div>
           <div class="hint" style="margin-top:8px;">O total final sempre é exibido.</div>
         </div>
@@ -244,8 +262,11 @@
     const dataIda = $("dataIda")?.value || '';
     const dataVolta = $("dataVolta")?.value || '';
     const observacoes = $("observacoes")?.value?.trim() || '';
+    const pagamento = $("pagamento")?.value?.trim() || '';
     const valorExtra = parseNum($("valorExtra")?.value);
     const tipoExtra = $("tipoExtra")?.value || 'soma';
+    const comissaoPercent = parseNum($("comissaoPercent")?.value);
+    const comissaoAtiva = $('#comissaoWrap') && $('#comissaoWrap').style.display !== 'none' && comissaoPercent > 0;
     const valorKmCustom = parseNum($("valorKm")?.value) || (valoresKm[aeronave] || 0);
     const cfg = {
       showRota:   !!$('#cfgShowRota')?.checked,
@@ -256,8 +277,10 @@
       showDatas:  !!$('#cfgShowDatas')?.checked,
       showAjuste: !!$('#cfgShowAjuste')?.checked,
       showObs:    !!$('#cfgShowObs')?.checked,
+      showPagamento: !!$('#cfgShowPagamento')?.checked,
+      showComissao: !!$('#cfgShowComissao')?.checked,
     };
-    return { aeronave, nm, km, origem, destino, stops, dataIda, dataVolta, observacoes, valorExtra, tipoExtra, valorKmCustom, cfg };
+    return { aeronave, nm, km, origem, destino, stops, dataIda, dataVolta, observacoes, pagamento, valorExtra, tipoExtra, comissaoPercent, comissaoAtiva, valorKmCustom, cfg };
   }
 
   function on(id, type, handler){ const el=$(id); if(!el) return false; el.addEventListener(type, handler); return true; }
@@ -292,6 +315,7 @@
   }
 
   let map, routeLayer;
+  let comissaoAtiva=false;
   function initMap(){
     try{
       if(!window.L || typeof L.map!=='function') throw new Error('Leaflet indisponível');
@@ -336,8 +360,21 @@
     }
 
     const valorKm = s.valorKmCustom>0 ? s.valorKmCustom : (valoresKm[s.aeronave]||0);
-    const kmToUse=useKm || asKM(useNm); let total=kmToUse*valorKm; let labelExtra='';
-    if(s.valorExtra>0){ if(s.tipoExtra==='soma'){ total+=s.valorExtra; labelExtra=`+ ${asCurrency(s.valorExtra)} (outras despesas)`; } else { total-=s.valorExtra; labelExtra=`- ${asCurrency(s.valorExtra)} (desconto)`; } }
+    const kmToUse=useKm || asKM(useNm);
+    const base = kmToUse * valorKm;
+    let total = base;
+    let labelExtra='';
+    if(s.valorExtra>0){
+      if(s.tipoExtra==='soma'){ total += s.valorExtra; labelExtra = `+ ${asCurrency(s.valorExtra)} (outras despesas)`; }
+      else { total = Math.max(0, total - s.valorExtra); labelExtra = `- ${asCurrency(s.valorExtra)} (desconto)`; }
+    }
+    let comissaoVal = 0;
+    if(s.comissaoAtiva && s.comissaoPercent>0){
+      let baseCom = base;
+      if(s.valorExtra>0 && s.tipoExtra==='subtrai') baseCom = Math.max(0, base - s.valorExtra);
+      comissaoVal = baseCom * (s.comissaoPercent/100);
+      total += comissaoVal;
+    }
 
     const rotaStr = haveAirports ? waypoints.join(' → ') : '— (distância manual)';
     const cfg=s.cfg;
@@ -348,8 +385,10 @@
       cfg.showTarifa    ? `<tr><td>Tarifa por km</td><td>${asCurrency(valorKm)}</td></tr>` : '',
       cfg.showDistancia ? `<tr><td>Distância</td><td>${distStr}</td></tr>` : '',
       (s.valorExtra>0 && cfg.showAjuste) ? `<tr><td>Ajuste</td><td>${labelExtra}</td></tr>` : '',
+      (comissaoVal>0 && cfg.showComissao) ? `<tr><td>Comissão (${s.comissaoPercent}%)</td><td>${asCurrency(comissaoVal)}</td></tr>` : '',
       cfg.showDatas     ? `<tr><td>Datas</td><td>Ida: ${s.dataIda || '-'} | Volta: ${s.dataVolta || '-'}</td></tr>` : '',
-      (cfg.showObs && s.observacoes) ? `<tr><td>Observações</td><td>${s.observacoes}</td></tr>` : ''
+      (cfg.showObs && s.observacoes) ? `<tr><td>Observações</td><td>${s.observacoes}</td></tr>` : '',
+      (cfg.showPagamento && s.pagamento) ? `<tr><td>Pagamento</td><td>${s.pagamento.replace(/\n/g,'<br>')}</td></tr>` : ''
     ].filter(Boolean).join('');
 
     const fullDist = `${useNm.toFixed(1)} NM (${kmToUse.toFixed(1)} km)${sourceLabel}`;
@@ -365,6 +404,8 @@
         <tr><td>Datas</td><td>Ida: ${s.dataIda||'—'} | Volta: ${s.dataVolta||'—'}</td></tr>
         <tr><td>Ajuste</td><td>${s.valorExtra>0 ? (s.tipoExtra==='soma'? '+':'-')+asCurrency(s.valorExtra) : '—'}</td></tr>
         <tr><td>Observações</td><td>${s.observacoes||'—'}</td></tr>
+        <tr><td>Pagamento</td><td>${s.pagamento||'—'}</td></tr>
+        <tr><td>Comissão</td><td>${s.comissaoAtiva? s.comissaoPercent+'%':'—'}</td></tr>
         <tr><td>PDF → Mostrar rota</td><td>${s.cfg.showRota?'Sim':'Não'}</td></tr>
         <tr><td>PDF → Mostrar mapa</td><td>${s.cfg.showMapa?'Sim':'Não'}</td></tr>
         <tr><td>PDF → Mostrar modelo</td><td>${s.cfg.showModelo?'Sim':'Não'}</td></tr>
@@ -373,6 +414,8 @@
         <tr><td>PDF → Mostrar datas</td><td>${s.cfg.showDatas?'Sim':'Não'}</td></tr>
         <tr><td>PDF → Mostrar ajuste</td><td>${s.cfg.showAjuste?'Sim':'Não'}</td></tr>
         <tr><td>PDF → Mostrar observações</td><td>${s.cfg.showObs?'Sim':'Não'}</td></tr>
+        <tr><td>PDF → Mostrar pagamento</td><td>${s.cfg.showPagamento?'Sim':'Não'}</td></tr>
+        <tr><td>PDF → Mostrar comissão</td><td>${s.cfg.showComissao?'Sim':'Não'}</td></tr>
       </table>`;
 
     const cont = ensureEl('resultado');
@@ -405,12 +448,25 @@
     else { alert('Informe a distância (NM/km) ou forneça origem e destino.'); return; }
 
     const valorKm=s.valorKmCustom>0 ? s.valorKmCustom : (valoresKm[s.aeronave]||0); const kmToUse=useKm || asKM(useNm);
-    let total=kmToUse*valorKm; let ajusteNode=null; if(s.valorExtra>0 && s.cfg.showAjuste){ if(s.tipoExtra==='soma'){ total+=s.valorExtra; ajusteNode={text:`Outras despesas: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0]}; } else { total-=s.valorExtra; ajusteNode={text:`Desconto: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0]}; } }
+    const base = kmToUse * valorKm;
+    let total=base; let ajusteNode=null;
+    if(s.valorExtra>0 && s.cfg.showAjuste){
+      if(s.tipoExtra==='soma'){ total+=s.valorExtra; ajusteNode={text:`Outras despesas: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0]}; }
+      else { total-=s.valorExtra; ajusteNode={text:`Desconto: ${asCurrency(s.valorExtra)}`, margin:[0,6,0,0]}; }
+    }
+    let comissaoNode=null;
+    if(s.comissaoAtiva && s.comissaoPercent>0){
+      let baseCom = base;
+      if(s.valorExtra>0 && s.tipoExtra==='subtrai') baseCom = Math.max(0, base - s.valorExtra);
+      const comVal = baseCom * (s.comissaoPercent/100);
+      total += comVal;
+      if(s.cfg.showComissao) comissaoNode={text:`Comissão (${s.comissaoPercent}%): ${asCurrency(comVal)}`, margin:[0,6,0,0]};
+    }
 
     const rotaStr = haveAirports ? waypoints.join(' → ') : '— (distância manual)';
     const distStr = `${useNm ? useNm.toFixed(1)+' NM' : '-'} ${kmToUse ? '('+kmToUse.toFixed(1)+' km)' : ''}${sourceLabel}`;
     const mapImage = (s.cfg.showMapa && haveAirports) ? (await generateMapImageData(waypoints)) : null;
-    const content=[ {text:'Cotação de Voo Executivo', style:'header'}, s.cfg.showRota?{text:rotaStr, margin:[0,6,0,0], style:'route'}:null, (s.cfg.showMapa && mapImage)?{image:mapImage, width:500, margin:[0,8,0,8]}:null, s.cfg.showModelo?{text:`Aeronave: ${s.aeronave}`}:null, s.cfg.showTarifa?{text:`Tarifa por km: ${asCurrency(valorKm)}`}:null, s.cfg.showDistancia?{text:`Distância: ${distStr}`} : null, s.cfg.showDatas?{text:`Data ida: ${s.dataIda || '-'}   |   Data volta: ${s.dataVolta || '-'}`} : null, ajusteNode, {text:`Total final: ${asCurrency(total)}`, style:'total', margin:[0,8,0,0]}, (s.cfg.showObs && s.observacoes)?{text:`Observações: ${s.observacoes}`, margin:[0,8,0,0]}:null ].filter(Boolean);
+    const content=[ {text:'Cotação de Voo Executivo', style:'header'}, s.cfg.showRota?{text:rotaStr, margin:[0,6,0,0], style:'route'}:null, (s.cfg.showMapa && mapImage)?{image:mapImage, width:500, margin:[0,8,0,8]}:null, s.cfg.showModelo?{text:`Aeronave: ${s.aeronave}`}:null, s.cfg.showTarifa?{text:`Tarifa por km: ${asCurrency(valorKm)}`}:null, s.cfg.showDistancia?{text:`Distância: ${distStr}`} : null, s.cfg.showDatas?{text:`Data ida: ${s.dataIda || '-'}   |   Data volta: ${s.dataVolta || '-'}`} : null, ajusteNode, comissaoNode, {text:`Total final: ${asCurrency(total)}`, style:'total', margin:[0,8,0,0]}, (s.cfg.showObs && s.observacoes)?{text:`Observações: ${s.observacoes}`, margin:[0,8,0,0]}:null, (s.cfg.showPagamento && s.pagamento)?{text:`Dados de pagamento:\n${s.pagamento}`, margin:[0,8,0,0]}:null ].filter(Boolean);
 
     const docDefinition={ content, styles:{ header:{fontSize:18,bold:true}, route:{fontSize:13,bold:true}, total:{fontSize:14,bold:true} }, defaultStyle:{fontSize:11} };
     try{ pdfMake.createPdf(docDefinition).download('cotacao.pdf'); }
@@ -431,12 +487,15 @@
     updateDistanceFromAirports();
   }
   function resetForm(){
-    ["aeronave","nm","km","origem","destino","dataIda","dataVolta","observacoes","valorExtra","valorKm"].forEach(id=>{ const el=$(id); if(el) el.value=''; });
+    ["aeronave","nm","km","origem","destino","dataIda","dataVolta","observacoes","valorExtra","valorKm","pagamento","comissaoPercent"].forEach(id=>{ const el=$(id); if(el) el.value=''; });
     $('resultado').innerHTML='';
     $('stops').innerHTML='';
     if(routeLayer){ try{ routeLayer.remove(); }catch{} routeLayer=null; }
     if(map){ try{ map.setView([-14.2350,-51.9253],4); }catch{} }
     lockDatesToToday();
+    const cw=$('comissaoWrap'); if(cw) cw.style.display='none';
+    const btn=$('btnAddComissao'); if(btn) btn.disabled=false;
+    comissaoAtiva=false;
   }
 
   function runDiagnostics(){
@@ -464,6 +523,7 @@
     on('aeronave','change', syncValorKmByAeronave);
     on('origem','input', updateDistanceFromAirports);
     on('destino','input', updateDistanceFromAirports);
+    on('btnAddComissao','click', ()=>{ const cw=$('comissaoWrap'); if(cw) cw.style.display=''; const btn=$('btnAddComissao'); if(btn) btn.disabled=true; comissaoAtiva=true; });
 
     on('btnReadme','click', ()=>{ const m=$('#readmeModal'); if(m) m.style.display='block'; });
     on('btnCloseReadme','click', ()=>{ const m=$('#readmeModal'); if(m) m.style.display='none'; });
