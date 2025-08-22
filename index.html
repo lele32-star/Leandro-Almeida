@@ -174,26 +174,18 @@
       <option value="subtrai">Subtrair</option>
     </select>
 
-    <!-- === Componente de Comissão (isolado) =================================== -->
+    <!-- === Componente de Comissão (corrigido) ================================ -->
     <section id="commission-component" role="region" aria-labelledby="commissionTitle" style="margin-top:1rem">
       <h3 id="commissionTitle" style="position:absolute;left:-9999px;top:-9999px;">Comissão</h3>
 
-      <!-- Botão para ativar/desativar a área de comissão -->
+      <!-- Único botão com rótulo claro -->
       <button type="button" id="btnAddCommission"
               aria-pressed="false"
               style="padding:.6rem .9rem;border:1px solid #ddd;border-radius:.75rem;background:#fff;cursor:pointer">
         Adicionar comissão
       </button>
 
-      <!-- Botão filtro: mostrar/ocultar a comissão no PDF -->
-      <button type="button" id="btnCommissionPdf"
-              aria-pressed="true"
-              title="Filtrar exibição da comissão no PDF"
-              style="padding:.6rem .9rem;border:1px solid #ddd;border-radius:.75rem;background:#fff;cursor:pointer; margin-left:.5rem;">
-        Comissão no PDF: Ativar
-      </button>
-
-      <!-- Painel de configuração da comissão (inicia oculto) -->
+      <!-- Painel com percentual (inicia oculto) -->
       <div id="commissionPanel" hidden
            style="margin-top:.75rem; padding:1rem; border:1px solid #eee; border-radius:.75rem; background:#fafafa">
         <label for="commissionPercent" style="display:block;font-size:.95rem;margin-bottom:.4rem">
@@ -204,18 +196,16 @@
                aria-describedby="commissionHelp"
                style="width:120px;padding:.5rem;border:1px solid #ddd;border-radius:.5rem" />
         <div id="commissionHelp" style="font-size:.85rem;color:#666;margin-top:.35rem">
-          A comissão será aplicada sobre a base conforme as regras abaixo.
+          A comissão será aplicada sobre a base conforme as regras informadas no sistema.
         </div>
 
-        <!-- Preview simples do valor calculado (apenas visual) -->
         <output id="commissionPreview" style="display:block;margin-top:.75rem;font-weight:600">
           Comissão: R$ 0,00
         </output>
       </div>
 
-      <!-- Campos ocultos de integração (não interferem no restante do código) -->
-      <input type="hidden" id="commissionAmount" value="0">      <!-- valor da comissão calculada -->
-      <input type="hidden" id="commissionShowInPdf" value="1">   <!-- 1 = mostrar no PDF, 0 = ocultar -->
+      <!-- Integração silenciosa -->
+      <input type="hidden" id="commissionAmount" value="0">
     </section>
 
     <script>
@@ -224,18 +214,14 @@
       if (!root) return;
 
       const btnAdd = root.querySelector('#btnAddCommission');
-      const btnPdf = root.querySelector('#btnCommissionPdf');
       const panel = root.querySelector('#commissionPanel');
       const percentInput = root.querySelector('#commissionPercent');
       const preview = root.querySelector('#commissionPreview');
       const amountHidden = root.querySelector('#commissionAmount');
-      const showInPdfHidden = root.querySelector('#commissionShowInPdf');
 
-      // Estado interno isolado deste módulo
       const state = {
-        enabled: false,                 // só aplica comissão se true
-        percent: Number(percentInput.value) || 0,
-        showInPdf: true                 // controle do "botão filtro"
+        enabled: false,
+        percent: Number(percentInput.value) || 0
       };
 
       const fmtBRL = (n) => {
@@ -245,10 +231,9 @@
           return 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
         }
       };
-
       const clamp2 = (n) => Number((Number(n) || 0).toFixed(2));
 
-      // --- Eventos de UI --------------------------------------------------------
+      // Botão principal
       btnAdd.addEventListener('click', () => {
         state.enabled = !state.enabled;
         panel.hidden = !state.enabled;
@@ -256,44 +241,64 @@
         btnAdd.textContent = state.enabled ? 'Remover comissão' : 'Adicionar comissão';
 
         if (!state.enabled) {
-          // Zera valor e avisa o restante do sistema
           amountHidden.value = '0';
           preview.textContent = 'Comissão: R$ 0,00';
           dispatch('commission:changed', snapshot({ amount: 0, base: 0 }));
         }
       });
 
-      btnPdf.addEventListener('click', () => {
-        state.showInPdf = !state.showInPdf;
-        btnPdf.setAttribute('aria-pressed', String(state.showInPdf));
-        btnPdf.textContent = state.showInPdf ? 'Comissão no PDF: Ativar' : 'Comissão no PDF: Ocultar';
-        showInPdfHidden.value = state.showInPdf ? '1' : '0';
-      });
-
       percentInput.addEventListener('input', () => {
-        state.percent = clamp2(percentInput.value);
+        const v = Number(String(percentInput.value).replace(',', '.'));
+        state.percent = Math.max(0, isNaN(v) ? 0 : v);
       });
 
-      root.addEventListener('commission:base', e => {
-        if (!state.enabled) return;
-        const base = clamp2(e.detail || 0);
-        const amount = clamp2(base * (state.percent / 100));
-        amountHidden.value = String(amount);
-        preview.textContent = `Comissão: ${fmtBRL(amount)}`;
-        dispatch('commission:changed', snapshot({ amount, base }));
-      });
-
-      function dispatch(name, detail) {
-        if (typeof CustomEvent !== 'undefined') {
-          root.dispatchEvent(new CustomEvent(name, { bubbles: true, detail }));
+      function calculate({ km, tarifa, ajusteValor = 0 }) {
+        if (!state.enabled) {
+          const payload = snapshot({ amount: 0, base: 0 });
+          dispatch('commission:changed', payload);
+          return payload;
         }
+        const basePura = Number(km) * Number(tarifa); // km x tarifa
+        let base;
+        if (Number(ajusteValor) < 0) {
+          base = basePura + Number(ajusteValor); // desconto reduz base
+        } else {
+          base = basePura; // acréscimo não aumenta base da comissão
+        }
+        base = Math.max(0, base);
+        const amount = clamp2(base * (Number(state.percent) / 100));
+        amountHidden.value = String(amount);
+        preview.textContent = 'Comissão: ' + fmtBRL(amount);
+
+        const payload = snapshot({ amount, base });
+        dispatch('commission:changed', payload);
+        return payload;
       }
 
-      function snapshot(extra = {}) {
-        return { ...state, amount: Number(amountHidden.value), ...extra };
+      function snapshot({ amount, base }) {
+        return {
+          enabled: state.enabled,
+          percent: Number(state.percent),
+          amount: Number(amount || 0),
+          base: Number(base || 0)
+        };
       }
+      function dispatch(name, detail) {
+        root.dispatchEvent(new CustomEvent(name, { detail, bubbles: true }));
+      }
+
+      // API pública mantida
+      window.CommissionModule = Object.freeze({
+        calculate,
+        getState: () => snapshot({ amount: amountHidden.value, base: 0 }),
+        setPercent: (p) => {
+          state.percent = Math.max(0, Number(p) || 0);
+          percentInput.value = String(state.percent);
+        }
+      });
     })();
     </script>
+    <!-- === Fim do Componente de Comissão ===================================== -->
 
     <label for="pagamento">Dados para pagamento:</label>
     <textarea id="pagamento" rows="5">INTER - 077
@@ -316,6 +321,39 @@ Conta: 25691815-5</textarea>
       <label><input type="checkbox" id="showObservacoes" checked /> Observações</label>
       <label><input type="checkbox" id="showPagamento" checked /> Pagamento</label>
       <label><input type="checkbox" id="showMapa" checked /> Mapa</label>
+      <!-- === Opção de PDF para Comissão ======================================== -->
+      <label for="pdfCommissionToggle" style="margin-right:1rem;display:inline-flex;align-items:center;gap:.4rem;">
+        <input type="checkbox" id="pdfCommissionToggle" checked>
+        Comissão
+      </label>
+
+      <script>
+      (() => {
+        const pdfToggle = document.getElementById('pdfCommissionToggle');
+
+        // Mantém compatibilidade criando (ou reutilizando) um hidden com mesmo id usado no projeto
+        let hidden = document.getElementById('commissionShowInPdf');
+        if (!hidden) {
+          hidden = document.createElement('input');
+          hidden.type = 'hidden';
+          hidden.id = 'commissionShowInPdf';
+          hidden.value = '1';
+          document.body.appendChild(hidden);
+        }
+
+        const sync = () => {
+          hidden.value = pdfToggle.checked ? '1' : '0';
+          // Evento para quem já ouve visibilidade de comissão no PDF
+          document.dispatchEvent(new CustomEvent('commission:visibility', {
+            detail: { showInPdf: pdfToggle.checked }, bubbles: true
+          }));
+        };
+
+        pdfToggle.addEventListener('change', sync);
+        sync();
+      })();
+      </script>
+      <!-- === Fim da opção de PDF para Comissão ================================= -->
     </div>
 
     <div class="botoes">
