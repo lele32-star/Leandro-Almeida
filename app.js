@@ -7,6 +7,25 @@ const valoresKm = {
   "Cirrus SR22": 15
 };
 
+let valorParcialFn = (distanciaKm, valorKm) => distanciaKm * valorKm;
+let valorTotalFn = (distanciaKm, valorKm, valorExtra = 0) =>
+  valorParcialFn(distanciaKm, valorKm) + valorExtra;
+
+try {
+  if (typeof require === 'function') {
+    const calc = require('./cotacao');
+    valorParcialFn = calc.valorParcial;
+    valorTotalFn = calc.valorTotal;
+  }
+} catch (err) {
+  /* ignore missing module in browser */
+}
+
+if (typeof window !== 'undefined') {
+  if (typeof window.valorParcial === 'function') valorParcialFn = window.valorParcial;
+  if (typeof window.valorTotal === 'function') valorTotalFn = window.valorTotal;
+}
+
 const API_KEY = (typeof process !== 'undefined' && process.env && process.env.AERODATABOX_KEY)
   ? process.env.AERODATABOX_KEY
   : '84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b';
@@ -210,13 +229,19 @@ function buildState() {
 
 function buildDocDefinition(state) {
   const km = state.nm * 1.852;
-  const subtotal = km * state.valorKm;
-  let total = subtotal;
-  if (state.valorExtra > 0) {
-    if (state.tipoExtra === 'soma') total += state.valorExtra; else total -= state.valorExtra;
-  }
-  const { totalComissao, detalhesComissao } = calcularComissao(subtotal, state.valorExtra, state.tipoExtra, state.commissions || []);
-  total += totalComissao;
+  const subtotal = valorParcialFn(km, state.valorKm);
+  const totalSemComissao = valorTotalFn(
+    km,
+    state.valorKm,
+    state.tipoExtra === 'soma' ? state.valorExtra : -state.valorExtra
+  );
+  const { totalComissao, detalhesComissao } = calcularComissao(
+    subtotal,
+    state.valorExtra,
+    state.tipoExtra,
+    state.commissions || []
+  );
+  const total = totalSemComissao + totalComissao;
 
   const content = [{ text: 'Cotação de Voo Executivo', style: 'header' }];
 
@@ -266,19 +291,22 @@ function buildDocDefinition(state) {
 async function gerarPreOrcamento() {
   const state = buildState();
   const km = state.nm * 1.852;
-  const subtotal = km * state.valorKm;
-  let total = subtotal;
+  const subtotal = valorParcialFn(km, state.valorKm);
+  let total = valorTotalFn(
+    km,
+    state.valorKm,
+    state.tipoExtra === 'soma' ? state.valorExtra : -state.valorExtra
+  );
   let labelExtra = '';
   if (state.valorExtra > 0) {
-    if (state.tipoExtra === 'soma') {
-      total += state.valorExtra;
-      labelExtra = `+ R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-    } else {
-      total -= state.valorExtra;
-      labelExtra = `- R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
-    }
+    labelExtra = `${state.tipoExtra === 'soma' ? '+' : '-'} R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
   }
-  const { totalComissao, detalhesComissao } = calcularComissao(subtotal, state.valorExtra, state.tipoExtra, state.commissions || []);
+  const { totalComissao, detalhesComissao } = calcularComissao(
+    subtotal,
+    state.valorExtra,
+    state.tipoExtra,
+    state.commissions || []
+  );
   total += totalComissao;
   const comissoesHtml = detalhesComissao.map((c, i) => `<p><strong>Comissão ${i + 1}:</strong> R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`).join('');
   const resultado = document.getElementById('resultado');
