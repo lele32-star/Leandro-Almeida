@@ -7,6 +7,10 @@ const valoresKm = {
   "Cirrus SR22": 15
 };
 
+const API_KEY = (typeof process !== 'undefined' && process.env && process.env.AERODATABOX_KEY)
+  ? process.env.AERODATABOX_KEY
+  : '84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b';
+
 let map;
 let routeLayer = null;
 
@@ -222,7 +226,12 @@ async function gerarPDF(state) {
   if (s.showMapa) {
     const codes = [s.origem, s.destino, ...(s.stops || [])];
     for (const code of codes) {
-      const res = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${code}`);
+      const res = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${code}`, {
+        headers: {
+          'X-RapidAPI-Key': API_KEY,
+          'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
+        }
+      });
       const data = await res.json();
       if (data && data.location) waypoints.push({ lat: data.location.lat, lng: data.location.lon });
     }
