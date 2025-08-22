@@ -146,11 +146,13 @@
       </div>
       <div>
         <label for="origem">Origem:</label>
-        <input type="text" id="origem" class="icao" maxlength="4" />
+        <input type="text" id="origem" class="icao" maxlength="4"
+          oninput="this.value=this.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);" />
       </div>
       <div>
         <label for="destino">Destino:</label>
-        <input type="text" id="destino" class="icao" maxlength="4" />
+        <input type="text" id="destino" class="icao" maxlength="4"
+          oninput="this.value=this.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);" />
       </div>
     </div>
 
@@ -358,8 +360,8 @@ Conta: 25691815-5</textarea>
     </div>
 
     <div class="botoes">
-      <button onclick="gerarPreOrcamento()">Gerar Pré-Orçamento</button>
-      <button onclick="gerarPDF()">Gerar PDF</button>
+      <button onclick="appGerarPreOrcamento()">Gerar Pré-Orçamento</button>
+      <button onclick="appGerarPDF()">Gerar PDF</button>
       <button onclick="limparCampos()">Limpar</button>
     </div>
 

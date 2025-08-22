@@ -513,6 +513,9 @@ if (typeof window !== 'undefined') {
   window.gerarPreOrcamento = gerarPreOrcamento;
   window.gerarPDF = gerarPDF;
   window.limparCampos = limparCampos;
+  // Aliases para garantir que os botões chamem SEMPRE a versão do app.js
+  window.appGerarPreOrcamento = gerarPreOrcamento;
+  window.appGerarPDF = gerarPDF;
 }
 
 if (typeof module !== 'undefined') {
