@@ -180,6 +180,11 @@ function buildState() {
   const valorKm = Number.isFinite(tarifaVal) ? tarifaVal : valoresKm[aeronave];
   const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => i.value).filter(Boolean);
   const commissions = Array.from(document.querySelectorAll('.commission-percent')).map(input => parseFloat(input.value) || 0);
+  const commissionAmountEl = document.getElementById('commissionAmount');
+  const commissionShowEl = document.getElementById('commissionShowInPdf');
+  const showComissaoEl = document.getElementById('showComissao');
+  const showComissao = showComissaoEl ? showComissaoEl.checked : commissionShowEl ? commissionShowEl.value !== '0' : true;
+  const commissionAmount = commissionAmountEl ? parseFloat(commissionAmountEl.value) || 0 : 0;
 
   return {
     aeronave,
@@ -195,13 +200,14 @@ function buildState() {
     valorKm,
     stops,
     commissions,
+    commissionAmount,
     showRota: document.getElementById('showRota').checked,
     showAeronave: document.getElementById('showAeronave').checked,
     showTarifa: document.getElementById('showTarifa').checked,
     showDistancia: document.getElementById('showDistancia').checked,
     showDatas: document.getElementById('showDatas').checked,
     showAjuste: document.getElementById('showAjuste').checked,
-    showComissao: document.getElementById('showComissao').checked,
+    showComissao,
     showObservacoes: document.getElementById('showObservacoes').checked,
     showPagamento: document.getElementById('showPagamento').checked,
     showMapa: document.getElementById('showMapa').checked
@@ -222,7 +228,17 @@ function buildDocDefinition(state) {
     state.tipoExtra,
     state.commissions || []
   );
-  const total = totalSemComissao + totalComissao;
+  let commissionAmount = state.commissionAmount || 0;
+  if (typeof document !== 'undefined') {
+    const comp = document.getElementById('commission-component');
+    if (comp && typeof comp.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+      const base = subtotal - (state.valorExtra > 0 && state.tipoExtra === 'subtrai' ? state.valorExtra : 0);
+      comp.dispatchEvent(new CustomEvent('commission:base', { detail: base }));
+      const amtEl = document.getElementById('commissionAmount');
+      if (amtEl) commissionAmount = parseFloat(amtEl.value) || 0;
+    }
+  }
+  const total = totalSemComissao + totalComissao + commissionAmount;
 
   const content = [{ text: 'Cotação de Voo Executivo', style: 'header' }];
 
@@ -254,6 +270,9 @@ function buildDocDefinition(state) {
     detalhesComissao.forEach((c, idx) => {
       content.push({ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
     });
+    if (commissionAmount > 0) {
+      content.push({ text: `Comissão: R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
+    }
   }
 
   content.push({ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
@@ -290,8 +309,21 @@ async function gerarPreOrcamento() {
     state.tipoExtra,
     state.commissions || []
   );
-  total += totalComissao;
-  const comissoesHtml = detalhesComissao.map((c, i) => `<p><strong>Comissão ${i + 1}:</strong> R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`).join('');
+  let commissionAmount = state.commissionAmount || 0;
+  if (typeof document !== 'undefined') {
+    const comp = document.getElementById('commission-component');
+    if (comp && typeof comp.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+      const base = subtotal - (state.valorExtra > 0 && state.tipoExtra === 'subtrai' ? state.valorExtra : 0);
+      comp.dispatchEvent(new CustomEvent('commission:base', { detail: base }));
+      const amtEl = document.getElementById('commissionAmount');
+      if (amtEl) commissionAmount = parseFloat(amtEl.value) || 0;
+    }
+  }
+  total += totalComissao + commissionAmount;
+  let comissoesHtml = detalhesComissao.map((c, i) => `<p><strong>Comissão ${i + 1}:</strong> R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`).join('');
+  if (commissionAmount > 0) {
+    comissoesHtml += `<p><strong>Comissão:</strong> R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`;
+  }
   const resultado = document.getElementById('resultado');
   resultado.innerHTML = `
     <h3>Pré-Orçamento</h3>
@@ -342,7 +374,8 @@ function limparCampos() {
   document.getElementById('showDistancia').checked = true;
   document.getElementById('showDatas').checked = true;
   document.getElementById('showAjuste').checked = true;
-  document.getElementById('showComissao').checked = true;
+  const showComissaoEl = document.getElementById('showComissao');
+  if (showComissaoEl) showComissaoEl.checked = true;
   document.getElementById('showObservacoes').checked = true;
   document.getElementById('showPagamento').checked = true;
   document.getElementById('showMapa').checked = true;
@@ -352,6 +385,29 @@ function limparCampos() {
   if (comissoesDiv) comissoesDiv.innerHTML = '';
   const comissaoConfig = document.getElementById('comissaoConfig');
   if (comissaoConfig) comissaoConfig.style.display = 'none';
+  const commissionComp = document.getElementById('commission-component');
+  if (commissionComp) {
+    const btnAdd = commissionComp.querySelector('#btnAddCommission');
+    const btnPdf = commissionComp.querySelector('#btnCommissionPdf');
+    const panel = commissionComp.querySelector('#commissionPanel');
+    const percent = commissionComp.querySelector('#commissionPercent');
+    const preview = commissionComp.querySelector('#commissionPreview');
+    const amountHidden = commissionComp.querySelector('#commissionAmount');
+    const showHidden = commissionComp.querySelector('#commissionShowInPdf');
+    panel.hidden = true;
+    if (btnAdd) {
+      btnAdd.setAttribute('aria-pressed', 'false');
+      btnAdd.textContent = 'Adicionar comissão';
+    }
+    if (btnPdf) {
+      btnPdf.setAttribute('aria-pressed', 'true');
+      btnPdf.textContent = 'Comissão no PDF: Ativar';
+    }
+    if (percent) percent.value = '5';
+    if (preview) preview.textContent = 'Comissão: R$ 0,00';
+    if (amountHidden) amountHidden.value = '0';
+    if (showHidden) showHidden.value = '1';
+  }
 }
 
 if (typeof window !== 'undefined') {

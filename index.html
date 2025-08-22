@@ -174,11 +174,126 @@
       <option value="subtrai">Subtrair</option>
     </select>
 
-    <button id="comissaoBtn" type="button">Comissão</button>
-    <div id="comissaoConfig" style="display:none;">
-      <div id="comissoes"></div>
-      <button id="addCommission" type="button">Adicionar Comissão</button>
-    </div>
+    <!-- === Componente de Comissão (isolado) =================================== -->
+    <section id="commission-component" role="region" aria-labelledby="commissionTitle" style="margin-top:1rem">
+      <h3 id="commissionTitle" style="position:absolute;left:-9999px;top:-9999px;">Comissão</h3>
+
+      <!-- Botão para ativar/desativar a área de comissão -->
+      <button type="button" id="btnAddCommission"
+              aria-pressed="false"
+              style="padding:.6rem .9rem;border:1px solid #ddd;border-radius:.75rem;background:#fff;cursor:pointer">
+        Adicionar comissão
+      </button>
+
+      <!-- Botão filtro: mostrar/ocultar a comissão no PDF -->
+      <button type="button" id="btnCommissionPdf"
+              aria-pressed="true"
+              title="Filtrar exibição da comissão no PDF"
+              style="padding:.6rem .9rem;border:1px solid #ddd;border-radius:.75rem;background:#fff;cursor:pointer; margin-left:.5rem;">
+        Comissão no PDF: Ativar
+      </button>
+
+      <!-- Painel de configuração da comissão (inicia oculto) -->
+      <div id="commissionPanel" hidden
+           style="margin-top:.75rem; padding:1rem; border:1px solid #eee; border-radius:.75rem; background:#fafafa">
+        <label for="commissionPercent" style="display:block;font-size:.95rem;margin-bottom:.4rem">
+          Percentual da comissão (%)
+        </label>
+        <input id="commissionPercent" type="number" min="0" max="100" step="0.1" value="5"
+               inputmode="decimal"
+               aria-describedby="commissionHelp"
+               style="width:120px;padding:.5rem;border:1px solid #ddd;border-radius:.5rem" />
+        <div id="commissionHelp" style="font-size:.85rem;color:#666;margin-top:.35rem">
+          A comissão será aplicada sobre a base conforme as regras abaixo.
+        </div>
+
+        <!-- Preview simples do valor calculado (apenas visual) -->
+        <output id="commissionPreview" style="display:block;margin-top:.75rem;font-weight:600">
+          Comissão: R$ 0,00
+        </output>
+      </div>
+
+      <!-- Campos ocultos de integração (não interferem no restante do código) -->
+      <input type="hidden" id="commissionAmount" value="0">      <!-- valor da comissão calculada -->
+      <input type="hidden" id="commissionShowInPdf" value="1">   <!-- 1 = mostrar no PDF, 0 = ocultar -->
+    </section>
+
+    <script>
+    (() => {
+      const root = document.getElementById('commission-component');
+      if (!root) return;
+
+      const btnAdd = root.querySelector('#btnAddCommission');
+      const btnPdf = root.querySelector('#btnCommissionPdf');
+      const panel = root.querySelector('#commissionPanel');
+      const percentInput = root.querySelector('#commissionPercent');
+      const preview = root.querySelector('#commissionPreview');
+      const amountHidden = root.querySelector('#commissionAmount');
+      const showInPdfHidden = root.querySelector('#commissionShowInPdf');
+
+      // Estado interno isolado deste módulo
+      const state = {
+        enabled: false,                 // só aplica comissão se true
+        percent: Number(percentInput.value) || 0,
+        showInPdf: true                 // controle do "botão filtro"
+      };
+
+      const fmtBRL = (n) => {
+        try {
+          return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0);
+        } catch {
+          return 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
+        }
+      };
+
+      const clamp2 = (n) => Number((Number(n) || 0).toFixed(2));
+
+      // --- Eventos de UI --------------------------------------------------------
+      btnAdd.addEventListener('click', () => {
+        state.enabled = !state.enabled;
+        panel.hidden = !state.enabled;
+        btnAdd.setAttribute('aria-pressed', String(state.enabled));
+        btnAdd.textContent = state.enabled ? 'Remover comissão' : 'Adicionar comissão';
+
+        if (!state.enabled) {
+          // Zera valor e avisa o restante do sistema
+          amountHidden.value = '0';
+          preview.textContent = 'Comissão: R$ 0,00';
+          dispatch('commission:changed', snapshot({ amount: 0, base: 0 }));
+        }
+      });
+
+      btnPdf.addEventListener('click', () => {
+        state.showInPdf = !state.showInPdf;
+        btnPdf.setAttribute('aria-pressed', String(state.showInPdf));
+        btnPdf.textContent = state.showInPdf ? 'Comissão no PDF: Ativar' : 'Comissão no PDF: Ocultar';
+        showInPdfHidden.value = state.showInPdf ? '1' : '0';
+      });
+
+      percentInput.addEventListener('input', () => {
+        state.percent = clamp2(percentInput.value);
+      });
+
+      root.addEventListener('commission:base', e => {
+        if (!state.enabled) return;
+        const base = clamp2(e.detail || 0);
+        const amount = clamp2(base * (state.percent / 100));
+        amountHidden.value = String(amount);
+        preview.textContent = `Comissão: ${fmtBRL(amount)}`;
+        dispatch('commission:changed', snapshot({ amount, base }));
+      });
+
+      function dispatch(name, detail) {
+        if (typeof CustomEvent !== 'undefined') {
+          root.dispatchEvent(new CustomEvent(name, { bubbles: true, detail }));
+        }
+      }
+
+      function snapshot(extra = {}) {
+        return { ...state, amount: Number(amountHidden.value), ...extra };
+      }
+    })();
+    </script>
 
     <label for="pagamento">Dados para pagamento:</label>
     <textarea id="pagamento" rows="5">INTER - 077
@@ -198,7 +313,6 @@ Conta: 25691815-5</textarea>
       <label><input type="checkbox" id="showDistancia" checked /> Distância</label>
       <label><input type="checkbox" id="showDatas" checked /> Datas</label>
       <label><input type="checkbox" id="showAjuste" checked /> Ajuste</label>
-      <label><input type="checkbox" id="showComissao" checked /> Comissão</label>
       <label><input type="checkbox" id="showObservacoes" checked /> Observações</label>
       <label><input type="checkbox" id="showPagamento" checked /> Pagamento</label>
       <label><input type="checkbox" id="showMapa" checked /> Mapa</label>
