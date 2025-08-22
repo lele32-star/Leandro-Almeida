@@ -208,6 +208,8 @@
 
   const valoresKm = { "Hawker 400":36, "Phenom 100":36, "Citation II":36, "King Air C90":30, "Sêneca IV":22, "Cirrus SR22":15 };
   const ICAO_COORDS = { SBBR:{lat:-15.871,lng:-47.918}, SBSP:{lat:-23.6267,lng:-46.6554}, SBMT:{lat:-23.509,lng:-46.637}, SBMO:{lat:-9.5108,lng:-35.7917}, SBEG:{lat:-3.039,lng:-60.049}, SBGL:{lat:-22.809,lng:-43.25}, SKCL:{lat:3.543,lng:-76.381} };
+  const AERODATABOX_KEY = '84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b';
+  const coordCache = { ...ICAO_COORDS };
 
   function ensureKmSynced(){ const nm=parseNum($("nm")?.value); if(nm>0 && $("km")) $("km").value = asKM(nm).toFixed(1); }
   function syncValorKmByAeronave(){ const a=$("aeronave")?.value; const d=valoresKm[a]||0; if(d>0 && $("valorKm")) $("valorKm").value=d.toFixed(2); }
@@ -261,14 +263,26 @@
   function on(id, type, handler){ const el=$(id); if(!el) return false; el.addEventListener(type, handler); return true; }
 
   function haversineKm(a,b){ const R=6371, toRad=d=>d*Math.PI/180; const dlat=toRad(b.lat-a.lat), dlon=toRad(b.lng-a.lng); const s=Math.sin(dlat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dlon/2)**2; return 2*R*Math.asin(Math.sqrt(s)); }
-  const getCoords=(code)=> ICAO_COORDS[code] ? {lat:ICAO_COORDS[code].lat, lng:ICAO_COORDS[code].lng} : null;
-  function computeRouteKm(waypoints){ const coords=waypoints.map(getCoords); if(coords.some(c=>!c)) return null; let total=0; for(let i=0;i<coords.length-1;i++) total+=haversineKm(coords[i], coords[i+1]); return total; }
+  async function fetchCoords(code){
+    const res = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${code}`, {
+      headers:{'X-RapidAPI-Key':AERODATABOX_KEY,'X-RapidAPI-Host':'aerodatabox.p.rapidapi.com'}
+    });
+    if(!res.ok) throw new Error('API');
+    const data = await res.json();
+    return {lat:data.location.lat, lng:data.location.lon};
+  }
+  async function getCoords(code){
+    const c=coordCache[code];
+    if(c) return c;
+    try{ const f=await fetchCoords(code); coordCache[code]=f; return f; }catch(e){ return null; }
+  }
+  async function computeRouteKm(waypoints){ const coords=await Promise.all(waypoints.map(getCoords)); if(coords.some(c=>!c)) return null; let total=0; for(let i=0;i<coords.length-1;i++) total+=haversineKm(coords[i], coords[i+1]); return total; }
 
-  function updateDistanceFromAirports(){
+  async function updateDistanceFromAirports(){
     const s = buildState();
-    if(!s.origem || !s.destino) return;
+    if(!s.origem || !s.destino){ if(routeLayer){ try{routeLayer.remove();}catch{} routeLayer=null; } return; }
     const waypoints = [s.origem, ...s.stops, s.destino];
-    const autoKm = computeRouteKm(waypoints);
+    const autoKm = await computeRouteKm(waypoints);
     if(autoKm && isFinite(autoKm)){
       const kmEl = $('#km'); const nmEl = $('#nm');
       if(kmEl) kmEl.value = autoKm.toFixed(1);
@@ -288,7 +302,7 @@
       const el=$('map'); if(el){ el.innerHTML='<div style="padding:8px;color:#b2b8c5">Mapa indisponível.</div>'; }
     }
   }
-  function drawRouteOnMap(waypoints){ if(!map) return; if(routeLayer){ try{ routeLayer.remove(); }catch{} routeLayer=null; } const codes=Array.isArray(waypoints)?waypoints.map(toICAO):[toICAO(arguments[0]),toICAO(arguments[1])]; const coords=codes.map(getCoords); if(coords.some(c=>!c)){ map.setView([-14.2350,-51.9253],4); return; } const markers=coords.map((c,i)=> L.marker([c.lat,c.lng]).bindPopup(`<b>${codes[i]}</b>`)); const poly=L.polyline(coords.map(c=>[c.lat,c.lng]),{weight:3,opacity:.9}); routeLayer=L.layerGroup([...markers,poly]).addTo(map); map.fitBounds(poly.getBounds(),{padding:[20,20]}); }
+  async function drawRouteOnMap(waypoints){ if(!map) return; if(routeLayer){ try{ routeLayer.remove(); }catch{} routeLayer=null; } const codes=waypoints.map(toICAO); const coords=await Promise.all(codes.map(getCoords)); if(coords.some(c=>!c)){ map.setView([-14.2350,-51.9253],4); return; } const markers=coords.map((c,i)=> L.marker([c.lat,c.lng]).bindPopup(`<b>${codes[i]}</b>`)); const poly=L.polyline(coords.map(c=>[c.lat,c.lng]),{weight:3,opacity:.9}); routeLayer=L.layerGroup([...markers,poly]).addTo(map); map.fitBounds(poly.getBounds(),{padding:[20,20]}); }
   function applyCfgToUI(s, haveAirports, waypoints){
     const cfg = s && s.cfg ? s.cfg : { showMapa: !!$('#cfgShowMapa')?.checked };
     const showMapa = !!cfg.showMapa;
@@ -299,13 +313,13 @@
     if(showMapa && map){ setTimeout(()=>{ try{ map.invalidateSize(); }catch(e){} }, 80); }
   }
 
-  function gerarPreOrcamento(){
+  async function gerarPreOrcamento(){
     const s=buildState();
     if(!s.aeronave){ alert('Selecione uma aeronave.'); return; }
 
     const haveAirports = !!(s.origem && s.destino);
     const waypoints = haveAirports ? [s.origem, ...s.stops, s.destino] : [];
-    const autoKm = haveAirports && waypoints.length>=2 ? computeRouteKm(waypoints) : null;
+    const autoKm = haveAirports && waypoints.length>=2 ? await computeRouteKm(waypoints) : null;
 
     const manual=(s.nm>0 || s.km>0);
     let useKm=0, useNm=0, sourceLabel='';
@@ -381,7 +395,7 @@
 
     const haveAirports = !!(s.origem && s.destino);
     const waypoints = haveAirports ? [s.origem, ...s.stops, s.destino] : [];
-    const autoKm = haveAirports && waypoints.length>=2 ? computeRouteKm(waypoints) : null;
+    const autoKm = haveAirports && waypoints.length>=2 ? await computeRouteKm(waypoints) : null;
 
     if(!window.pdfMake){ alert('Biblioteca de PDF não carregou.'); return; }
 
