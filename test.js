@@ -31,6 +31,7 @@ const baseState = {
   showDistancia: true,
   showDatas: true,
   showAjuste: true,
+  showComissao: true,
   showObservacoes: true,
   showPagamento: true,
   showMapa: true
@@ -43,6 +44,7 @@ const expectations = {
   showDistancia: 'Distância:',
   showDatas: 'Datas:',
   showAjuste: 'Outras Despesas',
+  showComissao: 'Comissão 1:',
   showObservacoes: 'Observações:',
   showPagamento: 'Dados de pagamento:',
   showMapa: 'Mapa:'
@@ -50,6 +52,7 @@ const expectations = {
 
 for (const [flag, keyword] of Object.entries(expectations)) {
   const state = { ...baseState, [flag]: false };
+  if (flag === 'showComissao') state.commissions = [10];
   const doc = buildDocDefinition(state);
   const text = extractText(doc);
   assert(!text.includes(keyword), `${keyword} should be omitted when ${flag} is false`);
@@ -87,13 +90,14 @@ const elements = {
   showDistancia: { checked: true },
   showDatas: { checked: true },
   showAjuste: { checked: true },
+  showComissao: { checked: true },
   showObservacoes: { checked: true },
   showPagamento: { checked: true },
   showMapa: { checked: true }
 };
 global.document = {
   getElementById: id => elements[id],
-  querySelectorAll: sel => (sel === '.stop-input' ? [{ value: 'SBBH' }] : [])
+  querySelectorAll: sel => (sel === '.stop-input' ? [{ value: 'SBBH' }] : sel === '.commission-percent' ? [{ value: '10' }] : [])
 };
 const stateConv = buildState();
 assert(Math.abs(stateConv.nm - 100) < 1e-6, 'KM field should convert to NM');
@@ -117,19 +121,26 @@ assert(textCustom.includes('R$ 9.310,00'), 'Custom tariff should affect total');
 console.log('Custom tariff test passed.');
 
 // commission calculations
-const commissionResult = calcularComissao(6667.2, 200, 'soma', [{ type: '%', value: 10 }, { type: 'R$', value: 100 }]);
-assert(Math.abs(commissionResult.totalComissao - 766.72) < 1e-2, 'Commission should apply on base flight value when extra is addition');
-const docComm = buildDocDefinition({ ...baseState, valorExtra: 200, tipoExtra: 'soma', commissions: [{ type: '%', value: 10 }, { type: 'R$', value: 100 }] });
+const commissionResult = calcularComissao(6667.2, 200, 'soma', [10, 5]);
+assert(Math.abs(commissionResult.totalComissao - 1000.08) < 1e-2, 'Commission should apply on base flight value when extra is addition');
+const docComm = buildDocDefinition({ ...baseState, valorExtra: 200, tipoExtra: 'soma', commissions: [10, 5] });
 const textComm = extractText(docComm);
-assert(textComm.includes('Comissão 1: R$ 666,72'), 'Percentage commission should be calculated correctly');
-assert(textComm.includes('Comissão 2: R$ 100,00'), 'Fixed commission should be displayed');
-assert(textComm.includes('Total Final: R$ 7.633,92'), 'Total should include commissions and extras');
-const commissionDiscount = calcularComissao(6667.2, 200, 'subtrai', [{ type: '%', value: 10 }]);
+assert(textComm.includes('Comissão 1: R$ 666,72'), 'First percentage commission should be calculated correctly');
+assert(textComm.includes('Comissão 2: R$ 333,36'), 'Second percentage commission should be displayed');
+assert(textComm.includes('Total Final: R$ 7.867,28'), 'Total should include commissions and extras');
+const commissionDiscount = calcularComissao(6667.2, 200, 'subtrai', [10]);
 assert(Math.abs(commissionDiscount.totalComissao - 646.72) < 1e-2, 'Commission with discount should reduce base before percentage');
-const docCommDisc = buildDocDefinition({ ...baseState, valorExtra: 200, tipoExtra: 'subtrai', commissions: [{ type: '%', value: 10 }] });
+const docCommDisc = buildDocDefinition({ ...baseState, valorExtra: 200, tipoExtra: 'subtrai', commissions: [10] });
 const textCommDisc = extractText(docCommDisc);
 assert(textCommDisc.includes('Comissão 1: R$ 646,72'), 'Discount should reduce commission base');
 assert(textCommDisc.includes('Total Final: R$ 7.113,92'), 'Total should consider discount and commission');
+
+const docCommHidden = buildDocDefinition({ ...baseState, commissions: [10], showComissao: false });
+const textCommHidden = extractText(docCommHidden);
+assert(!textCommHidden.includes('Comissão'), 'Commission lines should be hidden when showComissao is false');
+const subtotalBase = baseState.nm * 1.852 * baseState.valorKm;
+const expectedHiddenTotal = (subtotalBase + baseState.valorExtra + subtotalBase * 0.10).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+assert(textCommHidden.includes(`Total Final: R$ ${expectedHiddenTotal}`), 'Total should include commission even when hidden');
 console.log('Commission tests passed.');
 
 // route order should place destination first then extra stops

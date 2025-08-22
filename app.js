@@ -71,21 +71,10 @@ if (typeof document !== 'undefined') {
   function addCommissionEntry() {
     const div = document.createElement('div');
     div.className = 'commission-entry';
-    const select = document.createElement('select');
-    select.className = 'commission-type';
-    const optPercent = document.createElement('option');
-    optPercent.value = '%';
-    optPercent.textContent = '%';
-    const optAmount = document.createElement('option');
-    optAmount.value = 'R$';
-    optAmount.textContent = 'R$';
-    select.appendChild(optPercent);
-    select.appendChild(optAmount);
     const input = document.createElement('input');
     input.type = 'number';
-    input.className = 'commission-value';
-    input.placeholder = 'Valor';
-    div.appendChild(select);
+    input.className = 'commission-percent';
+    input.placeholder = 'Percentual (%)';
     div.appendChild(input);
     document.getElementById('comissoes').appendChild(div);
   }
@@ -161,15 +150,10 @@ function calcularComissao(subtotal, valorExtra, tipoExtra, commissions) {
   }
   let totalComissao = 0;
   const detalhesComissao = [];
-  for (const c of commissions || []) {
-    let val = 0;
-    if (c.type === '%') {
-      val = base * (c.value / 100);
-    } else {
-      val = c.value;
-    }
+  for (const perc of commissions || []) {
+    const val = base * (perc / 100);
     totalComissao += val;
-    detalhesComissao.push({ ...c, calculado: val });
+    detalhesComissao.push({ percent: perc, calculado: val });
   }
   return { totalComissao, detalhesComissao };
 }
@@ -195,11 +179,7 @@ function buildState() {
   const tarifaVal = parseFloat(document.getElementById('tarifa').value);
   const valorKm = Number.isFinite(tarifaVal) ? tarifaVal : valoresKm[aeronave];
   const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => i.value).filter(Boolean);
-  const commissions = Array.from(document.querySelectorAll('.commission-entry')).map(div => {
-    const type = div.querySelector('.commission-type').value;
-    const value = parseFloat(div.querySelector('.commission-value').value) || 0;
-    return { type, value };
-  });
+  const commissions = Array.from(document.querySelectorAll('.commission-percent')).map(input => parseFloat(input.value) || 0);
 
   return {
     aeronave,
@@ -221,6 +201,7 @@ function buildState() {
     showDistancia: document.getElementById('showDistancia').checked,
     showDatas: document.getElementById('showDatas').checked,
     showAjuste: document.getElementById('showAjuste').checked,
+    showComissao: document.getElementById('showComissao').checked,
     showObservacoes: document.getElementById('showObservacoes').checked,
     showPagamento: document.getElementById('showPagamento').checked,
     showMapa: document.getElementById('showMapa').checked
@@ -269,9 +250,11 @@ function buildDocDefinition(state) {
     content.push({ text: `${label}: R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
   }
 
-  detalhesComissao.forEach((c, idx) => {
-    content.push({ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
-  });
+  if (state.showComissao) {
+    detalhesComissao.forEach((c, idx) => {
+      content.push({ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
+    });
+  }
 
   content.push({ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
 
@@ -359,6 +342,7 @@ function limparCampos() {
   document.getElementById('showDistancia').checked = true;
   document.getElementById('showDatas').checked = true;
   document.getElementById('showAjuste').checked = true;
+  document.getElementById('showComissao').checked = true;
   document.getElementById('showObservacoes').checked = true;
   document.getElementById('showPagamento').checked = true;
   document.getElementById('showMapa').checked = true;
