@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { buildState, buildDocDefinition, gerarPDF } = require('./app.js');
+const { buildState, buildDocDefinition, gerarPDF, calcularComissao } = require('./app.js');
 
 function extractText(docDef) {
   return docDef.content
@@ -115,6 +115,22 @@ const customDoc = buildDocDefinition({ ...baseState, valorKm: 50 });
 const textCustom = extractText(customDoc);
 assert(textCustom.includes('R$ 9.310,00'), 'Custom tariff should affect total');
 console.log('Custom tariff test passed.');
+
+// commission calculations
+const commissionResult = calcularComissao(6667.2, 200, 'soma', [{ type: '%', value: 10 }, { type: 'R$', value: 100 }]);
+assert(Math.abs(commissionResult.totalComissao - 766.72) < 1e-2, 'Commission should apply on base flight value when extra is addition');
+const docComm = buildDocDefinition({ ...baseState, valorExtra: 200, tipoExtra: 'soma', commissions: [{ type: '%', value: 10 }, { type: 'R$', value: 100 }] });
+const textComm = extractText(docComm);
+assert(textComm.includes('Comissão 1: R$ 666,72'), 'Percentage commission should be calculated correctly');
+assert(textComm.includes('Comissão 2: R$ 100,00'), 'Fixed commission should be displayed');
+assert(textComm.includes('Total Final: R$ 7.633,92'), 'Total should include commissions and extras');
+const commissionDiscount = calcularComissao(6667.2, 200, 'subtrai', [{ type: '%', value: 10 }]);
+assert(Math.abs(commissionDiscount.totalComissao - 646.72) < 1e-2, 'Commission with discount should reduce base before percentage');
+const docCommDisc = buildDocDefinition({ ...baseState, valorExtra: 200, tipoExtra: 'subtrai', commissions: [{ type: '%', value: 10 }] });
+const textCommDisc = extractText(docCommDisc);
+assert(textCommDisc.includes('Comissão 1: R$ 646,72'), 'Discount should reduce commission base');
+assert(textCommDisc.includes('Total Final: R$ 7.113,92'), 'Total should consider discount and commission');
+console.log('Commission tests passed.');
 
 // route order should place destination first then extra stops
 const routeDoc = buildDocDefinition({

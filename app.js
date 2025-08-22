@@ -49,6 +49,44 @@ if (typeof document !== 'undefined') {
     });
   }
 
+  function addCommissionEntry() {
+    const div = document.createElement('div');
+    div.className = 'commission-entry';
+    const select = document.createElement('select');
+    select.className = 'commission-type';
+    const optPercent = document.createElement('option');
+    optPercent.value = '%';
+    optPercent.textContent = '%';
+    const optAmount = document.createElement('option');
+    optAmount.value = 'R$';
+    optAmount.textContent = 'R$';
+    select.appendChild(optPercent);
+    select.appendChild(optAmount);
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'commission-value';
+    input.placeholder = 'Valor';
+    div.appendChild(select);
+    div.appendChild(input);
+    document.getElementById('comissoes').appendChild(div);
+  }
+
+  const comissaoBtn = document.getElementById('comissaoBtn');
+  const comissaoConfig = document.getElementById('comissaoConfig');
+  if (comissaoBtn && comissaoConfig) {
+    comissaoBtn.addEventListener('click', () => {
+      comissaoConfig.style.display = comissaoConfig.style.display === 'none' ? 'block' : 'none';
+      if (comissaoConfig.style.display !== 'none' && document.querySelectorAll('.commission-entry').length === 0) {
+        addCommissionEntry();
+      }
+    });
+  }
+
+  const addCommission = document.getElementById('addCommission');
+  if (addCommission) {
+    addCommission.addEventListener('click', addCommissionEntry);
+  }
+
   if (typeof L !== 'undefined' && document.getElementById('map')) {
     map = L.map('map').setView([0, 0], 2);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -97,6 +135,26 @@ function updateDistanceFromAirports(waypoints) {
   }
 }
 
+function calcularComissao(subtotal, valorExtra, tipoExtra, commissions) {
+  let base = subtotal;
+  if (valorExtra > 0 && tipoExtra === 'subtrai') {
+    base -= valorExtra;
+  }
+  let totalComissao = 0;
+  const detalhesComissao = [];
+  for (const c of commissions || []) {
+    let val = 0;
+    if (c.type === '%') {
+      val = base * (c.value / 100);
+    } else {
+      val = c.value;
+    }
+    totalComissao += val;
+    detalhesComissao.push({ ...c, calculado: val });
+  }
+  return { totalComissao, detalhesComissao };
+}
+
 function buildState() {
   const aeronave = document.getElementById('aeronave').value;
   const nmField = document.getElementById('nm');
@@ -118,6 +176,11 @@ function buildState() {
   const tarifaVal = parseFloat(document.getElementById('tarifa').value);
   const valorKm = Number.isFinite(tarifaVal) ? tarifaVal : valoresKm[aeronave];
   const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => i.value).filter(Boolean);
+  const commissions = Array.from(document.querySelectorAll('.commission-entry')).map(div => {
+    const type = div.querySelector('.commission-type').value;
+    const value = parseFloat(div.querySelector('.commission-value').value) || 0;
+    return { type, value };
+  });
 
   return {
     aeronave,
@@ -132,6 +195,7 @@ function buildState() {
     tipoExtra,
     valorKm,
     stops,
+    commissions,
     showRota: document.getElementById('showRota').checked,
     showAeronave: document.getElementById('showAeronave').checked,
     showTarifa: document.getElementById('showTarifa').checked,
@@ -151,6 +215,8 @@ function buildDocDefinition(state) {
   if (state.valorExtra > 0) {
     if (state.tipoExtra === 'soma') total += state.valorExtra; else total -= state.valorExtra;
   }
+  const { totalComissao, detalhesComissao } = calcularComissao(subtotal, state.valorExtra, state.tipoExtra, state.commissions || []);
+  total += totalComissao;
 
   const content = [{ text: 'Cotação de Voo Executivo', style: 'header' }];
 
@@ -177,6 +243,10 @@ function buildDocDefinition(state) {
     const label = state.tipoExtra === 'soma' ? 'Outras Despesas' : 'Desconto';
     content.push({ text: `${label}: R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
   }
+
+  detalhesComissao.forEach((c, idx) => {
+    content.push({ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
+  });
 
   content.push({ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
 
@@ -208,6 +278,9 @@ async function gerarPreOrcamento() {
       labelExtra = `- R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
     }
   }
+  const { totalComissao, detalhesComissao } = calcularComissao(subtotal, state.valorExtra, state.tipoExtra, state.commissions || []);
+  total += totalComissao;
+  const comissoesHtml = detalhesComissao.map((c, i) => `<p><strong>Comissão ${i + 1}:</strong> R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`).join('');
   const resultado = document.getElementById('resultado');
   resultado.innerHTML = `
     <h3>Pré-Orçamento</h3>
@@ -216,6 +289,7 @@ async function gerarPreOrcamento() {
     <p><strong>Aeronave:</strong> ${state.aeronave}</p>
     <p><strong>Distância:</strong> ${state.nm} NM (${km.toFixed(1)} km)</p>
     ${state.valorExtra > 0 ? `<p><strong>Ajuste:</strong> ${labelExtra}</p>` : ''}
+    ${comissoesHtml}
     <p><strong>Total Estimado:</strong> R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
   `;
 }
@@ -262,6 +336,10 @@ function limparCampos() {
   document.getElementById('showMapa').checked = true;
   document.getElementById('resultado').innerHTML = '';
   if (routeLayer && routeLayer.remove) routeLayer.remove();
+  const comissoesDiv = document.getElementById('comissoes');
+  if (comissoesDiv) comissoesDiv.innerHTML = '';
+  const comissaoConfig = document.getElementById('comissaoConfig');
+  if (comissaoConfig) comissaoConfig.style.display = 'none';
 }
 
 if (typeof window !== 'undefined') {
@@ -273,5 +351,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildState, buildDocDefinition, gerarPDF };
+  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao };
 }
