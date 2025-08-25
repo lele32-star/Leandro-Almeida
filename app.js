@@ -33,6 +33,68 @@ const API_KEY = (typeof process !== 'undefined' && process.env && process.env.AE
 let map;
 let routeLayer = null;
 
+/* ==== BEGIN PATCH: pre-orcamento resumo + validações + datas ==== */
+
+function initDateGuards() {
+  if (typeof document === 'undefined') return;
+  const ida = document.getElementById('dataIda');
+  const volta = document.getElementById('dataVolta');
+  if (!ida || !volta) return;
+
+  const today = new Date();
+  const isoToday = today.toISOString().slice(0, 10);
+
+  // valor e limite mínimo para hoje
+  if (!ida.value) ida.value = isoToday;
+  ida.min = isoToday;
+
+  const syncVolta = () => {
+    const min = ida.value || isoToday;
+    volta.min = min;
+    if (volta.value && volta.value < min) volta.value = min;
+  };
+  ida.addEventListener('change', syncVolta);
+  syncVolta();
+}
+
+function fmtBRL(n) {
+  try {
+    return Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  } catch {
+    return 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
+  }
+}
+
+function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount }) {
+  const rota = [state.origem, state.destino, ...(state.stops || [])]
+    .filter(Boolean)
+    .join(' → ');
+
+  const linhas = [];
+  linhas.push(`<p><strong>Rota:</strong> ${rota || '—'}</p>`);
+  linhas.push(`<p><strong>Aeronave:</strong> ${state.aeronave || '—'} <span style="opacity:.8">(${fmtBRL(state.valorKm)}/km)</span></p>`);
+  linhas.push(`<p><strong>Distância:</strong> ${Number(state.nm || 0)} NM (${km.toFixed(1)} km)</p>`);
+  linhas.push(`<p><strong>Datas:</strong> ${state.dataIda || '—'}${state.dataVolta ? ' → ' + state.dataVolta : ''}</p>`);
+  linhas.push(`<p><strong>Total Parcial (km×tarifa):</strong> ${fmtBRL(subtotal)}</p>`);
+  if (state.valorExtra > 0) linhas.push(`<p><strong>Ajuste:</strong> ${labelExtra}</p>`);
+  (detalhesComissao || []).forEach((c, i) => {
+    linhas.push(`<p><strong>Comissão ${i + 1}:</strong> ${fmtBRL(c.calculado)}</p>`);
+  });
+  if (commissionAmount > 0) linhas.push(`<p><strong>Comissão:</strong> ${fmtBRL(commissionAmount)}</p>`);
+  if (state.observacoes) linhas.push(`<p><strong>Observações:</strong> ${state.observacoes}</p>`);
+  if (state.pagamento) linhas.push(`<p><strong>Pagamento:</strong><br><pre style="white-space:pre-wrap;margin:0">${state.pagamento}</pre></p>`);
+  linhas.push(`<hr style="margin:12px 0;border:none;border-top:1px solid #eee" />`);
+  linhas.push(`<p style="font-size:1.1rem"><strong>Total Estimado:</strong> ${fmtBRL(total)}</p>`);
+
+  return `<h3>Pré-Orçamento</h3>${linhas.join('')}`;
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', initDateGuards);
+}
+
+/* ==== END PATCH ==== */
+
 if (typeof document !== 'undefined') {
   const nmInput = document.getElementById('nm');
   const kmInput = document.getElementById('km');
@@ -387,11 +449,35 @@ function buildDocDefinition(state) {
   return { content };
 }
 
+/* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
 async function gerarPreOrcamento() {
+  // Atualiza rota/distância se o usuário preencheu ICAOs
   if (typeof __refreshRouteNow === 'function') { await __refreshRouteNow(); }
+
   const state = buildState();
+
+  // Validações mínimas (evita NaN e "nada acontece")
+  const distanciaValida = Number.isFinite(state.nm) && state.nm > 0;
+  const valorKmValido = Number.isFinite(state.valorKm) && state.valorKm > 0;
+  const saida = document.getElementById('resultado');
+
+  if (!valorKmValido) {
+    saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">
+      Selecione uma aeronave ou informe a <strong>tarifa por km</strong>.
+    </div>`;
+    return;
+  }
+  if (!distanciaValida) {
+    saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">
+      Informe a <strong>distância</strong> (NM ou KM) ou preencha os aeroportos para calcular automaticamente.
+    </div>`;
+    return;
+  }
+
   const km = state.nm * 1.852;
   const subtotal = valorParcialFn(km, state.valorKm);
+
+  // Ajuste (soma/subtrai)
   let total = valorTotalFn(
     km,
     state.valorKm,
@@ -399,41 +485,34 @@ async function gerarPreOrcamento() {
   );
   let labelExtra = '';
   if (state.valorExtra > 0) {
-    labelExtra = `${state.tipoExtra === 'soma' ? '+' : '-'} R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+    labelExtra = `${state.tipoExtra === 'soma' ? '+' : '-'} ${fmtBRL(state.valorExtra)}`;
   }
+
+  // Comissão: percentuais (se houver) + componente (#commissionAmount)
   const { totalComissao, detalhesComissao } = calcularComissao(
     subtotal,
     state.valorExtra,
     state.tipoExtra,
     state.commissions || []
   );
+
   let commissionAmount = state.commissionAmount || 0;
-  if (typeof document !== 'undefined') {
-    const comp = document.getElementById('commission-component');
-    if (comp && typeof comp.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
-      const base = subtotal; // km × tarifa
-      comp.dispatchEvent(new CustomEvent('commission:base', { detail: base }));
-      const amtEl = document.getElementById('commissionAmount');
-      if (amtEl) commissionAmount = parseFloat(amtEl.value) || 0;
-    }
+  const comp = document.getElementById('commission-component');
+  if (comp && typeof comp.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+    // Envia a base (km×tarifa) para o componente recalcular o valor
+    comp.dispatchEvent(new CustomEvent('commission:base', { detail: subtotal }));
+    const amtEl = document.getElementById('commissionAmount');
+    if (amtEl) commissionAmount = parseFloat(amtEl.value) || 0;
   }
+
   total += totalComissao + commissionAmount;
-  let comissoesHtml = detalhesComissao.map((c, i) => `<p><strong>Comissão ${i + 1}:</strong> R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`).join('');
-  if (commissionAmount > 0) {
-    comissoesHtml += `<p><strong>Comissão:</strong> R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>`;
-  }
-  const resultado = document.getElementById('resultado');
-  resultado.innerHTML = `
-    <h3>Pré-Orçamento</h3>
-    <p><strong>Origem:</strong> ${state.origem}</p>
-    <p><strong>Destino:</strong> ${state.destino}</p>
-    <p><strong>Aeronave:</strong> ${state.aeronave}</p>
-    <p><strong>Distância:</strong> ${state.nm} NM (${km.toFixed(1)} km)</p>
-    ${state.valorExtra > 0 ? `<p><strong>Ajuste:</strong> ${labelExtra}</p>` : ''}
-    ${comissoesHtml}
-    <p><strong>Total Estimado:</strong> R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-  `;
+
+  // Render do resumo completo
+  const html = renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount });
+  saida.innerHTML = html;
+  saida.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+/* ==== END PATCH ==== */
 
 async function gerarPDF(state) {
   const s = state || buildState();
