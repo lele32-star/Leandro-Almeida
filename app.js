@@ -387,16 +387,18 @@ function buildDocDefinition(state) {
     state.tipoExtra,
     state.commissions || []
   );
-  let commissionAmount = state.commissionAmount || 0;
-  if (typeof document !== 'undefined') {
-    const comp = document.getElementById('commission-component');
-    if (comp && typeof comp.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
-      const base = subtotal; // km × tarifa
-      comp.dispatchEvent(new CustomEvent('commission:base', { detail: base }));
-      const amtEl = document.getElementById('commissionAmount');
-      if (amtEl) commissionAmount = parseFloat(amtEl.value) || 0;
-    }
+/* === BEGIN PATCH: COMISSAO (buildDocDefinition) === */
+  let commissionAmount = 0;
+
+  // Garante que a comissão entre no PDF (mesma base km × tarifa)
+  if (typeof window !== 'undefined' && window.CommissionModule) {
+    const res = window.CommissionModule.calculate({ km, tarifa: state.valorKm });
+    commissionAmount = Number(res && res.amount) || 0;
+  } else if (typeof document !== 'undefined') {
+    const amtEl = document.getElementById('commissionAmount');
+    commissionAmount = amtEl ? parseFloat(amtEl.value) || 0 : 0;
   }
+/* === END PATCH: COMISSAO (buildDocDefinition) === */
   const total = totalSemComissao + totalComissao + commissionAmount;
 
   const content = [{ text: 'Cotação de Voo Executivo', style: 'header' }];
@@ -496,14 +498,19 @@ async function gerarPreOrcamento() {
     state.commissions || []
   );
 
-  let commissionAmount = state.commissionAmount || 0;
-  const comp = document.getElementById('commission-component');
-  if (comp && typeof comp.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
-    // Envia a base (km×tarifa) para o componente recalcular o valor
-    comp.dispatchEvent(new CustomEvent('commission:base', { detail: subtotal }));
-    const amtEl = document.getElementById('commissionAmount');
-    if (amtEl) commissionAmount = parseFloat(amtEl.value) || 0;
+/* === BEGIN PATCH: COMISSAO (gerarPreOrcamento) === */
+  let commissionAmount = 0;
+
+  // Calcula a comissão usando o componente (base = km × tarifa)
+  if (typeof window !== 'undefined' && window.CommissionModule) {
+    const res = window.CommissionModule.calculate({ km, tarifa: state.valorKm });
+    commissionAmount = Number(res && res.amount) || 0;
+  } else {
+    // Fallback: lê o hidden se o componente não estiver disponível
+    const amtEl = (typeof document !== 'undefined') ? document.getElementById('commissionAmount') : null;
+    commissionAmount = amtEl ? parseFloat(amtEl.value) || 0 : 0;
   }
+/* === END PATCH: COMISSAO (gerarPreOrcamento) === */
 
   total += totalComissao + commissionAmount;
 
