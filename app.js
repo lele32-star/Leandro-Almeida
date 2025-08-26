@@ -172,7 +172,12 @@ if (typeof document !== 'undefined') {
     const codes = [origem, destino, ...stops].filter(Boolean);
     const valid = codes.filter(c => ICAO_RE.test(c));
     if (valid.length < 2) {
-      updateDistanceFromAirports([]);
+      // Não recalcular/limpar distância quando não houver 2 aeroportos válidos.
+      // Apenas remover a rota do mapa (se existir) e sair.
+      if (typeof L !== 'undefined' && routeLayer && typeof routeLayer.remove === 'function') {
+        routeLayer.remove();
+        routeLayer = null;
+      }
       return;
     }
 
@@ -283,10 +288,9 @@ function updateDistanceFromAirports(waypoints) {
   const points = (waypoints || []).filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
 
   if (points.length < 2) {
+    // Apenas remova a rota do mapa; mantenha os valores que o usuário digitou.
     if (routeLayer && typeof routeLayer.remove === 'function') routeLayer.remove();
     routeLayer = null;
-    if (nmInput) nmInput.value = '';
-    if (kmInput) kmInput.value = '';
     return;
   }
 
