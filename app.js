@@ -433,55 +433,145 @@ function buildDocDefinition(state) {
   const commissionAmount = obterComissao(km, state.valorKm);
 /* === END PATCH: COMISSAO (buildDocDefinition) === */
   const total = totalSemComissao + totalComissao + commissionAmount;
+  // === BEGIN PDF DESIGN ===
+  // Cabeçalho com logo e informações de contato
+  const header = {
+    columns: [
+      { width: 60, text: '' }, // LOGO_PLACEHOLDER
+      [
+        { text: '[NOME_EMPRESA]', style: 'h1' },
+        { text: '[SLOGAN_CURTO]', style: 'muted' },
+        { text: '[WHATSAPP_LINK] | [EMAIL_CONTATO] | [CNPJ_OPCIONAL]', style: 'muted' }
+      ]
+    ],
+    columnGap: 10,
+    margin: [40, 20, 40, 20]
+  };
 
-  const content = [{ text: 'Cotação de Voo Executivo', style: 'header' }];
+  const content = [];
+  content.push({ text: 'Cotação de Voo Executivo', style: 'h1', margin: [0, 0, 0, 20] });
 
+  // Resumo do voo em duas colunas (tabela sem bordas)
+  const resumoCol1 = [];
+  const resumoCol2 = [];
   if (state.showRota) {
     const codes = [state.origem, state.destino, ...(state.stops || [])];
-    content.push({ text: `Rota: ${codes.filter(Boolean).join(' → ')}` });
+    resumoCol1.push(`Rota: ${codes.filter(Boolean).join(' → ')}`);
   }
-  if (state.showAeronave) {
-    content.push({ text: `Aeronave: ${state.aeronave}` });
-  }
-  if (state.showTarifa) {
-    content.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
-  }
-  if (state.showDistancia) {
-    content.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)` });
-  }
-  if (state.showDatas) {
-    content.push({ text: `Datas: ${state.dataIda} - ${state.dataVolta}` });
+  if (state.showAeronave) resumoCol1.push(`Aeronave: ${state.aeronave}`);
+  if (state.showDatas) resumoCol1.push(`Datas: ${state.dataIda} - ${state.dataVolta}`);
+  if (state.showDistancia) resumoCol2.push(`Distância: ${state.nm} NM (${km.toFixed(1)} km)`);
+  if (state.showTarifa) resumoCol2.push(`Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+
+  const leftSummary = resumoCol1.join('\n');
+  const rightSummary = resumoCol2.join('\n');
+  if (leftSummary || rightSummary) {
+    content.push({
+      table: {
+        widths: ['*', '*'],
+        body: [[{ text: leftSummary }, { text: rightSummary, alignment: 'right' }]]
+      },
+      layout: 'noBorders',
+      margin: [0, 0, 0, 20]
+    });
   }
 
-  content.push({ text: `Total parcial: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
+  // Investimento (tabela com listras)
+  const investBody = [
+    [
+      { text: 'Item', style: 'tableHeader' },
+      { text: 'Valor', style: 'tableHeader', alignment: 'right' }
+    ],
+    [
+      { text: 'Total parcial:' },
+      { text: `R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }
+    ]
+  ];
 
   if (state.showAjuste && state.valorExtra > 0) {
     const label = state.tipoExtra === 'soma' ? 'Outras Despesas' : 'Desconto';
-    content.push({ text: `${label}: R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
+    investBody.push([
+      { text: `${label}:` },
+      { text: `R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }
+    ]);
   }
 
   if (state.showComissao) {
     detalhesComissao.forEach((c, idx) => {
-      content.push({ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
+      investBody.push([
+        { text: `Comissão ${idx + 1}:` },
+        { text: `R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }
+      ]);
     });
     if (commissionAmount > 0) {
-      content.push({ text: `Comissão: R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
+      investBody.push([
+        { text: 'Comissão:' },
+        { text: `R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }
+      ]);
     }
   }
 
-  content.push({ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` });
+  investBody.push([
+    { text: 'Total Final:', style: 'tableHeader' },
+    { text: `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'priceBig', alignment: 'right' }
+  ]);
 
+  content.push({
+    table: { widths: ['*', 'auto'], body: investBody },
+    layout: 'lightHorizontalLines',
+    margin: [0, 0, 0, 20]
+  });
+
+  // Observações e Pagamento
   if (state.showObservacoes && state.observacoes) {
-    content.push({ text: `Observações: ${state.observacoes}` });
+    content.push({ text: 'Observações:', style: 'h2' });
+    content.push({ text: state.observacoes, margin: [0, 0, 0, 10] });
   }
   if (state.showPagamento && state.pagamento) {
-    content.push({ text: `Dados de pagamento: ${state.pagamento}` });
-  }
-  if (state.showMapa) {
-    content.push({ text: 'Mapa:' });
+    content.push({ text: 'Dados de pagamento:', style: 'h2' });
+    content.push({ text: state.pagamento, margin: [0, 0, 0, 10] });
   }
 
-  return { content };
+  // Storytelling, Prazos & Garantias, FAQs
+  content.push({ text: 'Por que voar conosco?', style: 'h2' });
+  content.push({ text: 'Oferecemos uma experiência única em aviação executiva, alinhando conforto, segurança e agilidade.', margin: [0, 0, 0, 10] });
+  content.push({ text: 'Prazos & Garantias', style: 'h2' });
+  content.push({ ul: ['Confirmação imediata', 'Flexibilidade de horários', 'Suporte 24h'], margin: [0, 0, 0, 10] });
+  content.push({ text: 'FAQs', style: 'h2' });
+  content.push({
+    ol: [
+      'Como é calculado o valor? Baseado na distância em km multiplicada pela tarifa da aeronave.',
+      'Posso alterar a rota após confirmar? Sim, sujeito à disponibilidade.',
+      'Qual o prazo de validade desta cotação? 5 dias corridos.'
+    ]
+  });
+
+  if (state.showMapa) {
+    content.push({ text: 'Mapa:', style: 'h2', pageBreak: 'before' });
+  }
+
+  return {
+    header,
+    content,
+    styles: {
+      h1: { fontSize: 20, bold: true },
+      h2: { fontSize: 14, bold: true, margin: [0, 10, 0, 4] },
+      muted: { color: '#666', fontSize: 9 },
+      tableHeader: { fillColor: '#f0f0f0', bold: true },
+      priceBig: { fontSize: 16, bold: true }
+    },
+    defaultStyle: { fontSize: 10, lineHeight: 1.25 },
+    pageSize: 'A4',
+    pageMargins: [40, 60, 40, 60],
+    footer: (currentPage, pageCount) => ({
+      text: `${currentPage} / ${pageCount}`,
+      alignment: 'center',
+      margin: [0, 0, 0, 20],
+      style: 'muted'
+    }),
+    info: { title: 'Cotação de Voo Executivo', author: '[NOME_EMPRESA]' }
+  };
+  // === END PDF DESIGN ===
 }
 
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
