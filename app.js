@@ -67,31 +67,40 @@ async function fetchAirportByCode(code) {
       } catch (e) { /* ignore storage errors */ }
     }
 
-    const headers = token ? { Authorization: `BEARER ${token}` } : {};
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
     const url = `https://avwx.rest/api/station/${icao}`;
     const res = await fetch(url, { headers });
     if (!res.ok) throw new Error('fetch failed');
     const data = await res.json();
 
-    // Normalize several possible response shapes for coordinates
-    let point = null;
-    // aerodatabox style
-    if (data && data.location && Number.isFinite(data.location.lat) && Number.isFinite(data.location.lon)) {
-      point = { lat: Number(data.location.lat), lng: Number(data.location.lon) };
-    }
-    // avwx may return latitude/longitude
-    else if (data && Number.isFinite(data.latitude) && Number.isFinite(data.longitude)) {
-      point = { lat: Number(data.latitude), lng: Number(data.longitude) };
-    }
-    // some endpoints embed coords under position or station
-    else if (data && data.position && Number.isFinite(data.position.latitude) && Number.isFinite(data.position.longitude)) {
-      point = { lat: Number(data.position.latitude), lng: Number(data.position.longitude) };
-    } else if (data && data.station && Number.isFinite(data.station.latitude) && Number.isFinite(data.station.longitude)) {
-      point = { lat: Number(data.station.latitude), lng: Number(data.station.longitude) };
-    } else if (data && data.meta && Number.isFinite(data.meta.latitude) && Number.isFinite(data.meta.longitude)) {
-      point = { lat: Number(data.meta.latitude), lng: Number(data.meta.longitude) };
+    // Robust coordinate extraction: busca recursiva por chaves lat/lon em qualquer nível
+    function findLatLon(obj, depth = 0) {
+      if (!obj || typeof obj !== 'object' || depth > 6) return null;
+      const keys = Object.keys(obj || {});
+      let latVal, lonVal;
+      for (const k of keys) {
+        const lk = k.toLowerCase();
+        if (lk.includes('lat')) latVal = obj[k];
+        if (lk.includes('lon') || lk.includes('lng') || lk.includes('long')) lonVal = obj[k];
+      }
+      if (latVal !== undefined && lonVal !== undefined) {
+        const latN = Number(String(latVal).replace(',', '.'));
+        const lonN = Number(String(lonVal).replace(',', '.'));
+        if (Number.isFinite(latN) && Number.isFinite(lonN)) return { lat: latN, lng: lonN };
+      }
+      for (const k of keys) {
+        try {
+          const v = obj[k];
+          if (v && typeof v === 'object') {
+            const r = findLatLon(v, depth + 1);
+            if (r) return r;
+          }
+        } catch (e) { /* ignore */ }
+      }
+      return null;
     }
 
+    const point = findLatLon(data);
     airportCache.set(icao, point);
     return point;
   } catch {
@@ -346,7 +355,7 @@ if (typeof document !== 'undefined') {
     };
   }
 
-  async function refreshRouteFromInputs() {
+  async function refreshRouteFromInputs(triggerPre = false) {
     const origemEl = document.getElementById('origem');
     const destinoEl = document.getElementById('destino');
     const stopEls = Array.from(document.querySelectorAll('.stop-input'));
@@ -366,12 +375,47 @@ if (typeof document !== 'undefined') {
       return;
     }
 
+    // detecta se existe token (env, input ou localStorage) — para ajudar diagnóstico
+    let tokenAvailable = !!API_KEY;
+    try {
+      const elTok = document.getElementById && document.getElementById('avwxToken');
+      if (elTok && elTok.value) tokenAvailable = true;
+      else {
+        try { if (localStorage.getItem('cotacao:avwx_token')) tokenAvailable = true; } catch (e) {}
+      }
+    } catch (e) {}
+
     const coords = await Promise.all(valid.map(fetchAirportByCode));
     const waypoints = coords.filter(Boolean);
     updateDistanceFromAirports(waypoints);
+
+    // Se alguns ICAOs válidos não puderam ser resolvidos, mostrar aviso no UI
+    const unresolved = valid.map((c, i) => ({ c, ok: !!coords[i] })).filter(x => !x.ok).map(x => x.c);
+    try {
+      const avisoEl = document.getElementById('resultado');
+      if (unresolved.length > 0 && avisoEl) {
+          const prev = avisoEl.dataset.avwxWarn || '';
+          let msg = `Atenção: não foi possível localizar coordenadas para: ${unresolved.join(', ')}.`;
+          if (!tokenAvailable) msg += ' (AVWX token não configurado — insira em AVWX Token no formulário)';
+          else msg += ' Verifique token AVWX, limite de requisições ou a validade dos ICAOs.';
+          avisoEl.innerHTML = `<div style="padding:10px;border-radius:6px;background:#fff3cd;border:1px solid #ffecb5">${msg}</div>`;
+          avisoEl.dataset.avwxWarn = msg;
+        } else if (unresolved.length === 0 && document.getElementById('resultado')) {
+        // limpa aviso antigo
+        const el = document.getElementById('resultado');
+        if (el && el.dataset && el.dataset.avwxWarn) {
+          el.dataset.avwxWarn = '';
+          el.innerHTML = '';
+        }
+      }
+    } catch (e) { /* ignore DOM errors */ }
+    // Se solicitado, atualizar pré-orçamento sem re-disparar o refresh (usa core)
+    if (triggerPre && typeof gerarPreOrcamentoCore === 'function') {
+      try { gerarPreOrcamentoCore(); } catch (e) { /* ignore */ }
+    }
   }
 
-  const debouncedRefresh = debounce(refreshRouteFromInputs, 400);
+  const debouncedRefresh = debounce(() => refreshRouteFromInputs(true), 400);
 
   const origemEl = document.getElementById('origem');
   const destinoEl = document.getElementById('destino');
@@ -396,7 +440,8 @@ if (typeof document !== 'undefined') {
 
   document.addEventListener('DOMContentLoaded', () => debouncedRefresh());
 
-  window.__refreshRouteNow = refreshRouteFromInputs;
+  // Expose a refresh function that does NOT trigger gerarPreOrcamento to avoid recursion
+  window.__refreshRouteNow = refreshRouteFromInputs.bind(null, false);
   // ====== [FIM ADD] ==========================================================
 
   const addStop = document.getElementById('addStop');
@@ -759,59 +804,59 @@ function buildDocDefinition(state) {
 
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
 async function gerarPreOrcamento() {
-  // Atualiza rota/distância se o usuário preencheu ICAOs
-  if (typeof __refreshRouteNow === 'function') { await __refreshRouteNow(); }
-
+  // Build state first
   const state = buildState();
-
-  // Validações mínimas (evita NaN e "nada acontece")
-  const distanciaValida = Number.isFinite(state.nm) && state.nm > 0;
-  const valorKmValido = Number.isFinite(state.valorKm) && state.valorKm > 0;
   const saida = document.getElementById('resultado');
 
+  // If NM/KM are present, prefer them. Otherwise, attempt to compute via ICAO lookup.
+  if (!Number.isFinite(state.nm) || state.nm <= 0) {
+    // attempt to refresh route (this will update nm/km) and then build state again
+    if (typeof refreshRouteFromInputs === 'function') {
+      await refreshRouteFromInputs(false);
+    }
+  }
+
+  // rebuild state after possible update
+  const state2 = buildState();
+  const distanciaValida = Number.isFinite(state2.nm) && state2.nm > 0;
+  const valorKmValido = Number.isFinite(state2.valorKm) && state2.valorKm > 0;
+
   if (!valorKmValido) {
-    saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">
-      Selecione uma aeronave ou informe a <strong>tarifa por km</strong>.
-    </div>`;
+    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Selecione uma aeronave ou informe a <strong>tarifa por km</strong>.</div>`;
     return;
   }
   if (!distanciaValida) {
-    saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">
-      Informe a <strong>distância</strong> (NM ou KM) ou preencha os aeroportos para calcular automaticamente.
-    </div>`;
+    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Informe a <strong>distância</strong> (NM ou KM) ou preencha os aeroportos para calcular automaticamente.</div>`;
     return;
   }
 
-  const km = state.nm * 1.852;
-  const subtotal = valorParcialFn(km, state.valorKm);
+  const km = state2.nm * 1.852;
+  const subtotal = valorParcialFn(km, state2.valorKm);
 
   // Ajuste (soma/subtrai)
   let total = valorTotalFn(
     km,
-    state.valorKm,
-    state.tipoExtra === 'soma' ? state.valorExtra : -state.valorExtra
+    state2.valorKm,
+    state2.tipoExtra === 'soma' ? state2.valorExtra : -state2.valorExtra
   );
   let labelExtra = '';
-  if (state.valorExtra > 0) {
-    labelExtra = `${state.tipoExtra === 'soma' ? '+' : '-'} ${fmtBRL(state.valorExtra)}`;
+  if (state2.valorExtra > 0) {
+    labelExtra = `${state2.tipoExtra === 'soma' ? '+' : '-'} ${fmtBRL(state2.valorExtra)}`;
   }
 
   // Comissão: percentuais (se houver) + componente (#commissionAmount)
   const { totalComissao, detalhesComissao } = calcularComissao(
     subtotal,
-    state.valorExtra,
-    state.tipoExtra,
-    state.commissions || []
+    state2.valorExtra,
+    state2.tipoExtra,
+    state2.commissions || []
   );
-
-/* === BEGIN PATCH: COMISSAO (gerarPreOrcamento) === */
-  const commissionAmount = obterComissao(km, state.valorKm);
-/* === END PATCH: COMISSAO (gerarPreOrcamento) === */
+  const commissionAmount = obterComissao(km, state2.valorKm);
 
   total += totalComissao + commissionAmount;
 
   // Render do resumo completo
-  const html = renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount });
+  const html = renderResumo(state2, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount });
   saida.innerHTML = html;
   saida.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
