@@ -26,10 +26,11 @@ if (typeof window !== 'undefined') {
   if (typeof window.valorTotal === 'function') valorTotalFn = window.valorTotal;
 }
 
-// AVWX token can be provided via env AVWX_TOKEN, or via the UI input `#avwxToken` (saved to localStorage)
-const API_KEY = (typeof process !== 'undefined' && process.env && (process.env.AVWX_TOKEN || process.env.AERODATABOX_KEY))
-  ? (process.env.AVWX_TOKEN || process.env.AERODATABOX_KEY)
-  : null;
+// AVWX token: prefer environment variable `AVWX_TOKEN`, otherwise use the provided hardcoded token.
+// NOTE: embedding tokens in source is insecure for public repos; this was requested explicitly.
+const API_KEY = (typeof process !== 'undefined' && process.env && process.env.AVWX_TOKEN)
+  ? process.env.AVWX_TOKEN
+  : 'W51ZqbNnGvjTOz2IRloz4ev8mLIR3HCATEMK9wrO1L0';
 
 // --- [ADD/REPLACE] Utilitários do mapa e cache ---
 let map;
@@ -54,20 +55,8 @@ async function fetchAirportByCode(code) {
   if (!/^[A-Z]{4}$/.test(icao)) return null;
   if (airportCache.has(icao)) return airportCache.get(icao);
   try {
-    // Try AVWX station endpoint. Use token from env (API_KEY) or from DOM/localStorage if available.
-    let token = API_KEY;
-    if (typeof document !== 'undefined') {
-      try {
-        const el = document.getElementById('avwxToken');
-        if (el && el.value) token = el.value;
-        else {
-          const stored = localStorage.getItem('cotacao:avwx_token');
-          if (stored) token = stored;
-        }
-      } catch (e) { /* ignore storage errors */ }
-    }
-
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  // Use API_KEY (env or hardcoded) for AVWX
+  const headers = API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
     const url = `https://avwx.rest/api/station/${icao}`;
     const res = await fetch(url, { headers });
     if (!res.ok) throw new Error('fetch failed');
@@ -375,15 +364,8 @@ if (typeof document !== 'undefined') {
       return;
     }
 
-    // detecta se existe token (env, input ou localStorage) — para ajudar diagnóstico
-    let tokenAvailable = !!API_KEY;
-    try {
-      const elTok = document.getElementById && document.getElementById('avwxToken');
-      if (elTok && elTok.value) tokenAvailable = true;
-      else {
-        try { if (localStorage.getItem('cotacao:avwx_token')) tokenAvailable = true; } catch (e) {}
-      }
-    } catch (e) {}
+  // detecta se existe token (env ou hardcoded)
+  const tokenAvailable = !!API_KEY;
 
     const coords = await Promise.all(valid.map(fetchAirportByCode));
     const waypoints = coords.filter(Boolean);
@@ -562,25 +544,13 @@ async function fetchMETARFor(icao) {
   if (!icao || String(icao).trim() === '') return null;
   const code = String(icao).toUpperCase();
   // Primeiro, tentar AVWX se token presente
-  if (typeof document !== 'undefined') {
-    try {
-      const tokenInput = document.getElementById('avwxToken');
-      const storeKey = 'cotacao:avwx_token';
-      let token = null;
-      if (tokenInput && tokenInput.value) token = tokenInput.value;
-      else {
-        try { token = localStorage.getItem(storeKey); } catch (e) { token = null; }
-      }
-      if (token) {
-        // persist if came from input
-        try { localStorage.setItem(storeKey, token); } catch (e) {}
-        const res = await fetch(`https://avwx.rest/api/metar/${code}` , { headers: { Authorization: `BEARER ${token}` } });
-        if (res && res.ok) return await res.json();
-      }
-    } catch (e) {
-      // ignore and fallback to Aerodatabox for coordinates/route
+  const headers = API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
+  try {
+    if (API_KEY) {
+      const res = await fetch(`https://avwx.rest/api/metar/${code}`, { headers });
+      if (res && res.ok) return await res.json();
     }
-  }
+  } catch (e) { /* ignore */ }
   return null;
 }
 
@@ -589,10 +559,6 @@ if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('btnFetchMetar');
     const out = document.getElementById('metarOutput');
-    const tokenIn = document.getElementById('avwxToken');
-    const storeKey = 'cotacao:avwx_token';
-    // carregar token salvo
-    try { const t = localStorage.getItem(storeKey); if (t && tokenIn) tokenIn.value = t; } catch (e) {}
 
     if (btn) btn.addEventListener('click', async () => {
       const icao = (document.getElementById('origem') || {}).value || '';
@@ -600,14 +566,15 @@ if (typeof document !== 'undefined') {
         if (out) { out.style.display = 'block'; out.textContent = 'Informe um ICAO na Origem para buscar METAR.'; }
         return;
       }
-      if (tokenIn && tokenIn.value) {
-        try { localStorage.setItem(storeKey, tokenIn.value); } catch (e) {}
+      if (!API_KEY) {
+        if (out) { out.style.display = 'block'; out.textContent = 'AVWX token não configurado no sistema.'; }
+        return;
       }
       if (out) { out.style.display = 'block'; out.textContent = 'Buscando METAR...'; }
       try {
         const data = await fetchMETARFor(icao);
         if (!data) {
-          if (out) out.textContent = 'Nenhum METAR via AVWX (fallback para Aerodatabox não aplica METAR).';
+          if (out) out.textContent = 'Nenhum METAR via AVWX.';
           return;
         }
         if (out) out.textContent = JSON.stringify(data, null, 2);
