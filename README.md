@@ -1,4 +1,15 @@
 # Leandro-Almeida
+
+Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas, mapa Leaflet e lookup de aeroportos via Aerodatabox.
+
+To regenerate the vendored jsdom tarball, run:
+
+```
+npm pack jsdom@24.0.0
+mkdir -p vendor
+mv jsdom-24.0.0.tgz vendor/
+```
+# Leandro-Almeida
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
