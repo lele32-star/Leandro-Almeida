@@ -26,9 +26,10 @@ if (typeof window !== 'undefined') {
   if (typeof window.valorTotal === 'function') valorTotalFn = window.valorTotal;
 }
 
-const API_KEY = (typeof process !== 'undefined' && process.env && process.env.AERODATABOX_KEY)
-  ? process.env.AERODATABOX_KEY
-  : '84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b';
+// AVWX token can be provided via env AVWX_TOKEN, or via the UI input `#avwxToken` (saved to localStorage)
+const API_KEY = (typeof process !== 'undefined' && process.env && (process.env.AVWX_TOKEN || process.env.AERODATABOX_KEY))
+  ? (process.env.AVWX_TOKEN || process.env.AERODATABOX_KEY)
+  : null;
 
 // --- [ADD/REPLACE] Utilitários do mapa e cache ---
 let map;
@@ -53,18 +54,44 @@ async function fetchAirportByCode(code) {
   if (!/^[A-Z]{4}$/.test(icao)) return null;
   if (airportCache.has(icao)) return airportCache.get(icao);
   try {
-    const res = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${icao}`, {
-      headers: {
-        'X-RapidAPI-Key': API_KEY,
-        'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
-      }
-    });
+    // Try AVWX station endpoint. Use token from env (API_KEY) or from DOM/localStorage if available.
+    let token = API_KEY;
+    if (typeof document !== 'undefined') {
+      try {
+        const el = document.getElementById('avwxToken');
+        if (el && el.value) token = el.value;
+        else {
+          const stored = localStorage.getItem('cotacao:avwx_token');
+          if (stored) token = stored;
+        }
+      } catch (e) { /* ignore storage errors */ }
+    }
+
+    const headers = token ? { Authorization: `BEARER ${token}` } : {};
+    const url = `https://avwx.rest/api/station/${icao}`;
+    const res = await fetch(url, { headers });
     if (!res.ok) throw new Error('fetch failed');
     const data = await res.json();
-    const loc = data && data.location;
-    const point = (loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lon))
-      ? { lat: Number(loc.lat), lng: Number(loc.lon) }
-      : null;
+
+    // Normalize several possible response shapes for coordinates
+    let point = null;
+    // aerodatabox style
+    if (data && data.location && Number.isFinite(data.location.lat) && Number.isFinite(data.location.lon)) {
+      point = { lat: Number(data.location.lat), lng: Number(data.location.lon) };
+    }
+    // avwx may return latitude/longitude
+    else if (data && Number.isFinite(data.latitude) && Number.isFinite(data.longitude)) {
+      point = { lat: Number(data.latitude), lng: Number(data.longitude) };
+    }
+    // some endpoints embed coords under position or station
+    else if (data && data.position && Number.isFinite(data.position.latitude) && Number.isFinite(data.position.longitude)) {
+      point = { lat: Number(data.position.latitude), lng: Number(data.position.longitude) };
+    } else if (data && data.station && Number.isFinite(data.station.latitude) && Number.isFinite(data.station.longitude)) {
+      point = { lat: Number(data.station.latitude), lng: Number(data.station.longitude) };
+    } else if (data && data.meta && Number.isFinite(data.meta.latitude) && Number.isFinite(data.meta.longitude)) {
+      point = { lat: Number(data.meta.latitude), lng: Number(data.meta.longitude) };
+    }
+
     airportCache.set(icao, point);
     return point;
   } catch {
@@ -485,6 +512,67 @@ function obterComissao(km, tarifa) {
 }
 /* === END PATCH: helper de comissão === */
 
+// === AVWX METAR support ===
+async function fetchMETARFor(icao) {
+  if (!icao || String(icao).trim() === '') return null;
+  const code = String(icao).toUpperCase();
+  // Primeiro, tentar AVWX se token presente
+  if (typeof document !== 'undefined') {
+    try {
+      const tokenInput = document.getElementById('avwxToken');
+      const storeKey = 'cotacao:avwx_token';
+      let token = null;
+      if (tokenInput && tokenInput.value) token = tokenInput.value;
+      else {
+        try { token = localStorage.getItem(storeKey); } catch (e) { token = null; }
+      }
+      if (token) {
+        // persist if came from input
+        try { localStorage.setItem(storeKey, token); } catch (e) {}
+        const res = await fetch(`https://avwx.rest/api/metar/${code}` , { headers: { Authorization: `BEARER ${token}` } });
+        if (res && res.ok) return await res.json();
+      }
+    } catch (e) {
+      // ignore and fallback to Aerodatabox for coordinates/route
+    }
+  }
+  return null;
+}
+
+// ligar botão no DOM
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btnFetchMetar');
+    const out = document.getElementById('metarOutput');
+    const tokenIn = document.getElementById('avwxToken');
+    const storeKey = 'cotacao:avwx_token';
+    // carregar token salvo
+    try { const t = localStorage.getItem(storeKey); if (t && tokenIn) tokenIn.value = t; } catch (e) {}
+
+    if (btn) btn.addEventListener('click', async () => {
+      const icao = (document.getElementById('origem') || {}).value || '';
+      if (!icao) {
+        if (out) { out.style.display = 'block'; out.textContent = 'Informe um ICAO na Origem para buscar METAR.'; }
+        return;
+      }
+      if (tokenIn && tokenIn.value) {
+        try { localStorage.setItem(storeKey, tokenIn.value); } catch (e) {}
+      }
+      if (out) { out.style.display = 'block'; out.textContent = 'Buscando METAR...'; }
+      try {
+        const data = await fetchMETARFor(icao);
+        if (!data) {
+          if (out) out.textContent = 'Nenhum METAR via AVWX (fallback para Aerodatabox não aplica METAR).';
+          return;
+        }
+        if (out) out.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        if (out) out.textContent = 'Erro ao buscar METAR: ' + String(err.message || err);
+      }
+    });
+  });
+}
+
 function buildState() {
   const aeronave = document.getElementById('aeronave').value;
   const nmField = document.getElementById('nm');
@@ -560,12 +648,11 @@ function buildDocDefinition(state) {
   // Cabeçalho sem imagem (evita falha caso não exista dataURL)
   const headerBlock = {
     columns: [
-      [
-        { text: '[NOME_EMPRESA]', style: 'brand' },
-        { text: '[SLOGAN_CURTO]', style: 'muted' },
-        { text: '[EMAIL_CONTATO] • [WHATSAPP_LINK] • [CNPJ_OPCIONAL]', style: 'mini' }
-      ]
+      { width: 80, stack: [ { canvas: [ { type: 'rect', x: 0, y: 0, w: 60, h: 40, color: '#f0f0f0' } ] } ], margin: [0,0,0,0] },
+      { stack: [ { text: '[NOME_EMPRESA]', style: 'brand' }, { text: '[SLOGAN_CURTO]', style: 'muted' } ], alignment: 'left' },
+      { stack: [ { text: '[EMAIL_CONTATO]', style: 'mini' }, { text: '[WHATSAPP_LINK]', style: 'mini' }, { text: '[CNPJ_OPCIONAL]', style: 'mini' } ], alignment: 'right' }
     ],
+    columnGap: 10,
     margin: [0, 0, 0, 12]
   };
 
@@ -582,11 +669,13 @@ function buildDocDefinition(state) {
   if (state.showTarifa) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'row' });
 
   const resumoBlock = {
-    columns: [
-      { stack: resumoLeft, width: '50%' },
-      { stack: resumoRight, width: '50%' }
-    ],
-    columnGap: 12,
+    table: {
+      widths: ['*','*'],
+      body: [
+        [ { stack: resumoLeft, margin: [0,0,0,0] }, { stack: resumoRight, margin: [0,0,0,0] } ]
+      ]
+    },
+    layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingTop: () => 6, paddingBottom: () => 6 },
     margin: [0, 6, 0, 10]
   };
 
@@ -613,9 +702,11 @@ function buildDocDefinition(state) {
   const investimentoBlock = {
     table: { widths: ['*'], body: investBody },
     layout: {
-      fillColor: (rowIndex) => (rowIndex % 2 === 0 ? null : '#fafafa'),
+      fillColor: (rowIndex) => (rowIndex === investBody.length - 1 ? '#0d6efd' : (rowIndex % 2 === 0 ? null : '#fafafa')),
       hLineColor: () => '#eaeaea',
-      vLineColor: () => '#ffffff'
+      vLineColor: () => '#ffffff',
+      paddingTop: (i) => (i === investBody.length - 1 ? 8 : 6),
+      paddingBottom: (i) => (i === investBody.length - 1 ? 8 : 6)
     },
     margin: [0, 6, 0, 12]
   };
@@ -629,14 +720,15 @@ function buildDocDefinition(state) {
   const resumoTextForTest = [...resumoLeft, ...resumoRight].map(r => r.text).join(' ');
 
   const content = [
-    { text: 'Cotação de Voo Executivo', style: 'h1' },
-    headerBlock,
-    resumoBlock,
-    { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
-    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: '#eaeaea' }] },
-    { text: 'Investimento', style: 'h2', margin: [0, 10, 0, 6] },
-    investimentoBlock,
-    ...(extras.length ? [{ text: 'Informações adicionais', style: 'h2', margin: [0, 6, 0, 4] }, ...extras] : [])
+  { text: 'Cotação de Voo Executivo', style: 'h1' },
+  headerBlock,
+  { text: '', margin: [0,2,0,0] },
+  resumoBlock,
+  { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
+  { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: '#eaeaea' }] },
+  { text: 'Investimento', style: 'h2', margin: [0, 10, 0, 6] },
+  investimentoBlock,
+  ...(extras.length ? [{ text: 'Informações adicionais', style: 'h2', margin: [0, 6, 0, 4] }, ...extras] : [])
   ];
 
   return {
