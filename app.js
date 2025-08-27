@@ -233,10 +233,7 @@ if (typeof document !== 'undefined') {
     if (valid.length < 2) {
       // Não recalcular/limpar distância quando não houver 2 aeroportos válidos.
       // Apenas remover a rota do mapa (se existir) e sair.
-      if (typeof L !== 'undefined' && routeLayer && typeof routeLayer.remove === 'function') {
-        routeLayer.remove();
-        routeLayer = null;
-      }
+      updateDistanceFromAirports([]);
       return;
     }
 
