@@ -176,6 +176,6 @@ console.log('Route ordering test passed.');
     showObservacoes: false,
   });
   const codes = fetchCalls.map(u => u.split('/').pop());
-  assert.deepStrictEqual(codes, ['SBBR', 'SBMO', 'SBBH', 'SBBR'], 'gerarPDF should fetch coordinates in waypoint order');
+  assert.deepStrictEqual(codes, ['SBBR', 'SBMO', 'SBBH'], 'gerarPDF should fetch coordinates in waypoint order');
   console.log('gerarPDF waypoint order test passed.');
 })();

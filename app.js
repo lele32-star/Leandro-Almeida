@@ -30,8 +30,89 @@ const API_KEY = (typeof process !== 'undefined' && process.env && process.env.AE
   ? process.env.AERODATABOX_KEY
   : '84765bd38cmsh03b2568c9aa4a0fp1867f6jsnd28a64117f8b';
 
+// --- [ADD/REPLACE] Utilitários do mapa e cache ---
 let map;
 let routeLayer = null;
+const airportCache = new Map();
+
+function ensureMap() {
+  if (typeof L === 'undefined') return;
+  const el = typeof document !== 'undefined' && document.getElementById('map');
+  if (!el) return;
+  if (!map) {
+    map = L.map('map', { preferCanvas: true }).setView([-15, -47], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    setTimeout(() => { try { map.invalidateSize(); } catch {} }, 0);
+  }
+}
+
+async function fetchAirportByCode(code) {
+  const icao = String(code || '').toUpperCase();
+  if (!/^[A-Z]{4}$/.test(icao)) return null;
+  if (airportCache.has(icao)) return airportCache.get(icao);
+  try {
+    const res = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${icao}`, {
+      headers: {
+        'X-RapidAPI-Key': API_KEY,
+        'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
+      }
+    });
+    if (!res.ok) throw new Error('fetch failed');
+    const data = await res.json();
+    const loc = data && data.location;
+    const point = (loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lon))
+      ? { lat: Number(loc.lat), lng: Number(loc.lon) }
+      : null;
+    airportCache.set(icao, point);
+    return point;
+  } catch {
+    airportCache.set(icao, null);
+    return null;
+  }
+}
+
+function updateDistanceFromAirports(waypoints) {
+  const nmInput = typeof document !== 'undefined' ? document.getElementById('nm') : null;
+  const kmInput = typeof document !== 'undefined' ? document.getElementById('km') : null;
+  const points = (waypoints || []).filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+
+  ensureMap();
+
+  if (points.length < 2) {
+    if (routeLayer && typeof routeLayer.remove === 'function') routeLayer.remove();
+    routeLayer = null;
+    return;
+  }
+
+  let kmTotal = 0;
+  for (let i = 1; i < points.length; i++) kmTotal += haversine(points[i - 1], points[i]);
+  const nmTotal = kmTotal / 1.852;
+
+  if (nmInput) nmInput.value = nmTotal.toFixed(1);
+  if (kmInput) kmInput.value = kmTotal.toFixed(1);
+
+  if (typeof L !== 'undefined' && map) {
+    if (routeLayer) routeLayer.remove();
+    routeLayer = L.polyline(points.map(p => [p.lat, p.lng]), {
+      color: 'blue', weight: 3, opacity: 0.9
+    }).addTo(map);
+    const b = routeLayer.getBounds();
+    if (b.isValid && b.isValid()) {
+      map.fitBounds(b, { padding: [20, 20] });
+      setTimeout(() => { try { map.invalidateSize(); } catch {} }, 50);
+    }
+  }
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    ensureMap();
+    if (typeof window.__refreshRouteNow === 'function') window.__refreshRouteNow();
+  });
+}
+// --- [END ADD/REPLACE] ---
 
 /* ==== BEGIN PATCH: pre-orcamento resumo + validações + datas ==== */
 
@@ -134,28 +215,6 @@ if (typeof document !== 'undefined') {
       clearTimeout(t);
       t = setTimeout(() => fn(...args), ms);
     };
-  }
-
-  async function fetchAirportByCode(code) {
-    const icao = String(code || '').toUpperCase();
-    if (!ICAO_RE.test(icao)) return null;
-    try {
-      const res = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${icao}`, {
-        headers: {
-          'X-RapidAPI-Key': API_KEY,
-          'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
-        }
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
-      const loc = data && data.location;
-      if (loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lon)) {
-        return { lat: Number(loc.lat), lng: Number(loc.lon) };
-      }
-      return null;
-    } catch {
-      return null;
-    }
   }
 
   async function refreshRouteFromInputs() {
@@ -263,12 +322,6 @@ if (typeof document !== 'undefined') {
     addCommission.addEventListener('click', addCommissionEntry);
   }
 
-  if (typeof L !== 'undefined' && document.getElementById('map')) {
-    map = L.map('map').setView([0, 0], 2);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-  }
 }
 
 function haversine(a, b) {
@@ -282,33 +335,6 @@ function haversine(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-function updateDistanceFromAirports(waypoints) {
-  const nmInput = typeof document !== 'undefined' ? document.getElementById('nm') : null;
-  const kmInput = typeof document !== 'undefined' ? document.getElementById('km') : null;
-  const points = (waypoints || []).filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
-
-  if (points.length < 2) {
-    // Apenas remova a rota do mapa; mantenha os valores que o usuário digitou.
-    if (routeLayer && typeof routeLayer.remove === 'function') routeLayer.remove();
-    routeLayer = null;
-    return;
-  }
-
-  let kmTotal = 0;
-  for (let i = 1; i < points.length; i++) {
-    kmTotal += haversine(points[i - 1], points[i]);
-  }
-  const nmTotal = kmTotal / 1.852;
-
-  if (nmInput) nmInput.value = nmTotal.toFixed(1);
-  if (kmInput) kmInput.value = kmTotal.toFixed(1);
-
-  if (typeof L !== 'undefined' && map) {
-    if (routeLayer) routeLayer.remove();
-    routeLayer = L.polyline(points.map(p => [p.lat, p.lng]), { color: 'blue' }).addTo(map);
-    map.fitBounds(routeLayer.getBounds());
-  }
-}
 
 function calcularComissao(subtotal, _valorExtra, _tipoExtra, commissions) {
   const base = subtotal; // km × tarifa
@@ -429,149 +455,117 @@ function buildDocDefinition(state) {
     state.tipoExtra,
     state.commissions || []
   );
-/* === BEGIN PATCH: COMISSAO (buildDocDefinition) === */
   const commissionAmount = obterComissao(km, state.valorKm);
-/* === END PATCH: COMISSAO (buildDocDefinition) === */
   const total = totalSemComissao + totalComissao + commissionAmount;
-  // === BEGIN PDF DESIGN ===
-  // Cabeçalho com logo e informações de contato
-  const header = {
+
+  const headerBlock = {
     columns: [
-      { width: 60, text: '' }, // LOGO_PLACEHOLDER
+      { image: 'LOGO_PLACEHOLDER', width: 80, margin: [0, 0, 10, 0] },
       [
-        { text: '[NOME_EMPRESA]', style: 'h1' },
+        { text: '[NOME_EMPRESA]', style: 'brand' },
         { text: '[SLOGAN_CURTO]', style: 'muted' },
-        { text: '[WHATSAPP_LINK] | [EMAIL_CONTATO] | [CNPJ_OPCIONAL]', style: 'muted' }
+        { text: '[EMAIL_CONTATO] • [WHATSAPP_LINK] • [CNPJ_OPCIONAL]', style: 'mini' }
       ]
     ],
-    columnGap: 10,
-    margin: [40, 20, 40, 20]
+    columnGap: 12,
+    margin: [0, 0, 0, 12]
   };
 
-  const content = [];
-  content.push({ text: 'Cotação de Voo Executivo', style: 'h1', margin: [0, 0, 0, 20] });
-
-  // Resumo do voo em duas colunas (tabela sem bordas)
-  const resumoCol1 = [];
-  const resumoCol2 = [];
+  const resumoLeft = [];
   if (state.showRota) {
-    const codes = [state.origem, state.destino, ...(state.stops || [])];
-    resumoCol1.push(`Rota: ${codes.filter(Boolean).join(' → ')}`);
+    const codes = [state.origem, state.destino, ...(state.stops || [])].filter(Boolean).join(' → ');
+    resumoLeft.push({ text: `Rota: ${codes}`, style: 'row' });
   }
-  if (state.showAeronave) resumoCol1.push(`Aeronave: ${state.aeronave}`);
-  if (state.showDatas) resumoCol1.push(`Datas: ${state.dataIda} - ${state.dataVolta}`);
-  if (state.showDistancia) resumoCol2.push(`Distância: ${state.nm} NM (${km.toFixed(1)} km)`);
-  if (state.showTarifa) resumoCol2.push(`Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+  if (state.showAeronave) resumoLeft.push({ text: `Aeronave: ${state.aeronave}`, style: 'row' });
+  if (state.showDatas) resumoLeft.push({ text: `Datas: ${state.dataIda} - ${state.dataVolta}`, style: 'row' });
 
-  const leftSummary = resumoCol1.join('\n');
-  const rightSummary = resumoCol2.join('\n');
-  if (leftSummary || rightSummary) {
-    content.push({
-      table: {
-        widths: ['*', '*'],
-        body: [[{ text: leftSummary }, { text: rightSummary, alignment: 'right' }]]
-      },
-      layout: 'noBorders',
-      margin: [0, 0, 0, 20]
-    });
-  }
+  const resumoRight = [];
+  if (state.showDistancia) resumoRight.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)`, style: 'row' });
+  if (state.showTarifa) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'row' });
 
-  // Investimento (tabela com listras)
-  const investBody = [
-    [
-      { text: 'Item', style: 'tableHeader' },
-      { text: 'Valor', style: 'tableHeader', alignment: 'right' }
+  const resumoBlock = {
+    columns: [
+      { stack: resumoLeft, width: '50%' },
+      { stack: resumoRight, width: '50%' }
     ],
-    [
-      { text: 'Total parcial:' },
-      { text: `R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }
-    ]
-  ];
+    columnGap: 12,
+    margin: [0, 6, 0, 10]
+  };
+
+  const investBody = [];
+  investBody.push([{ text: `Total parcial: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
 
   if (state.showAjuste && state.valorExtra > 0) {
     const label = state.tipoExtra === 'soma' ? 'Outras Despesas' : 'Desconto';
-    investBody.push([
-      { text: `${label}:` },
-      { text: `R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }
-    ]);
+    investBody.push([{ text: `${label}: R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
   }
 
   if (state.showComissao) {
-    detalhesComissao.forEach((c, idx) => {
-      investBody.push([
-        { text: `Comissão ${idx + 1}:` },
-        { text: `R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }
-      ]);
+    (detalhesComissao || []).forEach((c, idx) => {
+      investBody.push([{ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
     });
     if (commissionAmount > 0) {
-      investBody.push([
-        { text: 'Comissão:' },
-        { text: `R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }
-      ]);
+      investBody.push([{ text: `Comissão: R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
     }
   }
 
-  investBody.push([
-    { text: 'Total Final:', style: 'tableHeader' },
-    { text: `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'priceBig', alignment: 'right' }
-  ]);
+  investBody.push([{ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right', bold: true }]);
 
-  content.push({
-    table: { widths: ['*', 'auto'], body: investBody },
-    layout: 'lightHorizontalLines',
-    margin: [0, 0, 0, 20]
-  });
+  const investimentoBlock = {
+    table: {
+      widths: ['*'],
+      body: investBody
+    },
+    layout: {
+      fillColor: (rowIndex) => (rowIndex % 2 === 0 ? null : '#fafafa'),
+      hLineColor: () => '#eaeaea',
+      vLineColor: () => '#ffffff'
+    },
+    margin: [0, 6, 0, 12]
+  };
 
-  // Observações e Pagamento
-  if (state.showObservacoes && state.observacoes) {
-    content.push({ text: 'Observações:', style: 'h2' });
-    content.push({ text: state.observacoes, margin: [0, 0, 0, 10] });
-  }
-  if (state.showPagamento && state.pagamento) {
-    content.push({ text: 'Dados de pagamento:', style: 'h2' });
-    content.push({ text: state.pagamento, margin: [0, 0, 0, 10] });
-  }
+  const extras = [];
+  if (state.showObservacoes && state.observacoes) extras.push({ text: `Observações: ${state.observacoes}`, margin: [0, 2, 0, 0] });
+  if (state.showPagamento && state.pagamento) extras.push({ text: `Dados de pagamento: ${state.pagamento}`, margin: [0, 2, 0, 0] });
+  if (state.showMapa) extras.push({ text: 'Mapa:', margin: [0, 2, 0, 0] });
 
-  // Storytelling, Prazos & Garantias, FAQs
-  content.push({ text: 'Por que voar conosco?', style: 'h2' });
-  content.push({ text: 'Oferecemos uma experiência única em aviação executiva, alinhando conforto, segurança e agilidade.', margin: [0, 0, 0, 10] });
-  content.push({ text: 'Prazos & Garantias', style: 'h2' });
-  content.push({ ul: ['Confirmação imediata', 'Flexibilidade de horários', 'Suporte 24h'], margin: [0, 0, 0, 10] });
-  content.push({ text: 'FAQs', style: 'h2' });
-  content.push({
-    ol: [
-      'Como é calculado o valor? Baseado na distância em km multiplicada pela tarifa da aeronave.',
-      'Posso alterar a rota após confirmar? Sim, sujeito à disponibilidade.',
-      'Qual o prazo de validade desta cotação? 5 dias corridos.'
-    ]
-  });
+  const resumoTextForTest = [...resumoLeft, ...resumoRight].map(r => r.text).join(' ');
 
-  if (state.showMapa) {
-    content.push({ text: 'Mapa:', style: 'h2', pageBreak: 'before' });
-  }
+  const content = [
+    { text: 'Cotação de Voo Executivo', style: 'h1' },
+    headerBlock,
+    resumoBlock,
+    { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
+    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: '#eaeaea' }] },
+    { text: 'Investimento', style: 'h2', margin: [0, 10, 0, 6] },
+    investimentoBlock,
+    ...(extras.length ? [{ text: 'Informações adicionais', style: 'h2', margin: [0, 6, 0, 4] }, ...extras] : [])
+  ];
 
   return {
-    header,
     content,
-    styles: {
-      h1: { fontSize: 20, bold: true },
-      h2: { fontSize: 14, bold: true, margin: [0, 10, 0, 4] },
-      muted: { color: '#666', fontSize: 9 },
-      tableHeader: { fillColor: '#f0f0f0', bold: true },
-      priceBig: { fontSize: 16, bold: true }
-    },
-    defaultStyle: { fontSize: 10, lineHeight: 1.25 },
     pageSize: 'A4',
     pageMargins: [40, 60, 40, 60],
-    footer: (currentPage, pageCount) => ({
-      text: `${currentPage} / ${pageCount}`,
-      alignment: 'center',
-      margin: [0, 0, 0, 20],
-      style: 'muted'
-    }),
-    info: { title: 'Cotação de Voo Executivo', author: '[NOME_EMPRESA]' }
+    defaultStyle: { fontSize: 10, lineHeight: 1.25, color: '#222' },
+    styles: {
+      h1: { fontSize: 18, bold: true, margin: [0, 0, 0, 8] },
+      h2: { fontSize: 12, bold: true, color: '#0d6efd' },
+      brand: { fontSize: 14, bold: true },
+      muted: { color: '#666', margin: [0, 2, 0, 0] },
+      mini: { color: '#777', fontSize: 9 },
+      row: { margin: [0, 2, 0, 0] }
+    },
+    info: { title: 'Cotação de Voo Executivo', author: '[NOME_EMPRESA]' },
+    footer: function(currentPage, pageCount) {
+      return {
+        columns: [
+          { text: '[NOME_EMPRESA] • [WHATSAPP_LINK] • [EMAIL_CONTATO]', style: 'mini' },
+          { text: `${currentPage} / ${pageCount}`, alignment: 'right', style: 'mini' }
+        ],
+        margin: [40, 0, 40, 20]
+      };
+    }
   };
-  // === END PDF DESIGN ===
 }
 
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
@@ -636,18 +630,13 @@ async function gerarPreOrcamento() {
 
 async function gerarPDF(state) {
   const s = state || buildState();
+  if (typeof __refreshRouteNow === 'function') { await __refreshRouteNow(); }
   let waypoints = [];
   if (s.showMapa) {
     const codes = [s.origem, s.destino, ...(s.stops || [])];
     for (const code of codes) {
-      const res = await fetch(`https://aerodatabox.p.rapidapi.com/airports/icao/${code}`, {
-        headers: {
-          'X-RapidAPI-Key': API_KEY,
-          'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com'
-        }
-      });
-      const data = await res.json();
-      if (data && data.location) waypoints.push({ lat: data.location.lat, lng: data.location.lon });
+      const point = await fetchAirportByCode(code);
+      if (point) waypoints.push(point);
     }
     updateDistanceFromAirports(waypoints);
   }
