@@ -34,6 +34,12 @@ const API_KEY = (typeof process !== 'undefined' && process.env && process.env.AE
 let map;
 let routeLayer = null;
 const airportCache = new Map();
+const LOCAL_AIRPORTS = {
+  SBBR: { lat: -15.8697, lng: -47.9208 },
+  SBSP: { lat: -23.6261, lng: -46.6554 },
+  SBMO: { lat: -9.5108, lng: -35.7925 },
+  SBBH: { lat: -19.8519, lng: -43.9506 }
+};
 
 function ensureMap() {
   if (typeof L === 'undefined') return;
@@ -68,8 +74,9 @@ async function fetchAirportByCode(code) {
     airportCache.set(icao, point);
     return point;
   } catch {
-    airportCache.set(icao, null);
-    return null;
+    const fallback = LOCAL_AIRPORTS[icao] || null;
+    airportCache.set(icao, fallback);
+    return fallback;
   }
 }
 
