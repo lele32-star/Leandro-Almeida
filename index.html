@@ -25,96 +25,38 @@
       color: var(--text);
       font-family: 'Segoe UI', Tahoma, sans-serif;
     }
-    .container {
-      max-width: 900px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-    h1 {
-      text-align: center;
-      margin-bottom: 1.5rem;
-    }
-    label {
-      font-weight: bold;
-      display: block;
-      margin-top: 15px;
-    }
+    .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+    h1 { text-align: center; margin-bottom: 1.5rem; }
+    label { font-weight: bold; display: block; margin-top: 15px; }
     input, select, textarea {
-      width: 100%;
-      padding: 8px;
-      margin-top: 5px;
-      border: 1px solid var(--border);
-      border-radius: 4px;
-      background: var(--surface);
+      width: 100%; padding: 8px; margin-top: 5px;
+      border: 1px solid var(--border); border-radius: 4px; background: var(--surface);
     }
     input.icao { text-transform: uppercase; letter-spacing: .04em; }
-    input:focus,
-    select:focus,
-    textarea:focus {
-      outline: 2px solid var(--primary);
-      outline-offset: 2px;
-    }
-    .linha {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 15px;
-    }
-    .linha > div {
-      flex: 1 1 200px;
-    }
-    .botoes {
-      margin-top: 30px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
+    input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
+    .linha { display: flex; flex-wrap: wrap; gap: 15px; }
+    .linha > div { flex: 1 1 200px; }
+    .botoes { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 10px; }
     button {
-      padding: 12px 20px;
-      font-size: 16px;
-      cursor: pointer;
-      border: none;
-      border-radius: 4px;
-      background: var(--primary);
-      color: #fff;
-      transition: background 0.2s;
+      padding: 12px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 4px;
+      background: var(--primary); color: #fff; transition: background 0.2s;
     }
-    button:hover {
-      background: var(--primary-hover);
-    }
+    button:hover { background: var(--primary-hover); }
     #resultado {
-      margin-top: 30px;
-      padding: 20px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 6px;
+      margin-top: 30px; padding: 20px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 6px;
     }
     #pdfFilters {
-      margin-top: 20px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 10px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
+      margin-top: 20px; border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px; display: flex; flex-wrap: wrap; gap: 10px;
     }
     #pdfFilters label {
-      font-weight: normal;
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      margin-right: 0;
+      font-weight: normal; display: flex; align-items: center; gap: 4px; margin-right: 0;
     }
     #map {
-      height: 400px;
-      margin-top: 20px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
+      height: 400px; margin-top: 20px; border: 1px solid var(--border); border-radius: 6px;
     }
-    @media (max-width: 600px) {
-      .botoes button {
-        flex: 1 1 100%;
-      }
-    }
+    @media (max-width: 600px) { .botoes button { flex: 1 1 100%; } }
   </style>
 </head>
 <body>
@@ -145,12 +87,12 @@
         <input type="number" id="km" />
       </div>
       <div>
-        <label for="origem">Origem:</label>
+        <label for="origem">Origem (ICAO):</label>
         <input type="text" id="origem" class="icao" maxlength="4"
           oninput="this.value=this.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);" />
       </div>
       <div>
-        <label for="destino">Destino:</label>
+        <label for="destino">Destino (ICAO):</label>
         <input type="text" id="destino" class="icao" maxlength="4"
           oninput="this.value=this.value.toUpperCase().replace(/[^A-Z]/g,'').slice(0,4);" />
       </div>
@@ -177,125 +119,86 @@
       <option value="subtrai">Subtrair</option>
     </select>
 
-    <!-- === Componente de Comissão (corrigido) ================================ -->
+    <!-- === Componente de Comissão ========================================= -->
     <section id="commission-component" role="region" aria-labelledby="commissionTitle" style="margin-top:1rem">
       <h3 id="commissionTitle" style="position:absolute;left:-9999px;top:-9999px;">Comissão</h3>
-
-      <!-- Único botão com rótulo claro -->
       <button type="button" id="btnAddCommission"
               aria-pressed="false"
               style="padding:.6rem .9rem;border:1px solid var(--primary);border-radius:.75rem;background:var(--primary);color:#fff;cursor:pointer">
         Adicionar comissão
       </button>
-
-      <!-- Painel com percentual (inicia oculto) -->
       <div id="commissionPanel" hidden
            style="margin-top:.75rem; padding:1rem; border:1px solid #eee; border-radius:.75rem; background:#fafafa">
         <label for="commissionPercent" style="display:block;font-size:.95rem;margin-bottom:.4rem">
           Percentual da comissão (%)
         </label>
         <input id="commissionPercent" type="number" min="0" max="100" step="0.1" value="5"
-               inputmode="decimal"
-               aria-describedby="commissionHelp"
-               style="width:120px;padding:.5rem;border:1px solid #ddd;border-radius:.5rem" />
+               inputmode="decimal" aria-describedby="commissionHelp"
+               style="width:120px;padding:.5rem;border:1px solid var(--border);border-radius:.5rem" />
         <div id="commissionHelp" style="font-size:.85rem;color:#666;margin-top:.35rem">
           A comissão será aplicada sobre a base conforme as regras informadas no sistema.
         </div>
-
         <output id="commissionPreview" style="display:block;margin-top:.75rem;font-weight:600">
           Comissão: R$ 0,00
         </output>
       </div>
-
-      <!-- Integração silenciosa -->
       <input type="hidden" id="commissionAmount" value="0">
     </section>
 
     <script>
-    (() => {
-      const root = document.getElementById('commission-component');
-      if (!root) return;
+      // Mantém o módulo de comissão (necessário para app.js)
+      (() => {
+        const root = document.getElementById('commission-component');
+        if (!root) return;
+        const btnAdd = root.querySelector('#btnAddCommission');
+        const panel = root.querySelector('#commissionPanel');
+        const percentInput = root.querySelector('#commissionPercent');
+        const preview = root.querySelector('#commissionPreview');
+        const amountHidden = root.querySelector('#commissionAmount');
 
-      const btnAdd = root.querySelector('#btnAddCommission');
-      const panel = root.querySelector('#commissionPanel');
-      const percentInput = root.querySelector('#commissionPercent');
-      const preview = root.querySelector('#commissionPreview');
-      const amountHidden = root.querySelector('#commissionAmount');
+        const state = { enabled: false, percent: Number(percentInput.value) || 0 };
+        const fmtBRL = (n) => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
+        const clamp2 = (n) => Number((Number(n)||0).toFixed(2));
 
-      const state = {
-        enabled: false,
-        percent: Number(percentInput.value) || 0
-      };
+        btnAdd.addEventListener('click', () => {
+          state.enabled = !state.enabled;
+          panel.hidden = !state.enabled;
+          btnAdd.setAttribute('aria-pressed', String(state.enabled));
+          btnAdd.textContent = state.enabled ? 'Remover comissão' : 'Adicionar comissão';
+          if (!state.enabled) {
+            amountHidden.value = '0';
+            preview.textContent = 'Comissão: R$ 0,00';
+            root.dispatchEvent(new CustomEvent('commission:changed', { detail: { amount:0, base:0 }, bubbles: true }));
+          }
+        });
+        percentInput.addEventListener('input', () => {
+          const v = Number(String(percentInput.value).replace(',', '.'));
+          state.percent = Math.max(0, isNaN(v) ? 0 : v);
+        });
 
-      const fmtBRL = (n) => {
-        try {
-          return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(n) || 0);
-        } catch {
-          return 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
-        }
-      };
-      const clamp2 = (n) => Number((Number(n) || 0).toFixed(2));
-
-      // Botão principal
-      btnAdd.addEventListener('click', () => {
-        state.enabled = !state.enabled;
-        panel.hidden = !state.enabled;
-        btnAdd.setAttribute('aria-pressed', String(state.enabled));
-        btnAdd.textContent = state.enabled ? 'Remover comissão' : 'Adicionar comissão';
-
-        if (!state.enabled) {
-          amountHidden.value = '0';
-          preview.textContent = 'Comissão: R$ 0,00';
-          dispatch('commission:changed', snapshot({ amount: 0, base: 0 }));
-        }
-      });
-
-      percentInput.addEventListener('input', () => {
-        const v = Number(String(percentInput.value).replace(',', '.'));
-        state.percent = Math.max(0, isNaN(v) ? 0 : v);
-      });
-
-      function calculate({ km, tarifa /*, ajusteValor = 0 */ }) {
-        if (!state.enabled) {
-          const payload = snapshot({ amount: 0, base: 0 });
-          dispatch('commission:changed', payload);
+        function calculate({ km, tarifa }) {
+          if (!state.enabled) {
+            const payload = { enabled:false, percent:state.percent, amount:0, base:0 };
+            root.dispatchEvent(new CustomEvent('commission:changed', { detail: payload, bubbles:true }));
+            return payload;
+          }
+          const base = Math.max(0, Number(km) * Number(tarifa));
+          const amount = clamp2(base * (Number(state.percent)/100));
+          amountHidden.value = String(amount);
+          preview.textContent = 'Comissão: ' + fmtBRL(amount);
+          const payload = { enabled:true, percent:state.percent, amount, base };
+          root.dispatchEvent(new CustomEvent('commission:changed', { detail: payload, bubbles:true }));
           return payload;
         }
-        // Base SEMPRE = km × tarifa (ignora acréscimo/desconto)
-        const base = Math.max(0, Number(km) * Number(tarifa));
-        const amount = clamp2(base * (Number(state.percent) / 100));
-        amountHidden.value = String(amount);
-        preview.textContent = 'Comissão: ' + fmtBRL(amount);
 
-        const payload = snapshot({ amount, base });
-        dispatch('commission:changed', payload);
-        return payload;
-      }
-
-      function snapshot({ amount, base }) {
-        return {
-          enabled: state.enabled,
-          percent: Number(state.percent),
-          amount: Number(amount || 0),
-          base: Number(base || 0)
-        };
-      }
-      function dispatch(name, detail) {
-        root.dispatchEvent(new CustomEvent(name, { detail, bubbles: true }));
-      }
-
-      // API pública mantida
-      window.CommissionModule = Object.freeze({
-        calculate,
-        getState: () => snapshot({ amount: amountHidden.value, base: 0 }),
-        setPercent: (p) => {
-          state.percent = Math.max(0, Number(p) || 0);
-          percentInput.value = String(state.percent);
-        }
-      });
-    })();
+        window.CommissionModule = Object.freeze({
+          calculate,
+          getState: () => ({ enabled: state.enabled, percent: state.percent, amount: Number(amountHidden.value)||0 }),
+          setPercent: (p) => { state.percent = Math.max(0, Number(p)||0); percentInput.value = String(state.percent); }
+        });
+      })();
     </script>
-    <!-- === Fim do Componente de Comissão ===================================== -->
+    <!-- === Fim Comissão ===================================================== -->
 
     <label for="pagamento">Dados para pagamento:</label>
     <textarea id="pagamento" rows="5">INTER - 077
@@ -318,39 +221,31 @@ Conta: 25691815-5</textarea>
       <label><input type="checkbox" id="showObservacoes" checked /> Observações</label>
       <label><input type="checkbox" id="showPagamento" checked /> Pagamento</label>
       <label><input type="checkbox" id="showMapa" checked /> Mapa</label>
-      <!-- === Opção de PDF para Comissão ======================================== -->
       <label for="pdfCommissionToggle" style="margin-right:1rem;display:inline-flex;align-items:center;gap:.4rem;">
-        <input type="checkbox" id="pdfCommissionToggle" checked>
-        Comissão
+        <input type="checkbox" id="pdfCommissionToggle" checked> Comissão
       </label>
-
       <script>
-      (() => {
-        const pdfToggle = document.getElementById('pdfCommissionToggle');
-
-        // Mantém compatibilidade criando (ou reutilizando) um hidden com mesmo id usado no projeto
-        let hidden = document.getElementById('commissionShowInPdf');
-        if (!hidden) {
-          hidden = document.createElement('input');
-          hidden.type = 'hidden';
-          hidden.id = 'commissionShowInPdf';
-          hidden.value = '1';
-          document.body.appendChild(hidden);
-        }
-
-        const sync = () => {
-          hidden.value = pdfToggle.checked ? '1' : '0';
-          // Evento para quem já ouve visibilidade de comissão no PDF
-          document.dispatchEvent(new CustomEvent('commission:visibility', {
-            detail: { showInPdf: pdfToggle.checked }, bubbles: true
-          }));
-        };
-
-        pdfToggle.addEventListener('change', sync);
-        sync();
-      })();
+        // Toggle de visibilidade da comissão no PDF (hidden compat)
+        (() => {
+          const pdfToggle = document.getElementById('pdfCommissionToggle');
+          let hidden = document.getElementById('commissionShowInPdf');
+          if (!hidden) {
+            hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.id = 'commissionShowInPdf';
+            hidden.value = '1';
+            document.body.appendChild(hidden);
+          }
+          const sync = () => {
+            hidden.value = pdfToggle.checked ? '1' : '0';
+            document.dispatchEvent(new CustomEvent('commission:visibility', {
+              detail: { showInPdf: pdfToggle.checked }, bubbles: true
+            }));
+          };
+          pdfToggle.addEventListener('change', sync);
+          sync();
+        })();
       </script>
-      <!-- === Fim da opção de PDF para Comissão ================================= -->
     </div>
 
     <div class="botoes">
@@ -360,7 +255,6 @@ Conta: 25691815-5</textarea>
     </div>
 
     <div id="resultado"></div>
-
     <div id="map"></div>
 
     <script src="cotacao.js"></script>

@@ -455,16 +455,15 @@ function buildDocDefinition(state) {
   const commissionAmount = obterComissao(km, state.valorKm);
   const total = totalSemComissao + totalComissao + commissionAmount;
 
+  // Cabeçalho sem imagem (evita falha caso não exista dataURL)
   const headerBlock = {
     columns: [
-      { image: 'LOGO_PLACEHOLDER', width: 80, margin: [0, 0, 10, 0] },
       [
         { text: '[NOME_EMPRESA]', style: 'brand' },
         { text: '[SLOGAN_CURTO]', style: 'muted' },
         { text: '[EMAIL_CONTATO] • [WHATSAPP_LINK] • [CNPJ_OPCIONAL]', style: 'mini' }
       ]
     ],
-    columnGap: 12,
     margin: [0, 0, 0, 12]
   };
 
@@ -489,6 +488,7 @@ function buildDocDefinition(state) {
     margin: [0, 6, 0, 10]
   };
 
+  // Tabela de investimento
   const investBody = [];
   investBody.push([{ text: `Total parcial: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
 
@@ -509,10 +509,7 @@ function buildDocDefinition(state) {
   investBody.push([{ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right', bold: true }]);
 
   const investimentoBlock = {
-    table: {
-      widths: ['*'],
-      body: investBody
-    },
+    table: { widths: ['*'], body: investBody },
     layout: {
       fillColor: (rowIndex) => (rowIndex % 2 === 0 ? null : '#fafafa'),
       hLineColor: () => '#eaeaea',
@@ -526,6 +523,7 @@ function buildDocDefinition(state) {
   if (state.showPagamento && state.pagamento) extras.push({ text: `Dados de pagamento: ${state.pagamento}`, margin: [0, 2, 0, 0] });
   if (state.showMapa) extras.push({ text: 'Mapa:', margin: [0, 2, 0, 0] });
 
+  // Texto invisível preserva palavras-chave para testes
   const resumoTextForTest = [...resumoLeft, ...resumoRight].map(r => r.text).join(' ');
 
   const content = [
