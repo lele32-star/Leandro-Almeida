@@ -1,9 +1,125 @@
 /*
-PROMPT CIRÚRGICO: Autofill Valor-hora e Velocidade ao selecionar aeronave
-Objetivo: Preencher automaticamente os campos Valor-hora (R$/h) e Velocidade de Cruzeiro (KTAS) ao selecionar uma aeronave, usando o catálogo já existente.
-IDs usados: #aeronave, #hourlyRate, #cruiseSpeed
-Consolidar todos os listeners para evitar conflitos.
+================= ESPECIFICAÇÃO ATUAL (PROMPT) =================
+Contexto: App de cotação com dois métodos.
+Método 1 (distância): Tarifa/km * Distância(KM) ± ajuste + comissões.
+Método 2 (tempo): Valor-hora * soma(tempo_faturado_perna) onde:
+  tempo_base = (NM / KTAS)
+  tempo_ajustado = tempo_base * (1 + bufferVento%) + (taxiMin/60)
+  tempo_faturado_perna = max(tempo_ajustado, minimoMin/60 se informado)
+Total Método 2 = Valor-hora * totalHoras ± ajuste + comissões.
+
+Requisitos desta entrega:
+1. Método 2 deve usar sempre o valor do input #hourlyRate na hora do PRÉ-ORÇAMENTO.
+2. Botão "Gerar Pré-Orçamento" congela: método escolhido + snapshot completo (quoteSnapshot) em memória + localStorage.
+3. Botão "Gerar PDF" NÃO recalcula: usa snapshot congelado; se inexistente, alerta usuário.
+4. Expor API interna:
+   computeByDistance(formState) -> QuoteResult
+   computeByTime(formState) -> QuoteResult
+   freezePreQuote(method, result)
+   getFrozenQuote() -> { selectedMethod, snapshot } | null
+5. Manter IDs, formatação BRL 2 casas, não refatorar além do necessário.
+===============================================================
 */
+
+// ================= SNAPSHOT / PRE-QUOTE API =================
+let __frozenQuote = null; // { selectedMethod: 'distance'|'time', snapshot: {...}, ts }
+const FROZEN_KEY = 'quote:last';
+
+function getFrozenQuote(){
+  if (__frozenQuote) return __frozenQuote;
+  try { const raw = localStorage.getItem(FROZEN_KEY); if (raw) { __frozenQuote = JSON.parse(raw); return __frozenQuote; } } catch{}
+  return null;
+}
+function freezePreQuote(method, snapshot){
+  __frozenQuote = { selectedMethod: method, snapshot, ts: Date.now() };
+  try { localStorage.setItem(FROZEN_KEY, JSON.stringify(__frozenQuote)); } catch{}
+}
+function baseQuoteResult(){
+  return { method:null, distanciaKm:0, distanciaNm:0, valorKm:0, subtotal:0, ajusteAplicado:0, comissao:0, comissaoDetalhes:[], commissionAmountExtra:0, total:0, metodo2:null, aeronave:null, inputs:{}, legs:[], raw:{} };
+}
+function computeCommissionWrap(subtotal, valorExtra, tipoExtra, commissions, km, valorKm){
+  const { totalComissao, detalhesComissao } = calcularComissao(subtotal, valorExtra, tipoExtra, commissions||[]);
+  const commissionAmount = obterComissao(km, valorKm);
+  return { totalComissao, detalhesComissao, commissionAmount };
+}
+function computeByDistance(state){
+  const r = baseQuoteResult();
+  r.method = 'distance';
+  r.distanciaNm = state.nm;
+  r.distanciaKm = state.nm * 1.852;
+  r.valorKm = state.valorKm;
+  r.aeronave = state.aeronave || (document.getElementById('aeronave')?.value||null);
+  r.inputs = { ...state };
+  const km = r.distanciaKm;
+  const subtotal = km * r.valorKm;
+  r.subtotal = subtotal;
+  const ajusteAplicado = state.tipoExtra === 'soma' ? state.valorExtra : -state.valorExtra;
+  r.ajusteAplicado = ajusteAplicado;
+  const { totalComissao, detalhesComissao, commissionAmount } = computeCommissionWrap(subtotal, state.valorExtra, state.tipoExtra, state.commissions, km, r.valorKm);
+  r.comissao = totalComissao + commissionAmount;
+  r.comissaoDetalhes = detalhesComissao;
+  r.commissionAmountExtra = commissionAmount;
+  r.total = subtotal + ajusteAplicado + r.comissao;
+  r.raw = { subtotal, ajusteAplicado, totalComissao, commissionAmount };
+  return r;
+}
+function computeByTime(state){
+  const r = baseQuoteResult();
+  r.method = 'time';
+  r.distanciaNm = state.nm;
+  r.distanciaKm = state.nm * 1.852;
+  r.valorKm = state.valorKm; // mantido como referência
+  r.aeronave = state.aeronave || (document.getElementById('aeronave')?.value||null);
+  r.inputs = { ...state };
+  const hourlyRate = Number(document.getElementById('hourlyRate')?.value || state.hourlyRate || 0);
+  const cruise = Number(document.getElementById('cruiseSpeed')?.value || state.cruiseSpeed || 0);
+  const windPercent = Number(document.getElementById('windBuffer')?.value || state.windBuffer || 0);
+  const taxiMinutes = Number(document.getElementById('taxiMinutes')?.value || state.taxiMinutes || 0);
+  const minBillable = Number(document.getElementById('minBillable')?.value || state.minBillable || 0);
+  const legs = (typeof legsData!=='undefined' && Array.isArray(legsData) && legsData.length>0)? legsData.slice(): [{ distNm: state.nm }];
+  r.legs = legs.map(l=>({ distNm: l.distNm }));
+  function calcLegHours(dNm){ if(!cruise) return 0; let h=dNm/cruise; h = h*(1+windPercent/100)+(taxiMinutes/60); if(minBillable>0){ h=Math.max(h, minBillable/60);} return h; }
+  let totalHours=0; legs.forEach(l=> totalHours += calcLegHours(Number(l.distNm||0)) );
+  const subtotal = totalHours * hourlyRate;
+  r.subtotal = subtotal;
+  const ajusteAplicado = state.tipoExtra === 'soma' ? state.valorExtra : -state.valorExtra;
+  r.ajusteAplicado = ajusteAplicado;
+  const { totalComissao, detalhesComissao, commissionAmount } = computeCommissionWrap(subtotal, state.valorExtra, state.tipoExtra, state.commissions, r.distanciaKm, r.valorKm);
+  r.comissao = totalComissao + commissionAmount;
+  r.comissaoDetalhes = detalhesComissao;
+  r.commissionAmountExtra = commissionAmount;
+  r.total = subtotal + ajusteAplicado + r.comissao;
+  const mins = Math.round(totalHours*60); const hhmm = `${Math.floor(mins/60)}:${String(mins%60).padStart(2,'0')}`;
+  r.metodo2 = { hourlyRate, cruise, totalHours, totalHhmm: hhmm, windPercent, taxiMinutes, minBillable };
+  r.raw = { subtotal, ajusteAplicado, totalHours, hourlyRate };
+  return r;
+}
+function getUiSelectedMethod(){
+  const rTime = document.querySelector('input[name="metodoCalculo"][value="time"]');
+  const rDist = document.querySelector('input[name="metodoCalculo"][value="distance"]');
+  if (rTime?.checked) return 'time';
+  if (rDist?.checked) return 'distance';
+  try { const m = localStorage.getItem('selectedMethodPdf'); if (m==='method2') return 'time'; } catch{}
+  return 'distance';
+}
+function renderFrozenPreview(container, frozen){
+  if(!container) return;
+  const { selectedMethod, snapshot } = frozen;
+  const linhas=[];
+  linhas.push(`<div><strong>Método:</strong> ${selectedMethod==='distance'?'Distância':'Tempo de voo'}</div>`);
+  linhas.push(`<div><strong>Distância:</strong> ${snapshot.distanciaNm?.toFixed(1)} NM (${snapshot.distanciaKm?.toFixed(1)} km)</div>`);
+  if (selectedMethod==='distance') {
+    linhas.push(`<div><strong>Tarifa:</strong> R$ ${Number(snapshot.valorKm).toLocaleString('pt-BR',{minimumFractionDigits:2})}/km</div>`);
+  } else if (snapshot.metodo2) {
+    linhas.push(`<div><strong>Valor-hora:</strong> R$ ${Number(snapshot.metodo2.hourlyRate).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
+    linhas.push(`<div><strong>Tempo faturado:</strong> ${snapshot.metodo2.totalHhmm} (${snapshot.metodo2.totalHours.toFixed(2)} h)</div>`);
+  }
+  linhas.push(`<div><strong>Subtotal:</strong> R$ ${Number(snapshot.subtotal).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
+  if (snapshot.ajusteAplicado) linhas.push(`<div><strong>Ajuste:</strong> R$ ${Number(snapshot.ajusteAplicado).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
+  if (snapshot.comissao) linhas.push(`<div><strong>Comissões:</strong> R$ ${Number(snapshot.comissao).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
+  linhas.push(`<div style="margin-top:4px"><strong>Total:</strong> R$ ${Number(snapshot.total).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
+  container.innerHTML = `<div style="border:1px solid #ccc;padding:8px;border-radius:6px;background:#fafafa;font-size:14px;line-height:1.4">${linhas.join('')}</div>`;
+}
 
 // Função utilitária para buscar dados da aeronave selecionada
 function getSelectedAircraftData(selectValue) {
@@ -1563,6 +1679,7 @@ function buildState() {
   };
 }
 
+// IMPORTANTE: quando gerarPDF é chamado após congelamento, 'state' aqui é o snapshot congelado.
 function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {}) {
   const km = state.nm * 1.852;
   const subtotal = valorParcialFn(km, state.valorKm);
@@ -2245,34 +2362,19 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
 
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
 async function gerarPreOrcamento() {
-  // Build state first
-  const state = buildState();
+  // 1. Captura e (se necessário) atualiza estado bruto
   const saida = document.getElementById('resultado');
-
-  // If NM/KM are present, prefer them. Otherwise, attempt to compute via ICAO lookup.
+  let state = buildState();
   if (!Number.isFinite(state.nm) || state.nm <= 0) {
-    // attempt to refresh route (this will update nm/km) and then build state again
     if (typeof refreshRouteFromInputs === 'function') {
-      await refreshRouteFromInputs(false);
+      try { await refreshRouteFromInputs(false); } catch {}
+      state = buildState();
     }
   }
 
-  // rebuild state after possible update
-  const state2 = buildState();
-  const distanciaValida = Number.isFinite(state2.nm) && state2.nm > 0;
-  const valorKmValido = Number.isFinite(state2.valorKm) && state2.valorKm > 0;
-
-  // Validation: KTAS (cruise) must be > 0 when calculating per-leg times
-  const cruiseInput = typeof document !== 'undefined' ? document.getElementById('cruiseSpeed') : null;
-  const cruiseVal = cruiseInput ? Number(cruiseInput.value) || 0 : 0;
-  if (cruiseInput) {
-    if (!Number.isFinite(cruiseVal) || cruiseVal <= 0) {
-      cruiseInput.setAttribute('aria-invalid', 'true');
-    } else {
-      cruiseInput.removeAttribute('aria-invalid');
-    }
-  }
-
+  // 2. Validações mínimas (distância & tarifa por km sempre necessárias pois entram em comissão base)
+  const distanciaValida = Number.isFinite(state.nm) && state.nm > 0;
+  const valorKmValido = Number.isFinite(state.valorKm) && state.valorKm > 0;
   if (!valorKmValido) {
     if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Selecione uma aeronave ou informe a <strong>tarifa por km</strong>.</div>`;
     return;
@@ -2282,149 +2384,31 @@ async function gerarPreOrcamento() {
     return;
   }
 
-  const km = state2.nm * 1.852;
-  const subtotal = valorParcialFn(km, state2.valorKm);
+  // 3. Determina método escolhido (radio / persistido)
+  const method = getUiSelectedMethod(); // 'distance' | 'time'
 
-  // Ajuste (soma/subtrai)
-  let total = valorTotalFn(
-    km,
-    state2.valorKm,
-    state2.tipoExtra === 'soma' ? state2.valorExtra : -state2.valorExtra
-  );
-  let labelExtra = '';
-  if (state2.valorExtra > 0) {
-    labelExtra = `${state2.tipoExtra === 'soma' ? '+' : '-'} ${fmtBRL(state2.valorExtra)}`;
-  }
-
-  // Comissão: percentuais (se houver) + componente (#commissionAmount)
-  const { totalComissao, detalhesComissao } = calcularComissao(
-    subtotal,
-    state2.valorExtra,
-    state2.tipoExtra,
-    state2.commissions || []
-  );
-  const commissionAmount = obterComissao(km, state2.valorKm);
-
-  total += totalComissao + commissionAmount;
-  // Método 2: calcular por hora usando pernas
-  let method2Summary = null;
-  let commissionAmount2 = 0;
-  try {
-    const select = document.getElementById('aeronave');
-    const craftName = select ? select.value : state2.aeronave;
-  // If pricing mode is 'pernas' require aircraft selection
-  const pricingModeEl = document.getElementById('pricingMode');
-  const pricingModeVal = pricingModeEl ? pricingModeEl.value : state2.pricingMode;
-
-  // find catalog entry
-  const entry = aircraftCatalog.find(a => a.nome === craftName || a.id === craftName) || {};
-  const cruiseEff = Number(document.getElementById('cruiseSpeed').value) || (entry && entry.cruise_speed_kt_default) || 0;
-  const hourlyEff = Number(document.getElementById('hourlyRate').value) || (entry && entry.hourly_rate_brl_default) || 0;
-
-  // Determine if we should calculate method2: either explicit 'pernas' pricing mode, or when both cruise and hourly are available and we have route/legs (or running in test env)
-  const codes = [state2.origem, state2.destino, ...(state2.stops || [])].filter(Boolean);
-  const haveRoute = codes.length >= 2 || (Number.isFinite(state2.nm) && state2.nm > 0) || legsData.length > 0;
-  const shouldCalculateMethod2 = (pricingModeVal === 'pernas') || (cruiseEff > 0 && hourlyEff > 0 && haveRoute) || (typeof document === 'undefined'); // always in test env
-
-  if (shouldCalculateMethod2 && (!craftName || craftName.trim() === '')) {
-      if (pricingModeVal === 'pernas') {
-        showToast('Selecione uma aeronave para calcular tempo.');
-        if (select) select.setAttribute('aria-invalid', 'true');
-      }
-      // still allow method 1 to show but skip method2
-      window.__method2Summary = null;
-      method2Summary = null;
-      // render existing resumo and return early
-      const htmlEarly = renderResumo(state2, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount });
-      if (saida) saida.innerHTML = htmlEarly;
+  // 4. Calcula usando API unificada garantindo snapshot estável
+  let result;
+  if (method === 'time') {
+    // validação específica valor-hora
+    const hourlyRate = Number(document.getElementById('hourlyRate')?.value || 0);
+    if (!hourlyRate) {
+      showToast && showToast('Informe o Valor-Hora para usar o Método 2.');
+      // fallback: não congela nada
+      if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #e67e22;background:#fff5eb;border-radius:6px">Preencha o <strong>Valor-Hora (#hourlyRate)</strong> para gerar o pré-orçamento por tempo.</div>`;
       return;
-    } else {
-      if (select) select.removeAttribute('aria-invalid');
     }
-
-    // ensure legsData populated; try to rebuild if empty
-    if (legsData.length === 0 && codes.length >= 2) {
-      if (typeof document === 'undefined') {
-        // Ambiente de teste: criar dados simulados
-        legsData = [];
-        for (let i = 1; i < codes.length; i++) {
-          const distNm = 100 + Math.random() * 200; // Distância simulada
-          const time = calcTempo(distNm, cruiseEff);
-          legsData.push({
-            from: codes[i-1],
-            to: codes[i],
-            distNm,
-            time,
-            custom_time: false
-          });
-        }
-      } else {
-        // Ambiente navegador: buscar coordenadas reais
-        const coords = await Promise.all(codes.map(fetchAirportByCode));
-        updateLegsPanel(codes, coords, cruiseEff);
-      }
-    }
-
-    let totalHours = 0;
-    let totalHhmm = '0:00';
-    // Advanced planning parameters
-    const advEnabled = document.getElementById('enableAdvancedPlanning') ? document.getElementById('enableAdvancedPlanning').checked : false;
-    const windPercent = document.getElementById('windBuffer') ? Number(document.getElementById('windBuffer').value) || 0 : 0;
-    const taxiMinutes = document.getElementById('taxiMinutes') ? Number(document.getElementById('taxiMinutes').value) || 0 : 0;
-    const minBillableMin = document.getElementById('minBillable') ? Number(document.getElementById('minBillable').value) || 0 : 0;
-
-    const advOpts = { enabled: advEnabled, windPercent, taxiMinutes, minBillableMinutes: minBillableMin };
-    (legsData || []).forEach(l => {
-      if (!l || !l.time || typeof l.time.hoursDecimal !== 'number') return;
-      const base = Number(l.time.hoursDecimal || 0);
-      totalHours += adjustLegTime(base, advOpts);
-    });
-    const mins = Math.round(totalHours * 60);
-    totalHhmm = `${Math.floor(mins/60)}:${String(mins%60).padStart(2,'0')}`;
-
-  const subtotal2 = totalHours * hourlyEff;
-  // Ajuste aplicado tal como método 1 (soma ou subtrai)
-  const ajusteAplicado = state2.tipoExtra === 'soma' ? state2.valorExtra : -state2.valorExtra;
-  const baseAjustada = subtotal2 + (Number.isFinite(ajusteAplicado) ? ajusteAplicado : 0);
-  const { totalComissao: totalComissao2, detalhesComissao: detalhesComissao2 } = calcularComissao(subtotal2, state2.valorExtra, state2.tipoExtra, state2.commissions || []);
-  const commissionAmount2 = obterComissao( (state2.nm||0)*1.852, state2.valorKm );
-  const total2 = subtotal2 + (Number.isFinite(ajusteAplicado) ? ajusteAplicado : 0) + totalComissao2 + commissionAmount2;
-  method2Summary = { totalHours, totalHhmm, subtotal: subtotal2, total: total2, detalhesComissao: detalhesComissao2, ajuste: ajusteAplicado };
-  window.__method2Summary = { totalHours, totalHhmm, subtotal: subtotal2, total: total2, ajuste: ajusteAplicado };
-  } catch (e) {
-    method2Summary = null;
-    commissionAmount2 = 0;
+    result = computeByTime(state); // sempre puxa #hourlyRate atual (Requisito 1)
+  } else {
+    result = computeByDistance(state);
   }
 
-  // Preparar detalhes do método 2 para renderização
-  const method2Details = method2Summary ? {
-    detalhesComissao: method2Summary.detalhesComissao,
-    commissionAmount: commissionAmount2
-  } : null;
+  // 5. Congela (persistência + memória) (Requisito 2)
+  freezePreQuote(method, result);
 
-  // Make legs rows keyboard-focusable for accessibility
-  try {
-    const list = document.getElementById('legsList');
-    if (list) {
-      const rows = Array.from(list.querySelectorAll('div'));
-      rows.forEach((r, idx) => {
-        r.tabIndex = 0;
-        r.setAttribute('role', 'button');
-        r.addEventListener('keydown', (ev) => {
-          if (ev.key === 'Enter' || ev.key === ' ') {
-            const btn = r.querySelector('button.edit-leg');
-            if (btn) btn.click();
-            ev.preventDefault();
-          }
-        });
-      });
-    }
-  } catch (e) { /* ignore */ }
-
-  // Render do resumo completo
-  const html = renderResumo(state2, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount }, method2Details);
-  saida.innerHTML = html;
-  saida.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // 6. Render preview congelado simples e objetivo
+  renderFrozenPreview(saida, getFrozenQuote());
+  saida && saida.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 /* ==== END PATCH ==== */
 
@@ -2449,19 +2433,25 @@ function getSelectedPdfMethod() {
   } catch { return 'method1'; }
 }
 
-async function gerarPDF(state, methodSelection = null) {
-  const s = state || buildState();
-  const selectedMethod = methodSelection || getSelectedPdfMethod();
+async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
+  // (Requisito 3) NÃO recalcula nada: usa snapshot congelado
+  const frozen = getFrozenQuote();
+  if (!frozen) {
+    showToast && showToast('Gere o Pré-Orçamento antes de exportar o PDF.');
+    alert && alert('Gere o Pré-Orçamento antes de exportar o PDF.');
+    return;
+  }
+  const { selectedMethod, snapshot } = frozen;
 
-  // coletar opções a partir dos toggles inline armazenados em localStorage
+  // Opções (mantém compatibilidade com toggles já existentes)
   const pdfOptions = {
     includeMap: false,
-    includeCommission: false,
-    includeObservations: false,
-    includePayment: false,
-    includeDates: false,
-    includeAircraft: false,
-    includeDistance: false,
+    includeCommission: true,
+    includeObservations: true,
+    includePayment: true,
+    includeDates: true,
+    includeAircraft: true,
+    includeDistance: true,
     includeTariff: false,
     includeMethod1: false,
     includeMethod2: false,
@@ -2485,30 +2475,10 @@ async function gerarPDF(state, methodSelection = null) {
     }
   } catch (e) { /* ignore */ }
   
-  if (typeof __refreshRouteNow === 'function') { await __refreshRouteNow(); }
-  let waypoints = [];
-  if (s.showMapa) {
-    const codes = [s.origem, s.destino, ...(s.stops || [])];
-    for (const code of codes) {
-      const point = await fetchAirportByCode(code);
-      if (point) waypoints.push(point);
-    }
-    updateDistanceFromAirports(waypoints);
-  }
+  // Não recalcula rota / mapa aqui. Usa somente dados congelados.
   
-  // Capture map dataURL if map inclusion is requested
-  if (pdfOptions.includeMap || s.showMapa) {
-    try {
-      const mapDataUrl = await captureMapDataUrl();
-      if (mapDataUrl) {
-        s.mapDataUrl = mapDataUrl;
-      }
-    } catch (e) {
-      console.warn('Failed to capture map for PDF:', e);
-    }
-  }
-  
-  const docDefinition = buildDocDefinition(s, selectedMethod, pdfOptions);
+  // Usa snapshot diretamente para montar docDefinition (sem recalcular)
+  const docDefinition = buildDocDefinition(snapshot, selectedMethod === 'time' ? 'method2' : 'method1', pdfOptions);
   try {
     if (!docDefinition || !docDefinition.content || !docDefinition.content.length) {
       console.warn('[PDF] docDefinition vazio, aplicando fallback simples.');
