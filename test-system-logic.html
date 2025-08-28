@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teste de Lógica do Sistema</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
+    .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+    .success { color: green; }
+    .error { color: red; }
+    .info { color: blue; }
+    button { margin: 5px; padding: 8px 16px; }
+  </style>
+</head>
+<body>
+  <h1>Teste da Lógica do Sistema de Cotação</h1>
+  
+  <div class="test-section">
+    <h2>1. Seleção de Aeronave e Preenchimento Automático</h2>
+    <select id="testAeronave">
+      <option value="">Escolha uma aeronave</option>
+      <option value="Hawker 400">Hawker 400</option>
+      <option value="Phenom 100">Phenom 100</option>
+    </select>
+    <p>Tarifa: <input type="number" id="testTarifa" readonly /> (preenchido automaticamente)</p>
+    <p>Velocidade: <input type="number" id="testVelocidade" /> KTAS</p>
+    <p>Valor-hora: <input type="number" id="testValorHora" /> R$/h</p>
+    <div id="result1" class="info"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>2. Caminho 1: Aeroportos ICAO → Distância Automática</h2>
+    <p>Origem: <input type="text" id="testOrigem" placeholder="Ex: SBSP" maxlength="4" /></p>
+    <p>Destino: <input type="text" id="testDestino" placeholder="Ex: SBRJ" maxlength="4" /></p>
+    <button onclick="calcularDistanciaICAO()">Calcular Distância</button>
+    <div id="result2" class="info"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>3. Caminho 2: Distância Manual</h2>
+    <p>Distância NM: <input type="number" id="testNM" placeholder="Ex: 350" /></p>
+    <p>Distância KM: <input type="number" id="testKM" placeholder="Conversão automática" readonly /></p>
+    <div id="result3" class="info"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>4. Dados Opcionais</h2>
+    <p>Data Ida: <input type="date" id="testDataIda" /></p>
+    <p>Data Volta: <input type="date" id="testDataVolta" /></p>
+    <p>Acréscimo/Desconto: <input type="number" id="testValorExtra" placeholder="R$" />
+    <select id="testTipoExtra">
+      <option value="soma">Adicionar</option>
+      <option value="subtrai">Subtrair</option>
+    </select></p>
+    <div id="result4" class="info"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>5. Comissão com Cálculo Instantâneo</h2>
+    <button id="testBtnComissao" onclick="toggleComissao()">Adicionar Comissão</button>
+    <div id="testComissaoPanel" style="display:none; margin-top:10px;">
+      <p>Percentual: <input type="number" id="testPercent" min="0" max="100" step="0.1" value="5" />%</p>
+      <div id="testComissaoPreview" class="info">Comissão: R$ 0,00</div>
+    </div>
+    <div id="result5" class="info"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>6. Cálculos Finais</h2>
+    <button onclick="calcularTudo()">Calcular Método 1 e 2</button>
+    <div id="result6" class="info"></div>
+  </div>
+
+  <script src="cotacao.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // Estados
+    let comissaoAtiva = false;
+    
+    // 1. Seleção de aeronave
+    document.getElementById('testAeronave').addEventListener('change', function() {
+      const aeronave = this.value;
+      const entry = aircraftCatalog.find(a => a.nome === aeronave);
+      
+      if (entry) {
+        document.getElementById('testTarifa').value = entry.tarifa_km_brl_default || '';
+        document.getElementById('testVelocidade').value = entry.cruise_speed_kt_default || '';
+        document.getElementById('testValorHora').value = entry.hourly_rate_brl_default || '';
+        document.getElementById('result1').innerHTML = `<span class="success">✓ Aeronave selecionada. Campos preenchidos automaticamente.</span>`;
+      } else {
+        document.getElementById('result1').innerHTML = `<span class="error">✗ Aeronave não encontrada no catálogo.</span>`;
+      }
+    });
+
+    // 2. Conversão NM ↔ KM
+    document.getElementById('testNM').addEventListener('input', function() {
+      const nm = parseFloat(this.value);
+      if (Number.isFinite(nm)) {
+        document.getElementById('testKM').value = (nm * 1.852).toFixed(1);
+        document.getElementById('result3').innerHTML = `<span class="success">✓ Conversão: ${nm} NM = ${(nm * 1.852).toFixed(1)} KM</span>`;
+      } else {
+        document.getElementById('testKM').value = '';
+        document.getElementById('result3').innerHTML = '';
+      }
+    });
+
+    // 3. Comissão com cálculo instantâneo
+    function toggleComissao() {
+      comissaoAtiva = !comissaoAtiva;
+      const panel = document.getElementById('testComissaoPanel');
+      const btn = document.getElementById('testBtnComissao');
+      
+      panel.style.display = comissaoAtiva ? 'block' : 'none';
+      btn.textContent = comissaoAtiva ? 'Remover Comissão' : 'Adicionar Comissão';
+      
+      if (comissaoAtiva) {
+        calcularComissaoInstantanea();
+      } else {
+        document.getElementById('testComissaoPreview').textContent = 'Comissão: R$ 0,00';
+      }
+    }
+
+    document.getElementById('testPercent').addEventListener('input', calcularComissaoInstantanea);
+
+    function calcularComissaoInstantanea() {
+      if (!comissaoAtiva) return;
+      
+      const tarifa = parseFloat(document.getElementById('testTarifa').value) || 0;
+      const km = parseFloat(document.getElementById('testKM').value) || 0;
+      const percent = parseFloat(document.getElementById('testPercent').value) || 0;
+      
+      if (tarifa > 0 && km > 0) {
+        const base = km * tarifa;
+        const comissao = base * (percent / 100);
+        document.getElementById('testComissaoPreview').innerHTML = 
+          `Comissão: <strong>R$ ${comissao.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong><br>
+           Base: R$ ${base.toLocaleString('pt-BR', {minimumFractionDigits: 2})} × ${percent}%`;
+        document.getElementById('result5').innerHTML = `<span class="success">✓ Cálculo instantâneo funcionando</span>`;
+      } else {
+        document.getElementById('testComissaoPreview').textContent = 'Comissão: R$ 0,00 (aguardando distância e tarifa)';
+      }
+    }
+
+    // 4. Busca de aeroportos ICAO (simulado)
+    async function calcularDistanciaICAO() {
+      const origem = document.getElementById('testOrigem').value.toUpperCase();
+      const destino = document.getElementById('testDestino').value.toUpperCase();
+      
+      if (origem.length !== 4 || destino.length !== 4) {
+        document.getElementById('result2').innerHTML = `<span class="error">✗ Códigos ICAO devem ter 4 caracteres</span>`;
+        return;
+      }
+      
+      document.getElementById('result2').innerHTML = `<span class="info">⏳ Buscando coordenadas de ${origem} e ${destino}...</span>`;
+      
+      try {
+        // Simular busca (na implementação real usa fetchAirportByCode)
+        const distanciaSim = Math.floor(Math.random() * 500) + 100; // 100-600 NM
+        
+        document.getElementById('testNM').value = distanciaSim;
+        document.getElementById('testKM').value = (distanciaSim * 1.852).toFixed(1);
+        
+        document.getElementById('result2').innerHTML = 
+          `<span class="success">✓ Distância calculada: ${distanciaSim} NM (${(distanciaSim * 1.852).toFixed(1)} KM)</span>`;
+        
+        // Recalcular comissão se ativa
+        if (comissaoAtiva) calcularComissaoInstantanea();
+        
+      } catch (error) {
+        document.getElementById('result2').innerHTML = `<span class="error">✗ Erro ao buscar aeroportos: ${error.message}</span>`;
+      }
+    }
+
+    // 5. Cálculos finais
+    function calcularTudo() {
+      const tarifa = parseFloat(document.getElementById('testTarifa').value) || 0;
+      const km = parseFloat(document.getElementById('testKM').value) || 0;
+      const velocidade = parseFloat(document.getElementById('testVelocidade').value) || 0;
+      const valorHora = parseFloat(document.getElementById('testValorHora').value) || 0;
+      const valorExtra = parseFloat(document.getElementById('testValorExtra').value) || 0;
+      const tipoExtra = document.getElementById('testTipoExtra').value;
+      
+      if (tarifa <= 0 || km <= 0) {
+        document.getElementById('result6').innerHTML = `<span class="error">✗ Necessário tarifa e distância para calcular</span>`;
+        return;
+      }
+      
+      // Método 1: Distância × Tarifa
+      const subtotal1 = km * tarifa;
+      const ajuste = tipoExtra === 'soma' ? valorExtra : -valorExtra;
+      let total1 = subtotal1 + ajuste;
+      
+      // Adicionar comissão se ativa
+      if (comissaoAtiva) {
+        const percent = parseFloat(document.getElementById('testPercent').value) || 0;
+        const comissao = subtotal1 * (percent / 100);
+        total1 += comissao;
+      }
+      
+      let resultado = `<strong>Método 1 (Distância × Tarifa):</strong><br>
+        Subtotal: R$ ${subtotal1.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>`;
+      
+      if (valorExtra > 0) {
+        resultado += `${tipoExtra === 'soma' ? 'Acréscimo' : 'Desconto'}: R$ ${valorExtra.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>`;
+      }
+      
+      if (comissaoAtiva) {
+        const percent = parseFloat(document.getElementById('testPercent').value) || 0;
+        const comissao = subtotal1 * (percent / 100);
+        resultado += `Comissão (${percent}%): R$ ${comissao.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>`;
+      }
+      
+      resultado += `<strong>Total: R$ ${total1.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong><br><br>`;
+      
+      // Método 2: Tempo × Valor-hora (se disponível)
+      if (velocidade > 0 && valorHora > 0) {
+        const tempoHoras = km / (velocidade * 1.852); // velocidade em km/h
+        const subtotal2 = tempoHoras * valorHora;
+        let total2 = subtotal2 + ajuste;
+        
+        if (comissaoAtiva) {
+          const percent = parseFloat(document.getElementById('testPercent').value) || 0;
+          const comissao = subtotal2 * (percent / 100);
+          total2 += comissao;
+        }
+        
+        resultado += `<strong>Método 2 (Tempo × Valor-hora):</strong><br>
+          Tempo: ${tempoHoras.toFixed(2)} horas<br>
+          Subtotal: R$ ${subtotal2.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>`;
+        
+        if (valorExtra > 0) {
+          resultado += `${tipoExtra === 'soma' ? 'Acréscimo' : 'Desconto'}: R$ ${valorExtra.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>`;
+        }
+        
+        if (comissaoAtiva) {
+          const percent = parseFloat(document.getElementById('testPercent').value) || 0;
+          const comissao = subtotal2 * (percent / 100);
+          resultado += `Comissão (${percent}%): R$ ${comissao.toLocaleString('pt-BR', {minimumFractionDigits: 2})}<br>`;
+        }
+        
+        resultado += `<strong>Total: R$ ${total2.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</strong>`;
+      } else {
+        resultado += `<span class="info">Método 2 não disponível (necessário velocidade e valor-hora)</span>`;
+      }
+      
+      document.getElementById('result6').innerHTML = resultado;
+    }
+
+    // Listener para recalcular quando campos mudam
+    ['testTarifa', 'testKM', 'testValorExtra'].forEach(id => {
+      document.getElementById(id).addEventListener('input', () => {
+        if (comissaoAtiva) calcularComissaoInstantanea();
+      });
+    });
+
+    console.log('Teste de lógica carregado. Catálogo de aeronaves:', aircraftCatalog);
+  </script>
+</body>
+</html>

@@ -752,7 +752,7 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
 
   const togglesBar = `
     <div id=\"inlinePdfToggles\" style=\"display:flex;flex-wrap:wrap;gap:12px;margin:12px 0;padding:10px;border:1px solid #e9ecef;border-radius:6px;background:#f8f9fa;font-size:.85rem\">
-      ${cb('rota','Rota')} ${cb('aeronave','Aeronave')} ${cb('distancia','Distância')} ${cb('datas','Datas')} ${cb('tarifa','Tarifa/km')} ${cb('method1','Método 1')} ${cb('method2','Método 2', false)} ${cb('ajuste','Ajuste')} ${cb('comissoes','Comissões')} ${cb('observacoes','Observações')} ${cb('pagamento','Pagamento')} ${cb('pernas','Pernas')} ${cb('mapa','Mapa')}
+      ${cb('rota','Rota')} ${cb('aeronave','Aeronave')} ${cb('distancia','Distância')} ${cb('datas','Datas')} ${cb('tarifa','Tarifa/km')} ${cb('method1','Método 1')} ${cb('method2','Método 2')} ${cb('ajuste','Ajuste')} ${cb('comissoes','Comissões')} ${cb('observacoes','Observações')} ${cb('pagamento','Pagamento')} ${cb('pernas','Pernas')} ${cb('mapa','Mapa')}
     </div>`;
 
   // Aplicar toggles removendo campos quando desmarcados (apenas visual aqui; PDF usará estes flags)
@@ -764,7 +764,7 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
     datas: sel.datas !== false,
     tarifa: sel.tarifa !== false,
     method1: sel.method1 !== false,
-    method2: sel.method2 === true, // desativado por padrão
+    method2: sel.method2 !== false, // ativado por padrão agora
     ajuste: sel.ajuste !== false,
     comissoes: sel.comissoes !== false,
     observacoes: sel.observacoes !== false,
@@ -811,26 +811,7 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
     </div>
   ` : '';
 
-  // Controles de seleção de método para PDF
-  const methodSelector = `
-    <div style="margin-top:12px;padding:12px;border:1px solid #17a2b8;border-radius:6px;background:#d1ecf1;">
-      <h4 style="margin:0 0 8px 0;color:#0c5460">Escolha o método para geração do PDF</h4>
-      <div style="display:flex;gap:12px;align-items:center;">
-        <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
-          <input type="radio" name="pdfMethod" value="method1" checked>
-          <span>Método 1 (Tarifa×KM)</span>
-        </label>
-        <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
-          <input type="radio" name="pdfMethod" value="method2" ${!hasMethod2Data ? 'disabled' : ''}>
-          <span>Método 2 (Hora×Tempo)</span>
-        </label>
-        <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
-          <input type="radio" name="pdfMethod" value="both" ${!hasMethod2Data ? 'disabled' : ''}>
-          <span>Ambos os métodos</span>
-        </label>
-      </div>
-    </div>
-  `;
+  const methodSelector = '';
 
   const container = `
     ${togglesBar}
@@ -839,7 +820,7 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
       ${metodo2Card ? `<div style=\"flex:1\">${metodo2Card}</div>`: ''}
     </div>
     ${f.pagamento ? pagamentoSection : ''}
-    ${methodSelector}
+  ${methodSelector}
   `;
 
   // Script para capturar mudanças das checkboxes
@@ -1390,16 +1371,7 @@ function buildState() {
         return el && el.value ? el.value : 'distanceTotal';
       } catch(e) { return 'distanceTotal'; }
     })(),
-    showRota: document.getElementById('showRota').checked,
-    showAeronave: document.getElementById('showAeronave').checked,
-    showTarifa: document.getElementById('showTarifa').checked,
-    showDistancia: document.getElementById('showDistancia').checked,
-    showDatas: document.getElementById('showDatas').checked,
-    showAjuste: document.getElementById('showAjuste').checked,
-    showComissao,
-    showObservacoes: document.getElementById('showObservacoes').checked,
-    showPagamento: document.getElementById('showPagamento').checked,
-    showMapa: document.getElementById('showMapa').checked
+    showComissao
   };
 }
 
@@ -1460,10 +1432,11 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
   };
 
   const resumoLeft = [];
-  // prefer pdfOptions when explicit, otherwise fallback to state flags
-  const showAircraft = (pdfOptions && pdfOptions.hasOwnProperty('includeAircraft')) ? pdfOptions.includeAircraft : state.showAeronave;
-  const showDates = (pdfOptions && pdfOptions.hasOwnProperty('includeDates')) ? pdfOptions.includeDates : state.showDatas;
-  if (state.showRota) {
+  // prefer pdfOptions when explicit, otherwise fallback to default true
+  const showAircraft = (pdfOptions && pdfOptions.hasOwnProperty('includeAircraft')) ? pdfOptions.includeAircraft : true;
+  const showDates = (pdfOptions && pdfOptions.hasOwnProperty('includeDates')) ? pdfOptions.includeDates : true;
+  const showRoute = (pdfOptions && pdfOptions.hasOwnProperty('includeRoute')) ? pdfOptions.includeRoute : true;
+  if (showRoute) {
     const codes = [state.origem, state.destino, ...(state.stops || [])].filter(Boolean).join(' → ');
     resumoLeft.push({ text: `Rota: ${codes}`, style: 'row' });
   }
@@ -1566,12 +1539,12 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
   }
 
   const extras = [];
-  if ((pdfOptions.includeObservations && state.showObservacoes) || (pdfOptions.includeObservations && state.showObservacoes === undefined) || state.showObservacoes) extras.push({ text: `Observações: ${state.observacoes}`, margin: [0, 2, 0, 0] });
-  if ((pdfOptions.includePayment && state.showPagamento) || (pdfOptions.includePayment && state.showPagamento === undefined) || state.showPagamento) extras.push({ text: `Dados de pagamento: ${state.pagamento}`, margin: [0, 2, 0, 0] });
+  if (pdfOptions.includeObservations !== false && state.observacoes) extras.push({ text: `Observações: ${state.observacoes}`, margin: [0, 2, 0, 0] });
+  if (pdfOptions.includePayment !== false && state.pagamento) extras.push({ text: `Dados de pagamento: ${state.pagamento}`, margin: [0, 2, 0, 0] });
 
   // Map image: try to use provided state.mapDataUrl, a global __mapDataUrl, or capture a canvas inside #map
   let mapDataUrl = null;
-  if ((pdfOptions.includeMap && pdfOptions.includeMap === true) || state.showMapa) {
+  if (pdfOptions.includeMap !== false) {
     try {
       // priority: explicitly provided in state
       if (state.mapDataUrl) mapDataUrl = state.mapDataUrl;
@@ -1808,7 +1781,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
     },
 
     // Pernas do voo com design premium
-  ...((pdfOptions.includeLegs || (pdfOptions.includeLegs === undefined && state.showRota)) && typeof legsData !== 'undefined' && legsData.length ? [
+  ...((pdfOptions.includeLegs || (pdfOptions.includeLegs === undefined)) && typeof legsData !== 'undefined' && legsData.length ? [
       { text: 'Pernas (ICAO → ICAO)', style: 'sectionTitle', margin: [0,10,0,15] },
       { 
         table: { 
@@ -1890,8 +1863,8 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
 
   // Texto invisível com frases-chave para testes automatizados (preserva conteúdo esperado)
   const invisibleLines = [];
-  // rota invisível somente quando showRota estiver habilitado (para testes de ordenação)
-  if (state.showRota) {
+  // rota invisível somente quando includeRoute estiver habilitado (para testes de ordenação)
+  if (showRoute) {
     const routeCodes = [state.origem, state.destino, ...(state.stops || [])].filter(Boolean).join(' → ');
     content.push({ text: `Rota: ${routeCodes}`, fontSize: 0 });
   }
@@ -2248,9 +2221,14 @@ async function gerarPreOrcamento() {
 /* ==== END PATCH ==== */
 
 function getSelectedPdfMethod() {
-  if (typeof document === 'undefined' || !document.querySelector) return 'method1'; // Default para testes
-  const selected = document.querySelector('input[name="pdfMethod"]:checked');
-  return selected ? selected.value : 'method1';
+  try {
+    const sel = typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('pdfInlineToggles')||'{}') : {};
+    const m1 = sel.method1 !== false; // default true
+    const m2 = sel.method2 !== false; // default true agora
+    if (m1 && m2) return 'both';
+    if (m2) return 'method2';
+    return 'method1';
+  } catch { return 'method1'; }
 }
 
 async function gerarPDF(state, methodSelection = null) {
@@ -2283,8 +2261,9 @@ async function gerarPDF(state, methodSelection = null) {
       pdfOptions.includeDistance = sel.distancia !== false;
       pdfOptions.includeTariff = sel.tarifa !== false;
       pdfOptions.includeMethod1 = sel.method1 !== false; // ativo por padrão
-      pdfOptions.includeMethod2 = sel.method2 === true; // desativado por padrão
+      pdfOptions.includeMethod2 = sel.method2 !== false; // ativo por padrão agora
       pdfOptions.includeLegs = sel.pernas !== false;
+      pdfOptions.includeRoute = sel.rota !== false;
     }
   } catch (e) { /* ignore */ }
   
@@ -2341,16 +2320,11 @@ function limparCampos() {
     else el.value = '';
   });
   document.getElementById('tarifa').value = '';
-  document.getElementById('showRota').checked = true;
-  document.getElementById('showAeronave').checked = true;
-  document.getElementById('showTarifa').checked = true;
-  document.getElementById('showDistancia').checked = true;
-  document.getElementById('showDatas').checked = true;
-  document.getElementById('showAjuste').checked = true;
-  document.getElementById('showObservacoes').checked = true;
-  document.getElementById('showPagamento').checked = true;
-  document.getElementById('showMapa').checked = true;
   document.getElementById('resultado').innerHTML = '';
+  // Limpar localStorage dos toggles inline
+  try {
+    localStorage.removeItem('pdfInlineToggles');
+  } catch (e) { /* ignore */ }
   if (routeLayer && routeLayer.remove) routeLayer.remove();
   const comissoesDiv = document.getElementById('comissoes');
   if (comissoesDiv) comissoesDiv.innerHTML = '';

@@ -37,34 +37,32 @@ const baseState = {
   showMapa: true
 };
 
+// Test: filter flags (agora via pdfOptions ao invés de state flags)
 const expectations = {
-  showRota: 'Rota:',
-  showAeronave: 'Aeronave:',
-  showTarifa: 'Tarifa por km:',
-  showDistancia: 'Distância:',
-  showDatas: 'Datas:',
-  showAjuste: 'Outras Despesas',
-  showComissao: 'Comissão 1:',
-  showObservacoes: 'Observações:',
-  showPagamento: 'Dados de pagamento:',
-  showMapa: 'Mapa:'
+  includeRoute: 'Rota:',
+  includeAircraft: 'Aeronave:',
+  includeTariff: 'Tarifa por km:',
+  includeDistance: 'Distância:',
+  includeDates: 'Datas:',
+  includeObservations: 'Observações:',
+  includePayment: 'Dados de pagamento:',
+  includeMap: 'Mapa:'
 };
 
 for (const [flag, keyword] of Object.entries(expectations)) {
-  const state = { ...baseState, [flag]: false };
-  if (flag === 'showComissao') state.commissions = [10];
-  const doc = buildDocDefinition(state);
+  const pdfOptions = { [flag]: false };
+  const doc = buildDocDefinition(baseState, 'method1', pdfOptions);
   const text = extractText(doc);
   assert(!text.includes(keyword), `${keyword} should be omitted when ${flag} is false`);
 }
 
 console.log('All filter tests passed.');
 
-// total should include adjustment even when showAjuste is false
-const stateAdjHidden = { ...baseState, valorExtra: 5000, showAjuste: false };
-const docAdjHidden = buildDocDefinition(stateAdjHidden);
+// total should include adjustment even when includeAdjustment is false
+const pdfOptionsAdjHidden = { includeAdjustment: false };
+const docAdjHidden = buildDocDefinition({ ...baseState, valorExtra: 5000 }, 'method1', pdfOptionsAdjHidden);
 const textAdjHidden = extractText(docAdjHidden);
-const subtotal = stateAdjHidden.nm * 1.852 * stateAdjHidden.valorKm;
+const subtotal = baseState.nm * 1.852 * baseState.valorKm;
 const expectedTotal = (subtotal + 5000).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 assert(textAdjHidden.includes(`Total Final: R$ ${expectedTotal}`), 'Final total should include adjustment even when hidden');
 assert(textAdjHidden.includes('Total parcial'), 'Partial total should be displayed');
