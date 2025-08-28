@@ -85,6 +85,13 @@ function loadAircraftCatalog() {
                   sel.appendChild(opt);
                 });
                 sel.setAttribute('data-dynamic-loaded', 'true');
+                // Se nada selecionado, auto-seleciona primeira aeronave disponível
+                if (!sel.value) {
+                  const first = sel.querySelector('option:not([disabled])');
+                  if (first) sel.value = first.value;
+                }
+                // Força disparo de change para preencher campos
+                try { sel.dispatchEvent(new Event('change')); } catch(e) {}
               }
             }
           }
