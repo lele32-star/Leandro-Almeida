@@ -39,9 +39,8 @@ let map;
 let routeLayer = null;
 const airportCache = new Map();
 
-// Aircraft catalog/load and overrides
+// Aircraft catalog (sem overrides)
 let aircraftCatalog = [];
-const OVERRIDES_KEY = 'avCotacao.aircraftOverrides';
 function loadAircraftCatalog() {
   // try fetch data/aircraftCatalog.json in browser
   if (typeof fetch === 'function') {
@@ -79,10 +78,7 @@ function loadAircraftCatalog() {
     } catch (e) { /* ignore */ }
   }
 }
-function loadOverrides() {
-  try { return JSON.parse(localStorage.getItem(OVERRIDES_KEY) || '{}'); } catch { return {}; }
-}
-function saveOverrides(obj) { try { localStorage.setItem(OVERRIDES_KEY, JSON.stringify(obj)); } catch {} }
+// Overrides removidos
 
 // Pure function: calcTempo
 function calcTempo(dist_nm, ktas) {
@@ -161,14 +157,8 @@ function bindAircraftParamsUI() {
   function applyFor(name) {
     // find catalog entry by name (fallback)
   const entry = aircraftCatalog.find(a => a.nome === name || a.id === name || a.id === (name && name.toLowerCase().replace(/[^a-z0-9]/g,'')));
-    const store = loadOverrides();
-    let cruise = entry ? entry.cruise_speed_kt_default : 0;
-    let hourly = entry ? entry.hourly_rate_brl_default : 0;
-    if (entry && store[entry.id]) {
-      const ov = store[entry.id];
-      if (ov.cruise_speed_kt) cruise = ov.cruise_speed_kt;
-      if (ov.hourly_rate_brl) hourly = ov.hourly_rate_brl;
-    }
+  let cruise = entry ? entry.cruise_speed_kt_default : 0;
+  let hourly = entry ? entry.hourly_rate_brl_default : 0;
     cruiseEl.value = cruise || '';
     hourlyEl.value = hourly || '';
     // tarifa
@@ -214,7 +204,7 @@ function saveDraft(name) {
     payload = {
       state,
       legsData: (legsData || []).map(l => ({ ...l })),
-      overrides: loadOverrides(),
+  overrides: {},
       advancedPlanning: advEnabledEl ? {
         enabled: !!advEnabledEl.checked,
         windPercent: Number((document.getElementById('windBuffer')||{}).value)||0,
@@ -243,7 +233,7 @@ function loadDraft() {
     if (!raw) return null;
   const payload = JSON.parse(raw);
     // apply overrides first
-    try { if (payload.overrides) saveOverrides(payload.overrides); } catch (e) {}
+  // overrides removidos
     // apply state to DOM
     try {
       const s = payload.state || {};
@@ -1282,10 +1272,8 @@ async function gerarPreOrcamento() {
     }
     // find catalog entry
     const entry = aircraftCatalog.find(a => a.nome === craftName || a.id === craftName) || {};
-    const overrides = loadOverrides();
-    const ov = entry && entry.id && overrides[entry.id] ? overrides[entry.id] : {};
-    const cruiseEff = Number(document.getElementById('cruiseSpeed').value) || ov.cruise_speed_kt || entry.cruise_speed_kt_default || 0;
-    const hourlyEff = Number(document.getElementById('hourlyRate').value) || ov.hourly_rate_brl || entry.hourly_rate_brl_default || 0;
+  const cruiseEff = Number(document.getElementById('cruiseSpeed').value) || (entry && entry.cruise_speed_kt_default) || 0;
+  const hourlyEff = Number(document.getElementById('hourlyRate').value) || (entry && entry.hourly_rate_brl_default) || 0;
 
     // ensure legsData populated; try to rebuild if empty
     const codes = [state2.origem, state2.destino, ...(state2.stops || [])].filter(Boolean);
