@@ -112,6 +112,15 @@ const stateTarFallback = buildState();
 assert.strictEqual(stateTarFallback.valorKm, 36, 'Empty tariff reverts to default');
 console.log('Tariff override test passed.');
 
+// hourly rate field respects manual override and includes in state
+elements.hourlyRate = { value: '25000' };
+const stateHourly = buildState();
+assert.strictEqual(stateHourly.hourlyRate, 25000, 'Hourly rate input should be included in state');
+elements.hourlyRate.value = '';
+const stateHourlyFallback = buildState();
+assert.strictEqual(stateHourlyFallback.hourlyRate, 0, 'Empty hourly rate falls back to default');
+console.log('Hourly rate override test passed.');
+
 // custom tariff affects total
 const customDoc = buildDocDefinition({ ...baseState, valorKm: 50 });
 const textCustom = extractText(customDoc);

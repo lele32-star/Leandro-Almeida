@@ -718,8 +718,8 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
     const m2 = (typeof window !== 'undefined' && window.__method2Summary) ? window.__method2Summary : method2Summary;
     if (m2) {
       hasMethod2Data = true;
-      const entry = aircraftCatalog.find(a => a.nome === state.aeronave || a.id === state.aeronave);
-      const hourlyRate = entry ? entry.hourly_rate_brl_default : 0;
+      // Use hourly rate from state (which includes user input) or fallback to catalog default
+      const hourlyRate = state.hourlyRate || 0;
       
       dadosMetodo2 = {
         ...dadosComuns,
@@ -1342,6 +1342,10 @@ function buildState() {
   const entry = aircraftCatalog.find(a => a.nome === aeronave || a.id === aeronave);
   const defaultTarifa = entry ? entry.tarifa_km_brl_default : valoresKm[aeronave];
   const valorKm = Number.isFinite(tarifaVal) ? tarifaVal : defaultTarifa;
+  const hourlyRateEl = document.getElementById('hourlyRate');
+  const hourlyRateVal = hourlyRateEl ? parseFloat(hourlyRateEl.value) : NaN;
+  const defaultHourlyRate = entry ? entry.hourly_rate_brl_default : 0;
+  const hourlyRate = Number.isFinite(hourlyRateVal) ? hourlyRateVal : defaultHourlyRate;
   const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => i.value).filter(Boolean);
   const commissions = Array.from(document.querySelectorAll('.commission-percent')).map(input => parseFloat(input.value) || 0);
   const commissionAmountEl = document.getElementById('commissionAmount');
@@ -1361,6 +1365,7 @@ function buildState() {
     valorExtra,
     tipoExtra,
     valorKm,
+    hourlyRate,
     stops,
     commissions,
     commissionAmount,
@@ -2110,12 +2115,21 @@ async function gerarPreOrcamento() {
   try {
     const select = document.getElementById('aeronave');
     const craftName = select ? select.value : state2.aeronave;
-    // If pricing mode is 'pernas' require aircraft selection
-    const pricingModeEl = document.getElementById('pricingMode');
-    const pricingModeVal = pricingModeEl ? pricingModeEl.value : state2.pricingMode;
-    const shouldCalculateMethod2 = pricingModeVal === 'pernas' || (typeof document === 'undefined'); // Sempre calcular no ambiente de teste
-    
-    if (shouldCalculateMethod2 && (!craftName || craftName.trim() === '')) {
+  // If pricing mode is 'pernas' require aircraft selection
+  const pricingModeEl = document.getElementById('pricingMode');
+  const pricingModeVal = pricingModeEl ? pricingModeEl.value : state2.pricingMode;
+
+  // find catalog entry
+  const entry = aircraftCatalog.find(a => a.nome === craftName || a.id === craftName) || {};
+  const cruiseEff = Number(document.getElementById('cruiseSpeed').value) || (entry && entry.cruise_speed_kt_default) || 0;
+  const hourlyEff = state2.hourlyRate || 0;
+
+  // Determine if we should calculate method2: either explicit 'pernas' pricing mode, or when both cruise and hourly are available and we have route/legs (or running in test env)
+  const codes = [state2.origem, state2.destino, ...(state2.stops || [])].filter(Boolean);
+  const haveRoute = codes.length >= 2 || (Number.isFinite(state2.nm) && state2.nm > 0) || legsData.length > 0;
+  const shouldCalculateMethod2 = (pricingModeVal === 'pernas') || (cruiseEff > 0 && hourlyEff > 0 && haveRoute) || (typeof document === 'undefined'); // always in test env
+
+  if (shouldCalculateMethod2 && (!craftName || craftName.trim() === '')) {
       if (pricingModeVal === 'pernas') {
         showToast('Selecione uma aeronave para calcular tempo.');
         if (select) select.setAttribute('aria-invalid', 'true');
@@ -2130,13 +2144,8 @@ async function gerarPreOrcamento() {
     } else {
       if (select) select.removeAttribute('aria-invalid');
     }
-    // find catalog entry
-    const entry = aircraftCatalog.find(a => a.nome === craftName || a.id === craftName) || {};
-  const cruiseEff = Number(document.getElementById('cruiseSpeed').value) || (entry && entry.cruise_speed_kt_default) || 0;
-  const hourlyEff = Number(document.getElementById('hourlyRate').value) || (entry && entry.hourly_rate_brl_default) || 0;
 
     // ensure legsData populated; try to rebuild if empty
-    const codes = [state2.origem, state2.destino, ...(state2.stops || [])].filter(Boolean);
     if (legsData.length === 0 && codes.length >= 2) {
       if (typeof document === 'undefined') {
         // Ambiente de teste: criar dados simulados
