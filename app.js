@@ -22,16 +22,63 @@ Requisitos desta entrega:
 */
 
 // ================= SNAPSHOT / PRE-QUOTE API =================
-let __frozenQuote = null; // { selectedMethod: 'distance'|'time', snapshot: {...}, ts }
+let __frozenQuote = null; // { version, selectedMethod: 'distance'|'time', snapshot: {...}, ts }
 const FROZEN_KEY = 'quote:last';
+const CURRENT_VERSION = '1.0';
 
 function getFrozenQuote(){
   if (__frozenQuote) return __frozenQuote;
-  try { const raw = localStorage.getItem(FROZEN_KEY); if (raw) { __frozenQuote = JSON.parse(raw); return __frozenQuote; } } catch{}
+  try {
+    const raw = localStorage.getItem(FROZEN_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Verificar versão
+      if (parsed.version === CURRENT_VERSION) {
+        __frozenQuote = parsed;
+        return __frozenQuote;
+      } else {
+        console.warn('Versão do snapshot incompatível, ignorando:', parsed.version);
+        localStorage.removeItem(FROZEN_KEY);
+        return null;
+      }
+    }
+  } catch{}
   return null;
 }
+
 function freezePreQuote(method, snapshot){
-  __frozenQuote = { selectedMethod: method, snapshot, ts: Date.now() };
+  __frozenQuote = {
+    version: CURRENT_VERSION,
+    selectedMethod: method,
+    snapshot,
+    ts: Date.now()
+  };
+
+  // Capturar mapa se disponível (usando html2canvas no container do mapa)
+  if (typeof html2canvas !== 'undefined' && typeof document !== 'undefined') {
+    const mapEl = document.getElementById('map');
+    if (mapEl) {
+      try {
+        html2canvas(mapEl, {
+          useCORS: true,
+          allowTaint: false,
+          scale: 1,
+          width: mapEl.offsetWidth,
+          height: mapEl.offsetHeight
+        }).then(canvas => {
+          const dataUrl = canvas.toDataURL('image/png');
+          __frozenQuote.snapshot.mapDataUrl = dataUrl;
+          // Atualizar localStorage com mapa
+          try { localStorage.setItem(FROZEN_KEY, JSON.stringify(__frozenQuote)); } catch {}
+        }).catch(err => {
+          console.warn('Falha ao capturar mapa para congelamento:', err);
+        });
+      } catch (e) {
+        console.warn('Erro ao tentar capturar mapa:', e);
+      }
+    }
+  }
+
   try { localStorage.setItem(FROZEN_KEY, JSON.stringify(__frozenQuote)); } catch{}
 }
 function baseQuoteResult(){
@@ -121,6 +168,187 @@ function renderFrozenPreview(container, frozen){
   container.innerHTML = `<div style="border:1px solid #ccc;padding:8px;border-radius:6px;background:#fafafa;font-size:14px;line-height:1.4">${linhas.join('')}</div>`;
 }
 
+// Funções de bloqueio/desbloqueio de UI
+function lockInputsAfterFreeze(){
+  // Desabilitar radio buttons de método
+  const radios = document.querySelectorAll('input[name="metodoCalculo"]');
+  radios.forEach(r => r.disabled = true);
+
+  // Desabilitar inputs que afetam cálculo
+  const inputsToLock = [
+    'aeronave', 'tarifa', 'cruiseSpeed', 'hourlyRate', 'nm', 'km', 'origem', 'destino',
+    'valorExtra', 'tipoExtra', 'windBuffer', 'taxiMinutes', 'minBillable'
+  ];
+  inputsToLock.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = true;
+  });
+
+  // Desabilitar botões de adicionar/remover comissões
+  const commissionBtn = document.getElementById('btnAddCommission');
+  if (commissionBtn) commissionBtn.disabled = true;
+
+  // Desabilitar inputs de comissão se existirem
+  const commissionInputs = document.querySelectorAll('#commissionPanel input');
+  commissionInputs.forEach(inp => inp.disabled = true);
+
+  // Desabilitar botões de adicionar/remover paradas
+  const addStopBtn = document.getElementById('addStop');
+  if (addStopBtn) addStopBtn.disabled = true;
+
+  // Desabilitar inputs de paradas
+  const stopInputs = document.querySelectorAll('.stop-input');
+  stopInputs.forEach(inp => inp.disabled = true);
+}
+
+function unlockInputsForNew(){
+  // Reabilitar radio buttons de método
+  const radios = document.querySelectorAll('input[name="metodoCalculo"]');
+  radios.forEach(r => r.disabled = false);
+
+  // Reabilitar inputs
+  const inputsToUnlock = [
+    'aeronave', 'tarifa', 'cruiseSpeed', 'hourlyRate', 'nm', 'km', 'origem', 'destino',
+    'valorExtra', 'tipoExtra', 'windBuffer', 'taxiMinutes', 'minBillable'
+  ];
+  inputsToUnlock.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = false;
+  });
+
+  // Reabilitar botões de comissão
+  const commissionBtn = document.getElementById('btnAddCommission');
+  if (commissionBtn) commissionBtn.disabled = false;
+
+  // Reabilitar inputs de comissão
+  const commissionInputs = document.querySelectorAll('#commissionPanel input');
+  commissionInputs.forEach(inp => inp.disabled = false);
+
+  // Reabilitar botões de paradas
+  const addStopBtn = document.getElementById('addStop');
+  if (addStopBtn) addStopBtn.disabled = false;
+
+  // Reabilitar inputs de paradas
+  const stopInputs = document.querySelectorAll('.stop-input');
+  stopInputs.forEach(inp => inp.disabled = false);
+}
+
+function showFreezeBanner(frozen){
+  const banner = document.getElementById('freezeBanner');
+  const timestamp = document.getElementById('freezeTimestamp');
+  if (banner && timestamp) {
+    const date = new Date(frozen.ts);
+    timestamp.textContent = `Congelado em ${date.toLocaleString('pt-BR')}. Para alterar, gere um novo pré-orçamento.`;
+    banner.style.display = 'block';
+  }
+}
+
+function hideFreezeBanner(){
+  const banner = document.getElementById('freezeBanner');
+  if (banner) banner.style.display = 'none';
+}
+
+function newPreOrcamento(){
+  // Limpar estado congelado
+  __frozenQuote = null;
+  try { localStorage.removeItem(FROZEN_KEY); } catch {}
+
+  // Esconder banner
+  hideFreezeBanner();
+
+  // Desbloquear inputs
+  unlockInputsForNew();
+
+  // Limpar resultado
+  const saida = document.getElementById('resultado');
+  if (saida) saida.innerHTML = '';
+
+  // Reabilitar botões principais
+  const btnPre = document.querySelector('button[onclick*="appGerarPreOrcamento"]');
+  if (btnPre) btnPre.disabled = false;
+  const btnPdf = document.querySelector('button[onclick*="appGerarPDF"]');
+  if (btnPdf) btnPdf.disabled = false;
+}
+
+function reabrirUltimoOrcamento(){
+  const frozen = getFrozenQuote();
+  if (!frozen) {
+    showToast && showToast('Nenhum orçamento salvo encontrado.');
+    return;
+  }
+
+  // Bloquear inputs
+  lockInputsAfterFreeze();
+
+  // Mostrar banner
+  showFreezeBanner(frozen);
+
+  // Renderizar preview
+  renderFrozenPreview(document.getElementById('resultado'), frozen);
+
+  // Scroll para resultado
+  const saida = document.getElementById('resultado');
+  if (saida) saida.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function copiarJSON(){
+  const frozen = getFrozenQuote();
+  if (!frozen) {
+    showToast && showToast('Nenhum orçamento para copiar.');
+    return;
+  }
+
+  const json = JSON.stringify(frozen.snapshot, null, 2);
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(json).then(() => {
+      showToast && showToast('JSON copiado para a área de transferência!');
+    }).catch(() => {
+      fallbackCopy(json);
+    });
+  } else {
+    fallbackCopy(json);
+  }
+}
+
+function copiarLink(){
+  const frozen = getFrozenQuote();
+  if (!frozen) {
+    showToast && showToast('Nenhum orçamento para compartilhar.');
+    return;
+  }
+
+  const json = JSON.stringify(frozen.snapshot);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(() => {
+      showToast && showToast('Link copiado para a área de transferência!');
+    }).catch(() => {
+      fallbackCopy(url);
+    });
+  } else {
+    fallbackCopy(url);
+  }
+
+  // Limpar URL após uso (opcional, mas boa prática)
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function fallbackCopy(text){
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  document.body.appendChild(textArea);
+  textArea.select();
+  try {
+    document.execCommand('copy');
+    showToast && showToast('Copiado para a área de transferência!');
+  } catch {
+    showToast && showToast('Erro ao copiar. Use Ctrl+C manualmente.');
+  }
+  document.body.removeChild(textArea);
+}
+
 // Função utilitária para buscar dados da aeronave selecionada
 function getSelectedAircraftData(selectValue) {
   if (!selectValue || !Array.isArray(window.aircraftCatalog)) return null;
@@ -167,6 +395,22 @@ function setupAircraftAutofillConsolidated() {
     try { localStorage.setItem(LKEY, JSON.stringify(store)); } catch {} 
   }
 
+  // Flags para proteger contra sobrescrita
+  let userDirtyHourly = false;
+  let userDirtyCruise = false;
+  let userDirtyTarifa = false;
+
+  // Detectar quando usuário começa a digitar
+  if (hourlyInput) {
+    hourlyInput.addEventListener('input', () => { userDirtyHourly = true; });
+  }
+  if (cruiseInput) {
+    cruiseInput.addEventListener('input', () => { userDirtyCruise = true; });
+  }
+  if (tarifaInput) {
+    tarifaInput.addEventListener('input', () => { userDirtyTarifa = true; });
+  }
+
   function handleAircraftChange() {
     const val = select.value;
     const data = getSelectedAircraftData(val);
@@ -179,7 +423,7 @@ function setupAircraftAutofillConsolidated() {
     }
 
     // 1. Gerenciar tarifa com localStorage (prioridade: salva > padrão > vazio)
-    if (tarifaInput && data.tarifaKm) {
+    if (tarifaInput && !userDirtyTarifa) {
       const store = loadTarifasStore();
       const saved = store[val];
       
@@ -200,7 +444,7 @@ function setupAircraftAutofillConsolidated() {
     }
 
     // 2. Autofill hourly rate se campo existir e estiver vazio
-    if (hourlyInput && data.hourlyRate && (!hourlyInput.value || hourlyInput.value === '' || hourlyInput.value == hourlyInput.defaultValue)) {
+    if (hourlyInput && !userDirtyHourly && data.hourlyRate && (!hourlyInput.value || hourlyInput.value === '' || hourlyInput.value == hourlyInput.defaultValue)) {
       hourlyInput.value = data.hourlyRate;
       hourlyInput.placeholder = `R$ ${Number(data.hourlyRate).toLocaleString('pt-BR')}/h`;
       hourlyInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -208,7 +452,7 @@ function setupAircraftAutofillConsolidated() {
     }
     
     // 3. Autofill cruise speed se campo existir e estiver vazio
-    if (cruiseInput && data.cruiseKtas && (!cruiseInput.value || cruiseInput.value === '' || cruiseInput.value == cruiseInput.defaultValue)) {
+    if (cruiseInput && !userDirtyCruise && data.cruiseKtas && (!cruiseInput.value || cruiseInput.value === '' || cruiseInput.value == cruiseInput.defaultValue)) {
       cruiseInput.value = data.cruiseKtas;
       cruiseInput.placeholder = `${data.cruiseKtas} KTAS`;
       cruiseInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1728,10 +1972,15 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
   }
 
   // Cabeçalho sem imagem (evita falha caso não exista dataURL)
+  const methodLabel = methodSelection === 'method2' ? 'Base: Tempo (R$/h x horas)' : 'Base: Distância';
   const headerBlock = {
     columns: [
       { width: 80, stack: [ { canvas: [ { type: 'rect', x: 0, y: 0, w: 60, h: 40, color: '#f0f0f0' } ] } ], margin: [0,0,0,0] },
-      { stack: [ { text: '[NOME_EMPRESA]', style: 'brand' }, { text: '[SLOGAN_CURTO]', style: 'muted' } ], alignment: 'left' },
+      { stack: [
+          { text: '[NOME_EMPRESA]', style: 'brand' },
+          { text: '[SLOGAN_CURTO]', style: 'muted' },
+          { text: methodLabel, style: 'methodLabel', margin: [0, 4, 0, 0] }
+        ], alignment: 'left' },
       { stack: [ { text: '[EMAIL_CONTATO]', style: 'mini' }, { text: '[WHATSAPP_LINK]', style: 'mini' }, { text: '[CNPJ_OPCIONAL]', style: 'mini' } ], alignment: 'right' }
     ],
     columnGap: 10,
@@ -1861,15 +2110,15 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
   if (pdfOptions.includeObservations !== false && state.observacoes) extras.push({ text: `Observações: ${state.observacoes}`, margin: [0, 2, 0, 0] });
   if (pdfOptions.includePayment !== false && state.pagamento) extras.push({ text: `Dados de pagamento: ${state.pagamento}`, margin: [0, 2, 0, 0] });
 
-  // Map image: try to use provided state.mapDataUrl, a global __mapDataUrl, or capture a canvas inside #map
+  // Map image: usar snapshot congelado (já capturado) ou tentar capturar se não congelado
   let mapDataUrl = null;
   if (pdfOptions.includeMap !== false) {
     try {
-      // priority: explicitly provided in state
+      // priority: snapshot congelado (já tem mapDataUrl se foi capturado)
       if (state.mapDataUrl) mapDataUrl = state.mapDataUrl;
       // fallback: global hook set by other code
       if (!mapDataUrl && typeof window !== 'undefined' && window.__mapDataUrl) mapDataUrl = window.__mapDataUrl;
-      // fallback: try to find a canvas inside #map and export
+      // fallback: try to find a canvas inside #map and export (apenas se não congelado)
       if (!mapDataUrl && typeof document !== 'undefined') {
         const mapEl = document.getElementById && document.getElementById('map');
         if (mapEl) {
@@ -2104,40 +2353,81 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
       { text: 'Pernas (ICAO → ICAO)', style: 'sectionTitle', margin: [0,10,0,15] },
       { 
         table: { 
-          widths: ['*','80','80','60'], 
+          widths: methodSelection === 'method2' ? ['*','80','80','80','60'] : ['*','80','80','60'], 
           body: [
-            [ 
+            methodSelection === 'method2' ? [ 
+              { text: 'Rota', bold: true, fillColor: '#2E4053', color: '#FFFFFF', margin: [8,6,8,6] }, 
+              { text: 'Distância', bold: true, fillColor: '#2E4053', color: '#FFFFFF', alignment: 'center', margin: [8,6,8,6] }, 
+              { text: 'Tempo', bold: true, fillColor: '#2E4053', color: '#FFFFFF', alignment: 'center', margin: [8,6,8,6] },
+              { text: 'Subtotal', bold: true, fillColor: '#2E4053', color: '#FFFFFF', alignment: 'center', margin: [8,6,8,6] },
+              { text: '✈', bold: true, fillColor: '#F1C40F', color: '#2E4053', alignment: 'center', margin: [8,6,8,6] }
+            ] : [ 
               { text: 'Rota', bold: true, fillColor: '#2E4053', color: '#FFFFFF', margin: [8,6,8,6] }, 
               { text: 'Distância', bold: true, fillColor: '#2E4053', color: '#FFFFFF', alignment: 'center', margin: [8,6,8,6] }, 
               { text: 'Tempo', bold: true, fillColor: '#2E4053', color: '#FFFFFF', alignment: 'center', margin: [8,6,8,6] },
               { text: '✈', bold: true, fillColor: '#F1C40F', color: '#2E4053', alignment: 'center', margin: [8,6,8,6] }
             ],
-            ...legsData.map((l, idx) => [
-              { 
-                text: `${l.from} → ${l.to}`, 
-                margin: [8,6,8,6],
-                fillColor: idx % 2 === 0 ? '#F8F9FA' : null
-              }, 
-              { 
-                text: `${(Number(l.distNm)||0).toFixed(0)} NM`, 
-                alignment: 'center',
-                margin: [8,6,8,6],
-                fillColor: idx % 2 === 0 ? '#F8F9FA' : null
-              }, 
-              { 
-                text: (l.showCustom === false ? (l.distNm ? calcTempo(l.distNm, state.cruiseSpeed || 0).hhmm : '—') : (l.time ? l.time.hhmm : '—')), 
-                alignment: 'center',
-                margin: [8,6,8,6],
-                fillColor: idx % 2 === 0 ? '#F8F9FA' : null
-              },
-              {
-                text: '✈',
-                alignment: 'center',
-                color: '#F1C40F',
-                margin: [8,6,8,6],
-                fillColor: idx % 2 === 0 ? '#F8F9FA' : null
-              }
-            ])
+            ...legsData.map((l, idx) => {
+              const legTime = l.showCustom === false ? (l.distNm ? calcTempo(l.distNm, state.cruiseSpeed || 0).hoursDecimal : 0) : (l.time ? l.time.hoursDecimal : 0);
+              const legSubtotal = methodSelection === 'method2' && state.metodo2 ? legTime * state.metodo2.hourlyRate : 0;
+              return methodSelection === 'method2' ? [
+                { 
+                  text: `${l.from} → ${l.to}`, 
+                  margin: [8,6,8,6],
+                  fillColor: idx % 2 === 0 ? '#F8F9FA' : null
+                }, 
+                { 
+                  text: `${(Number(l.distNm)||0).toFixed(0)} NM`, 
+                  alignment: 'center',
+                  margin: [8,6,8,6],
+                  fillColor: idx % 2 === 0 ? '#F8F9FA' : null
+                }, 
+                { 
+                  text: (l.showCustom === false ? (l.distNm ? calcTempo(l.distNm, state.cruiseSpeed || 0).hhmm : '—') : (l.time ? l.time.hhmm : '—')), 
+                  alignment: 'center',
+                  margin: [8,6,8,6],
+                  fillColor: idx % 2 === 0 ? '#F8F9FA' : null
+                },
+                {
+                  text: legSubtotal > 0 ? `R$ ${legSubtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—',
+                  alignment: 'center',
+                  margin: [8,6,8,6],
+                  fillColor: idx % 2 === 0 ? '#F8F9FA' : null
+                },
+                {
+                  text: '✈',
+                  alignment: 'center',
+                  color: '#F1C40F',
+                  margin: [8,6,8,6],
+                  fillColor: idx % 2 === 0 ? '#F8F9FA' : null
+                }
+              ] : [
+                { 
+                  text: `${l.from} → ${l.to}`, 
+                  margin: [8,6,8,6],
+                  fillColor: idx % 2 === 0 ? '#F8F9FA' : null
+                }, 
+                { 
+                  text: `${(Number(l.distNm)||0).toFixed(0)} NM`, 
+                  alignment: 'center',
+                  margin: [8,6,8,6],
+                  fillColor: idx % 2 === 0 ? '#F8F9FA' : null
+                }, 
+                { 
+                  text: (l.showCustom === false ? (l.distNm ? calcTempo(l.distNm, state.cruiseSpeed || 0).hhmm : '—') : (l.time ? l.time.hhmm : '—')), 
+                  alignment: 'center',
+                  margin: [8,6,8,6],
+                  fillColor: idx % 2 === 0 ? '#F8F9FA' : null
+                },
+                {
+                  text: '✈',
+                  alignment: 'center',
+                  color: '#F1C40F',
+                  margin: [8,6,8,6],
+                  fillColor: idx % 2 === 0 ? '#F8F9FA' : null
+                }
+              ];
+            })
           ] 
         }, 
         layout: { 
@@ -2152,6 +2442,14 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
 
     // Extras e rodapé premium
     ...(extras.length ? [{ text: 'Informações Adicionais', style: 'sectionTitle', margin: [0,15,0,10] }, ...extras] : []),
+
+    // Copy legal e condições
+    { text: 'Observações & Condições', style: 'sectionTitle', margin: [0,20,0,10] },
+    { 
+      text: 'Esta cotação é válida por 30 dias a partir da data de emissão. Preços sujeitos a alteração sem aviso prévio. Condições de pagamento: 50% na reserva e 50% 24h antes do voo. Cancelamento gratuito até 72h antes do voo. Taxas de navegação, combustível e demais encargos não incluídos. Consulte termos completos em nosso site.',
+      style: 'legalText',
+      margin: [0,0,0,15]
+    },
 
     // Linha separadora final
     { 
@@ -2325,6 +2623,18 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
         color: '#7F8C8D', 
         margin: [0, 2, 0, 0] 
       },
+      methodLabel: {
+        fontSize: 10,
+        color: '#28a745',
+        bold: true,
+        margin: [0, 2, 0, 0]
+      },
+      legalText: {
+        fontSize: 9,
+        color: '#6c757d',
+        lineHeight: 1.4,
+        alignment: 'justify'
+      },
       mini: { 
         color: '#AAB7B8', 
         fontSize: 9 
@@ -2387,7 +2697,39 @@ async function gerarPreOrcamento() {
   // 3. Determina método escolhido (radio / persistido)
   const method = getUiSelectedMethod(); // 'distance' | 'time'
 
-  // 4. Calcula usando API unificada garantindo snapshot estável
+  // 4. Validações específicas por método antes de calcular
+  if (method === 'time') {
+    const hourlyRate = Number(document.getElementById('hourlyRate')?.value || 0);
+    const cruiseSpeed = Number(document.getElementById('cruiseSpeed')?.value || 0);
+
+    if (hourlyRate <= 0) {
+      const hourlyEl = document.getElementById('hourlyRate');
+      if (hourlyEl) {
+        hourlyEl.setAttribute('aria-invalid', 'true');
+        hourlyEl.focus();
+      }
+      showToast && showToast('Para Método 2, informe um Valor-hora válido (> 0).');
+      return;
+    }
+
+    if (cruiseSpeed <= 0) {
+      const cruiseEl = document.getElementById('cruiseSpeed');
+      if (cruiseEl) {
+        cruiseEl.setAttribute('aria-invalid', 'true');
+        cruiseEl.focus();
+      }
+      showToast && showToast('Para Método 2, informe uma Velocidade de Cruzeiro válida (> 0).');
+      return;
+    }
+
+    // Limpar aria-invalid se válido
+    const hourlyEl = document.getElementById('hourlyRate');
+    const cruiseEl = document.getElementById('cruiseSpeed');
+    if (hourlyEl) hourlyEl.removeAttribute('aria-invalid');
+    if (cruiseEl) cruiseEl.removeAttribute('aria-invalid');
+  }
+
+  // 5. Calcula usando API unificada garantindo snapshot estável
   let result;
   if (method === 'time') {
     // validação específica valor-hora
@@ -2403,10 +2745,14 @@ async function gerarPreOrcamento() {
     result = computeByDistance(state);
   }
 
-  // 5. Congela (persistência + memória) (Requisito 2)
+  // 6. Congela (persistência + memória) (Requisito 2)
   freezePreQuote(method, result);
 
-  // 6. Render preview congelado simples e objetivo
+  // 7. Bloquear UI e mostrar banner
+  lockInputsAfterFreeze();
+  showFreezeBanner(getFrozenQuote());
+
+  // 8. Render preview congelado simples e objetivo
   renderFrozenPreview(saida, getFrozenQuote());
   saida && saida.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -2552,6 +2898,68 @@ if (typeof window !== 'undefined') {
   // Aliases para garantir que os botões chamem SEMPRE a versão do app.js
   window.appGerarPreOrcamento = gerarPreOrcamento;
   window.appGerarPDF = gerarPDF;
+}
+
+// Função de teste rápido para validação
+function runQuickTests() {
+  console.log('=== CHECKLIST RÁPIDO DE TESTES ===');
+
+  // Teste 1: Congelamento método 1
+  console.log('1. Teste congelamento método 1...');
+  // Simular seleção método 1
+  const radioDist = document.querySelector('input[name="metodoCalculo"][value="distance"]');
+  if (radioDist) radioDist.checked = true;
+
+  // Teste 2: Congelamento método 2 com validação
+  console.log('2. Teste congelamento método 2...');
+  const radioTime = document.querySelector('input[name="metodoCalculo"][value="time"]');
+  if (radioTime) radioTime.checked = true;
+
+  // Teste 3: Autofill
+  console.log('3. Teste autofill...');
+  const select = document.getElementById('aeronave');
+  if (select) {
+    select.value = 'Citation CJ4';
+    select.dispatchEvent(new Event('change'));
+  }
+
+  // Teste 4: Reabrir último
+  console.log('4. Teste reabrir último...');
+  const frozen = getFrozenQuote();
+  if (frozen) {
+    console.log('✓ Snapshot encontrado:', frozen.selectedMethod);
+  } else {
+    console.log('✗ Nenhum snapshot encontrado');
+  }
+
+  // Teste 5: Copiar JSON
+  console.log('5. Teste copiar JSON...');
+  if (frozen) {
+    copiarJSON();
+    console.log('✓ JSON copiado');
+  }
+
+  // Teste 6: Copiar link
+  console.log('6. Teste copiar link...');
+  if (frozen) {
+    copiarLink();
+    console.log('✓ Link copiado');
+  }
+
+  // Teste 7: PDF sem congelamento
+  console.log('7. Teste PDF sem congelamento...');
+  // Limpar snapshot
+  __frozenQuote = null;
+  try { localStorage.removeItem(FROZEN_KEY); } catch {}
+  // Tentar gerar PDF
+  gerarPDF();
+
+  console.log('=== FIM DOS TESTES ===');
+}
+
+// Expor função de teste
+if (typeof window !== 'undefined') {
+  window.runQuickTests = runQuickTests;
 }
 
 if (typeof module !== 'undefined') {
