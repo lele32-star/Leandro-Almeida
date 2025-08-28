@@ -1,3 +1,70 @@
+/*
+PROMPT CIRÚRGICO: Autofill Valor-hora e Velocidade ao selecionar aeronave
+Objetivo: Preencher automaticamente os campos Valor-hora (R$/h) e Velocidade de Cruzeiro (KTAS) ao selecionar uma aeronave, usando o catálogo já existente.
+IDs usados: #aircraft-select, #aircraft-hourly-rate, #aircraft-ktas
+Não alterar lógica de cálculo, estilos ou duplicar catálogo. Apenas autofill.
+*/
+
+// Função utilitária para buscar dados da aeronave selecionada
+function getSelectedAircraftData(selectValue) {
+  if (!selectValue || !Array.isArray(window.aircraftCatalog)) return null;
+  // Adapte os nomes conforme o catálogo real
+  const entry = window.aircraftCatalog.find(a => a.id === selectValue || a.nome === selectValue);
+  if (!entry) return null;
+  return {
+    hourlyRate: entry.hourly_rate_brl_default || entry.hourlyRate || null,
+    cruiseKtas: entry.cruise_speed_kt_default || entry.cruiseKtas || null
+  };
+}
+
+// Formatação BRL (reutiliza padrão do app se existir)
+function formatNumberBR(n) {
+  if (typeof fmtBRL === 'function') return fmtBRL(n);
+  return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+}
+
+// Listener de mudança para autofill
+function setupAircraftAutofill() {
+  const select = document.getElementById('aircraft-select') || document.getElementById('aeronave');
+  const hourlyInput = document.getElementById('aircraft-hourly-rate') || document.getElementById('hourlyRate');
+  const cruiseInput = document.getElementById('aircraft-ktas') || document.getElementById('cruiseSpeed');
+  if (!select || !hourlyInput || !cruiseInput) return;
+
+  function autofill() {
+    const val = select.value;
+    const data = getSelectedAircraftData(val);
+    if (!data) {
+      console.warn('Aeronave não encontrada no catálogo:', val);
+      return;
+    }
+    // Só preencher se o campo estiver vazio ou igual ao default
+    if (!hourlyInput.value || hourlyInput.value === '' || hourlyInput.value == hourlyInput.defaultValue) {
+      hourlyInput.value = data.hourlyRate ? formatNumberBR(data.hourlyRate) : '';
+      hourlyInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    if (!cruiseInput.value || cruiseInput.value === '' || cruiseInput.value == cruiseInput.defaultValue) {
+      cruiseInput.value = data.cruiseKtas ? data.cruiseKtas : '';
+      cruiseInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    // Persistência opcional
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('aircraft-hourly-rate', hourlyInput.value);
+        localStorage.setItem('aircraft-ktas', cruiseInput.value);
+      } catch {}
+    }
+  }
+
+  select.addEventListener('change', autofill);
+  // Chamar no carregamento se já houver seleção
+  if (select.value) {
+    setTimeout(autofill, 0);
+  }
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', setupAircraftAutofill);
+}
 // Função de compatibilidade para obter tarifa por km de aeronave selecionada
 function getTarifaKmFromAircraft(aircraftName) {
   if (!aircraftCatalog || !Array.isArray(aircraftCatalog)) return null;
