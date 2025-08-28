@@ -183,43 +183,47 @@ function getTarifaKmFromAircraft(aircraftName) {
   return aircraft.tarifa_km_brl_default;
 }
 
-// Mantém valoresKm para compatibilidade, mas agora usa o catálogo
-const valoresKm = {
-  "Hawker 400": 36,
-  "Phenom 100": 36,
-  "Citation II": 36,
-  "King Air C90": 30,
-  "Sêneca IV": 22,
-  "Cirrus SR22": 15
-};
+// REMOVED: valoresKm object - now all aircraft data comes from aircraftCatalog.json
+// This eliminates redundant data and potential confusion as requested
 
 // Removido legacyAircraftParams: agora somente catálogo JSON oficial alimenta velocidade/valor-hora.
 
 /**
- * Função utilitária para obter dados da aeronave selecionada a partir do catálogo
- * Conforme especificado nos requisitos
- * @param {string} selectValue - Valor selecionado no dropdown de aeronaves
- * @returns {Object|null} Objeto com hourlyRate e cruiseKtas ou null se não encontrado
+ * UNIFIED FUNCTION: Get all aircraft parameters from catalog only
+ * This consolidates tariff, speed, and hourly rate into a single rule
+ * Eliminates redundant data sources as requested
+ * @param {string} selectValue - Aircraft name or ID
+ * @returns {Object|null} Object with all aircraft parameters or null if not found
  */
-function getSelectedAircraftData(selectValue) {
-  if (!selectValue || (!aircraftCatalog || !Array.isArray(aircraftCatalog))) {
+function getUnifiedAircraftData(selectValue) {
+  if (!selectValue) {
     return null;
   }
 
-  // Buscar no catálogo pelo nome ou ID exibido no select
-  const aircraft = aircraftCatalog.find(a => a.nome === selectValue || a.id === selectValue);
+  const catalog = getCurrentCatalog();
+  if (!Array.isArray(catalog)) {
+    return null;
+  }
+
+  // Single source of truth: aircraftCatalog.json
+  const aircraft = catalog.find(a => a.nome === selectValue || a.id === selectValue);
   
   if (!aircraft) {
     console.warn(`Aircraft "${selectValue}" not found in catalog`);
     return null;
   }
 
-  // Retornar no formato especificado pelos requisitos
+  // All parameters come from the same unified source
   return {
     hourlyRate: aircraft.hourly_rate_brl_default || 0,
     cruiseKtas: aircraft.cruise_speed_kt_default || 0,
-    tarifaKm: aircraft.tarifa_km_brl_default || valoresKm[selectValue] || 0
+    tarifaKm: aircraft.tarifa_km_brl_default || 0
   };
+}
+
+// Maintain backward compatibility with existing function name
+function getSelectedAircraftData(selectValue) {
+  return getUnifiedAircraftData(selectValue);
 }
 
 let valorParcialFn = (distanciaKm, valorKm) => distanciaKm * valorKm;
@@ -254,6 +258,22 @@ const airportCache = new Map();
 
 // Aircraft catalog (sem overrides)
 let aircraftCatalog = [];
+
+// Use global catalog if available (for test environment)
+if (typeof global !== 'undefined' && Array.isArray(global.aircraftCatalog)) {
+  aircraftCatalog = global.aircraftCatalog;
+}
+
+/**
+ * Get the current aircraft catalog reference
+ * This ensures compatibility between browser and test environments
+ */
+function getCurrentCatalog() {
+  if (typeof global !== 'undefined' && Array.isArray(global.aircraftCatalog)) {
+    return global.aircraftCatalog;
+  }
+  return aircraftCatalog;
+}
 function loadAircraftCatalog() {
   // try fetch data/aircraftCatalog.json in browser
   if (typeof fetch === 'function') {
@@ -267,11 +287,12 @@ function loadAircraftCatalog() {
             window.aircraftCatalog = aircraftCatalog;
             // Augmentar com aeronaves legadas que possuem tarifa mas não estão no catálogo oficial
             const legacyAugment = [
-              { nome: 'Hawker 400', cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
-              { nome: 'Phenom 100', cruise_speed_kt_default: 390, hourly_rate_brl_default: 16500 },
-              { nome: 'Citation II', cruise_speed_kt_default: 375, hourly_rate_brl_default: 15000 },
-              { nome: 'Sêneca IV', cruise_speed_kt_default: 190, hourly_rate_brl_default: 6500 },
-              { nome: 'Cirrus SR22', cruise_speed_kt_default: 180, hourly_rate_brl_default: 3300 }
+              { nome: 'Hawker 400', tarifa_km_brl_default: 36, cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
+              { nome: 'Phenom 100', tarifa_km_brl_default: 36, cruise_speed_kt_default: 390, hourly_rate_brl_default: 16500 },
+              { nome: 'Citation II', tarifa_km_brl_default: 36, cruise_speed_kt_default: 375, hourly_rate_brl_default: 15000 },
+              { nome: 'King Air C90', tarifa_km_brl_default: 30, cruise_speed_kt_default: 217, hourly_rate_brl_default: 8700 },
+              { nome: 'Sêneca IV', tarifa_km_brl_default: 22, cruise_speed_kt_default: 190, hourly_rate_brl_default: 6500 },
+              { nome: 'Cirrus SR22', tarifa_km_brl_default: 15, cruise_speed_kt_default: 180, hourly_rate_brl_default: 3300 }
             ];
             legacyAugment.forEach(l => {
               if (!aircraftCatalog.find(a => a.nome === l.nome)) {
@@ -407,8 +428,8 @@ function bindAircraftParamsUI() {
       const hourlyPreview = document.getElementById('hourlyPreview');
       
       if (tarifaInput) {
-        // Priorizar catálogo, depois fallback para valoresKm
-        const baseTarifa = entry ? entry.tarifa_km_brl_default : valoresKm[name];
+        // Unified: only use catalog data, no redundant fallbacks
+        const baseTarifa = entry ? entry.tarifa_km_brl_default : 0;
         if (baseTarifa !== undefined && baseTarifa !== null) {
           tarifaInput.value = baseTarifa;
         }
@@ -1212,8 +1233,8 @@ if (typeof document !== 'undefined') {
       };
 
       const entry = resolveEntry(aeronaveSel.value);
-      // Atualizar tarifa (mantém fallback para valoresKm)
-      const val = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
+      // Unified: only use catalog data, no redundant fallbacks
+      const val = entry ? entry.tarifa_km_brl_default : 0;
       tarifaInput.value = (val !== undefined && val !== null) ? val : '';
       if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
 
@@ -1287,7 +1308,7 @@ if (typeof document !== 'undefined') {
       const store = loadTarifasStore();
       const saved = store[aeronaveSel.value];
       const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value);
-      const defaultVal = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
+      const defaultVal = entry ? entry.tarifa_km_brl_default : 0; // Unified: only catalog
       if (saved !== undefined && saved !== null) {
         tarifaInput.value = saved;
       } else if (!tarifaInput.value || tarifaInput.value === '') {
@@ -1304,7 +1325,7 @@ if (typeof document !== 'undefined') {
         const store = loadTarifasStore();
         const saved = store[aeronaveSel.value];
         const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value);
-        const defaultVal = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
+        const defaultVal = entry ? entry.tarifa_km_brl_default : 0; // Unified: only catalog
         if (saved !== undefined && saved !== null) tarifaInput.value = saved;
         else if (!tarifaInput.value || tarifaInput.value === '') tarifaInput.value = defaultVal || '';
         applyTarifaPreview();
@@ -1322,7 +1343,7 @@ if (typeof document !== 'undefined') {
     if (btnShowTarifa && modal && modalInput && modalSave && modalCancel) {
       btnShowTarifa.addEventListener('click', () => {
         const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value);
-        const defaultVal = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
+        const defaultVal = entry ? entry.tarifa_km_brl_default : 0; // Unified: only catalog
         const cur = tarifaInput.value || defaultVal || '';
         modalInput.value = cur;
         modal.classList.add('show');
@@ -1645,8 +1666,8 @@ function buildState() {
   const valorExtra = parseFloat(document.getElementById('valorExtra').value) || 0;
   const tipoExtra = document.getElementById('tipoExtra').value;
   const tarifaVal = parseFloat(document.getElementById('tarifa').value);
-  const entry = aircraftCatalog.find(a => a.nome === aeronave || a.id === aeronave);
-  const defaultTarifa = entry ? entry.tarifa_km_brl_default : valoresKm[aeronave];
+  const entry = getCurrentCatalog().find(a => a.nome === aeronave || a.id === aeronave);
+  const defaultTarifa = entry ? entry.tarifa_km_brl_default : 0; // Unified: only catalog, no fallback
   const valorKm = Number.isFinite(tarifaVal) ? tarifaVal : defaultTarifa;
   const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => i.value).filter(Boolean);
   const commissions = Array.from(document.querySelectorAll('.commission-percent')).map(input => parseFloat(input.value) || 0);

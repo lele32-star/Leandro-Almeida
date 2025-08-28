@@ -1,6 +1,35 @@
 const assert = require('assert');
 const { buildState, buildDocDefinition, gerarPDF, calcularComissao } = require('./app.js');
 
+// Initialize aircraftCatalog for test environment to match new unified approach
+const fs = require('fs');
+const path = require('path');
+try {
+  const catalogPath = path.join(__dirname, 'data', 'aircraftCatalog.json');
+  const catalogData = JSON.parse(fs.readFileSync(catalogPath, 'utf8'));
+  // Initialize global aircraftCatalog similar to how app.js does it
+  global.aircraftCatalog = [...catalogData];
+  
+  // Add legacy aircraft as done in app.js
+  const legacyAugment = [
+    { nome: 'Hawker 400', tarifa_km_brl_default: 36, cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
+    { nome: 'Phenom 100', tarifa_km_brl_default: 36, cruise_speed_kt_default: 390, hourly_rate_brl_default: 16500 },
+    { nome: 'Citation II', tarifa_km_brl_default: 36, cruise_speed_kt_default: 375, hourly_rate_brl_default: 15000 },
+    { nome: 'King Air C90', tarifa_km_brl_default: 30, cruise_speed_kt_default: 217, hourly_rate_brl_default: 8700 },
+    { nome: 'Sêneca IV', tarifa_km_brl_default: 22, cruise_speed_kt_default: 190, hourly_rate_brl_default: 6500 },
+    { nome: 'Cirrus SR22', tarifa_km_brl_default: 15, cruise_speed_kt_default: 180, hourly_rate_brl_default: 3300 }
+  ];
+  legacyAugment.forEach(l => {
+    if (!global.aircraftCatalog.find(a => a.nome === l.nome)) {
+      const id = l.nome.toLowerCase().replace(/[^a-z0-9]+/g,'-');
+      global.aircraftCatalog.push({ id, categoria: 'legacy', ...l });
+    }
+  });
+} catch (err) {
+  console.warn('Could not load aircraftCatalog for tests, using empty array');
+  global.aircraftCatalog = [];
+}
+
 function extractText(docDef) {
   return docDef.content
     .map(item => {
