@@ -267,6 +267,21 @@ Conta: 25691815-5</textarea>
     <label for="observacoes">Observações:</label>
     <textarea id="observacoes" rows="4"></textarea>
 
+    <!-- Seletor de método para cálculo do pré-orçamento -->
+    <fieldset style="margin-top:20px;border:1px solid var(--border);border-radius:6px;padding:12px">
+      <legend style="padding:0 6px;font-weight:bold;font-size:.9rem">Método de Cálculo</legend>
+      <div style="display:flex;gap:20px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:normal">
+          <input type="radio" name="quoteMethodSelect" value="distance" checked/> Método 1 - Por Distância (Tarifa/km)
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:normal">
+          <input type="radio" name="quoteMethodSelect" value="time"/> Método 2 - Por Tempo de Voo (Valor-hora)
+        </label>
+      </div>
+      <div style="margin-top:8px;font-size:.75rem;color:#555">
+        Selecione o método antes de gerar o pré-orçamento. O método escolhido será usado como base para o PDF.
+      </div>
+    </fieldset>
 
     <div class="botoes">
       <button onclick="appGerarPreOrcamento()">Gerar Pré-Orçamento</button>

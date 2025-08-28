@@ -3,7 +3,234 @@ PROMPT CIRÚRGICO: Autofill Valor-hora e Velocidade ao selecionar aeronave
 Objetivo: Preencher automaticamente os campos Valor-hora (R$/h) e Velocidade de Cruzeiro (KTAS) ao selecionar uma aeronave, usando o catálogo já existente.
 IDs usados: #aeronave, #hourlyRate, #cruiseSpeed
 Consolidar todos os listeners para evitar conflitos.
+
+## Implementação das funções de cálculo e persistência conforme requisitos
+
+### API interna conforme especificado:
 */
+
+// ============= INÍCIO DA API INTERNA CONFORME REQUISITOS =============
+
+/**
+ * Calcula cotação usando Método 1 (por distância)
+ * @param {Object} formState - Estado do formulário
+ * @returns {Object} QuoteResult com totais e detalhes
+ */
+function computeByDistance(formState) {
+  const km = formState.nm * 1.852;
+  const subtotal = valorParcialFn(km, formState.valorKm);
+  
+  // Aplicar ajustes (soma/subtrai)
+  let total = valorTotalFn(
+    km,
+    formState.valorKm,
+    formState.tipoExtra === 'soma' ? formState.valorExtra : -formState.valorExtra
+  );
+  
+  // Calcular comissão
+  const { totalComissao, detalhesComissao } = calcularComissao(
+    subtotal,
+    formState.valorExtra,
+    formState.tipoExtra,
+    formState.commissions || []
+  );
+  const commissionAmount = obterComissao(km, formState.valorKm);
+  
+  total += totalComissao + commissionAmount;
+  
+  return {
+    method: 'distance',
+    subtotal,
+    total,
+    km,
+    valorKm: formState.valorKm,
+    labelExtra: formState.valorExtra > 0 ? 
+      `${formState.tipoExtra === 'soma' ? '+' : '-'} ${fmtBRL(formState.valorExtra)}` : '',
+    detalhesComissao,
+    commissionAmount,
+    formState: { ...formState }
+  };
+}
+
+/**
+ * Calcula cotação usando Método 2 (por tempo de voo)
+ * @param {Object} formState - Estado do formulário  
+ * @returns {Object} QuoteResult com totais e detalhes
+ */
+function computeByTime(formState) {
+  // Buscar valor-hora diretamente do input ou configuração da aeronave
+  const hourlyRateInput = typeof document !== 'undefined' ? document.getElementById('hourlyRate') : null;
+  const cruiseSpeedInput = typeof document !== 'undefined' ? document.getElementById('cruiseSpeed') : null;
+  
+  let hourlyRate = hourlyRateInput ? Number(hourlyRateInput.value) || 0 : 0;
+  let cruiseSpeed = cruiseSpeedInput ? Number(cruiseSpeedInput.value) || 0 : 0;
+  
+  // Se não informado, buscar do catálogo da aeronave selecionada
+  if ((!hourlyRate || !cruiseSpeed) && formState.aeronave) {
+    const entry = Array.isArray(window.aircraftCatalog) ? 
+      window.aircraftCatalog.find(a => a.nome === formState.aeronave || a.id === formState.aeronave) : null;
+    
+    if (entry) {
+      if (!hourlyRate) hourlyRate = Number(entry.hourly_rate_brl_default) || 0;
+      if (!cruiseSpeed) cruiseSpeed = Number(entry.cruise_speed_kt_default) || 0;
+    }
+  }
+  
+  if (!hourlyRate || hourlyRate <= 0) {
+    throw new Error('Valor-hora não informado ou inválido');
+  }
+  
+  if (!cruiseSpeed || cruiseSpeed <= 0) {
+    throw new Error('Velocidade de cruzeiro não informada ou inválida');
+  }
+  
+  // Obter parâmetros avançados de planejamento
+  const windBufferEl = typeof document !== 'undefined' ? document.getElementById('windBuffer') : null;
+  const taxiMinutesEl = typeof document !== 'undefined' ? document.getElementById('taxiMinutes') : null;
+  const minBillableEl = typeof document !== 'undefined' ? document.getElementById('minBillable') : null;
+  
+  const windBufferPercent = windBufferEl ? Number(windBufferEl.value) || 0 : 0;
+  const taxiMinutes = taxiMinutesEl ? Number(taxiMinutesEl.value) || 0 : 0;
+  const minBillableMinutes = minBillableEl ? Number(minBillableEl.value) || 0 : 0;
+  
+  let totalFlightTimeHours = 0;
+  const legs = [];
+  
+  // Se temos dados de pernas, usar eles; senão calcular como perna única
+  if (Array.isArray(window.legsData) && window.legsData.length > 0) {
+    // Calcular tempo para cada perna
+    for (const leg of window.legsData) {
+      const legDistanceNM = leg.distNm || 0;
+      if (legDistanceNM > 0) {
+        // tempo_horas = (distancia_NM / KTAS) * (1 + buffer_vento_percent/100) + (taxi_solo_min/60)
+        let legTimeHours = (legDistanceNM / cruiseSpeed) * (1 + windBufferPercent/100) + (taxiMinutes/60);
+        
+        // Aplicar tempo mínimo faturável por perna
+        if (minBillableMinutes > 0) {
+          legTimeHours = Math.max(legTimeHours, minBillableMinutes/60);
+        }
+        
+        totalFlightTimeHours += legTimeHours;
+        legs.push({
+          from: leg.from || '',
+          to: leg.to || '',
+          distanceNM: legDistanceNM,
+          timeHours: legTimeHours
+        });
+      }
+    }
+  } else {
+    // Calcular como perna única usando distância total
+    const totalDistanceNM = formState.nm || 0;
+    if (totalDistanceNM > 0) {
+      let flightTimeHours = (totalDistanceNM / cruiseSpeed) * (1 + windBufferPercent/100) + (taxiMinutes/60);
+      
+      if (minBillableMinutes > 0) {
+        flightTimeHours = Math.max(flightTimeHours, minBillableMinutes/60);
+      }
+      
+      totalFlightTimeHours = flightTimeHours;
+      legs.push({
+        from: formState.origem || '',
+        to: formState.destino || '',
+        distanceNM: totalDistanceNM,
+        timeHours: flightTimeHours
+      });
+    }
+  }
+  
+  if (totalFlightTimeHours <= 0) {
+    throw new Error('Não foi possível calcular tempo de voo');
+  }
+  
+  // Calcular subtotal baseado no tempo
+  const subtotal = hourlyRate * totalFlightTimeHours;
+  
+  // Aplicar ajustes (soma/subtrai)
+  let total = subtotal + (formState.tipoExtra === 'soma' ? formState.valorExtra : -formState.valorExtra);
+  
+  // Calcular comissão (usando subtotal como base)
+  const { totalComissao, detalhesComissao } = calcularComissao(
+    subtotal,
+    formState.valorExtra,
+    formState.tipoExtra,
+    formState.commissions || []
+  );
+  const commissionAmount = obterComissao(totalFlightTimeHours * cruiseSpeed * 1.852, hourlyRate); // aproximação para compatibilidade
+  
+  total += totalComissao + commissionAmount;
+  
+  return {
+    method: 'time',
+    subtotal,
+    total,
+    hourlyRate,
+    cruiseSpeed,
+    totalFlightTimeHours,
+    legs,
+    windBufferPercent,
+    taxiMinutes,
+    minBillableMinutes,
+    labelExtra: formState.valorExtra > 0 ? 
+      `${formState.tipoExtra === 'soma' ? '+' : '-'} ${fmtBRL(formState.valorExtra)}` : '',
+    detalhesComissao,
+    commissionAmount,
+    formState: { ...formState }
+  };
+}
+
+/**
+ * Congela o pré-orçamento salvando método e snapshot
+ * @param {string} method - 'distance' ou 'time'
+ * @param {Object} result - Resultado do cálculo
+ */
+function freezePreQuote(method, result) {
+  const snapshot = {
+    selectedMethod: method,
+    quoteSnapshot: result,
+    timestamp: new Date().toISOString()
+  };
+  
+  // Salvar no estado global
+  if (typeof window !== 'undefined') {
+    window.__frozenQuote = snapshot;
+    
+    // Persistir no localStorage
+    try {
+      localStorage.setItem('quote:last', JSON.stringify(snapshot));
+    } catch (e) {
+      console.warn('Erro ao salvar quote snapshot no localStorage:', e);
+    }
+  }
+}
+
+/**
+ * Recupera o pré-orçamento congelado
+ * @returns {Object|null} { selectedMethod, quoteSnapshot } ou null
+ */
+function getFrozenQuote() {
+  // Priorizar estado global
+  if (typeof window !== 'undefined' && window.__frozenQuote) {
+    return window.__frozenQuote;
+  }
+  
+  // Fallback para localStorage
+  try {
+    const stored = localStorage.getItem('quote:last');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed.selectedMethod && parsed.quoteSnapshot) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.warn('Erro ao recuperar quote snapshot do localStorage:', e);
+  }
+  
+  return null;
+}
+
+// ============= FIM DA API INTERNA CONFORME REQUISITOS =============
 
 // Função utilitária para buscar dados da aeronave selecionada
 function getSelectedAircraftData(selectValue) {
@@ -2243,188 +2470,193 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
   };
 }
 
-/* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
+/* ==== BEGIN PATCH: função gerarPreOrcamento (conforme requisitos) ==== */
+/**
+ * Função principal que gera pré-orçamento usando método selecionado e congela o resultado
+ * Implementação conforme especificação dos requisitos
+ */
 async function gerarPreOrcamento() {
-  // Build state first
-  const state = buildState();
   const saida = document.getElementById('resultado');
-
-  // If NM/KM are present, prefer them. Otherwise, attempt to compute via ICAO lookup.
-  if (!Number.isFinite(state.nm) || state.nm <= 0) {
-    // attempt to refresh route (this will update nm/km) and then build state again
-    if (typeof refreshRouteFromInputs === 'function') {
-      await refreshRouteFromInputs(false);
-    }
-  }
-
-  // rebuild state after possible update
-  const state2 = buildState();
-  const distanciaValida = Number.isFinite(state2.nm) && state2.nm > 0;
-  const valorKmValido = Number.isFinite(state2.valorKm) && state2.valorKm > 0;
-
-  // Validation: KTAS (cruise) must be > 0 when calculating per-leg times
-  const cruiseInput = typeof document !== 'undefined' ? document.getElementById('cruiseSpeed') : null;
-  const cruiseVal = cruiseInput ? Number(cruiseInput.value) || 0 : 0;
-  if (cruiseInput) {
-    if (!Number.isFinite(cruiseVal) || cruiseVal <= 0) {
-      cruiseInput.setAttribute('aria-invalid', 'true');
-    } else {
-      cruiseInput.removeAttribute('aria-invalid');
-    }
-  }
-
-  if (!valorKmValido) {
-    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Selecione uma aeronave ou informe a <strong>tarifa por km</strong>.</div>`;
-    return;
-  }
-  if (!distanciaValida) {
-    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Informe a <strong>distância</strong> (NM ou KM) ou preencha os aeroportos para calcular automaticamente.</div>`;
-    return;
-  }
-
-  const km = state2.nm * 1.852;
-  const subtotal = valorParcialFn(km, state2.valorKm);
-
-  // Ajuste (soma/subtrai)
-  let total = valorTotalFn(
-    km,
-    state2.valorKm,
-    state2.tipoExtra === 'soma' ? state2.valorExtra : -state2.valorExtra
-  );
-  let labelExtra = '';
-  if (state2.valorExtra > 0) {
-    labelExtra = `${state2.tipoExtra === 'soma' ? '+' : '-'} ${fmtBRL(state2.valorExtra)}`;
-  }
-
-  // Comissão: percentuais (se houver) + componente (#commissionAmount)
-  const { totalComissao, detalhesComissao } = calcularComissao(
-    subtotal,
-    state2.valorExtra,
-    state2.tipoExtra,
-    state2.commissions || []
-  );
-  const commissionAmount = obterComissao(km, state2.valorKm);
-
-  total += totalComissao + commissionAmount;
-  // Método 2: calcular por hora usando pernas
-  let method2Summary = null;
-  let commissionAmount2 = 0;
+  
   try {
-    const select = document.getElementById('aeronave');
-    const craftName = select ? select.value : state2.aeronave;
-  // If pricing mode is 'pernas' require aircraft selection
-  const pricingModeEl = document.getElementById('pricingMode');
-  const pricingModeVal = pricingModeEl ? pricingModeEl.value : state2.pricingMode;
-
-  // find catalog entry
-  const entry = aircraftCatalog.find(a => a.nome === craftName || a.id === craftName) || {};
-  const cruiseEff = Number(document.getElementById('cruiseSpeed').value) || (entry && entry.cruise_speed_kt_default) || 0;
-  const hourlyEff = Number(document.getElementById('hourlyRate').value) || (entry && entry.hourly_rate_brl_default) || 0;
-
-  // Determine if we should calculate method2: either explicit 'pernas' pricing mode, or when both cruise and hourly are available and we have route/legs (or running in test env)
-  const codes = [state2.origem, state2.destino, ...(state2.stops || [])].filter(Boolean);
-  const haveRoute = codes.length >= 2 || (Number.isFinite(state2.nm) && state2.nm > 0) || legsData.length > 0;
-  const shouldCalculateMethod2 = (pricingModeVal === 'pernas') || (cruiseEff > 0 && hourlyEff > 0 && haveRoute) || (typeof document === 'undefined'); // always in test env
-
-  if (shouldCalculateMethod2 && (!craftName || craftName.trim() === '')) {
-      if (pricingModeVal === 'pernas') {
-        showToast('Selecione uma aeronave para calcular tempo.');
-        if (select) select.setAttribute('aria-invalid', 'true');
+    // 1. Construir estado do formulário
+    const state = buildState();
+    
+    // Tentar atualizar distância via ICAO se necessário
+    if (!Number.isFinite(state.nm) || state.nm <= 0) {
+      if (typeof refreshRouteFromInputs === 'function') {
+        await refreshRouteFromInputs(false);
       }
-      // still allow method 1 to show but skip method2
-      window.__method2Summary = null;
-      method2Summary = null;
-      // render existing resumo and return early
-      const htmlEarly = renderResumo(state2, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount });
-      if (saida) saida.innerHTML = htmlEarly;
+    }
+    
+    // Reconstruir estado após possível atualização
+    const finalState = buildState();
+    
+    // 2. Obter método selecionado pelo usuário
+    const methodRadios = document.querySelectorAll('input[name="quoteMethodSelect"]');
+    let selectedMethod = 'distance'; // padrão
+    
+    for (const radio of methodRadios) {
+      if (radio.checked) {
+        selectedMethod = radio.value;
+        break;
+      }
+    }
+    
+    // 3. Validações básicas
+    const distanciaValida = Number.isFinite(finalState.nm) && finalState.nm > 0;
+    
+    if (!distanciaValida) {
+      if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Informe a <strong>distância</strong> (NM ou KM) ou preencha os aeroportos para calcular automaticamente.</div>`;
       return;
-    } else {
-      if (select) select.removeAttribute('aria-invalid');
     }
-
-    // ensure legsData populated; try to rebuild if empty
-    if (legsData.length === 0 && codes.length >= 2) {
-      if (typeof document === 'undefined') {
-        // Ambiente de teste: criar dados simulados
-        legsData = [];
-        for (let i = 1; i < codes.length; i++) {
-          const distNm = 100 + Math.random() * 200; // Distância simulada
-          const time = calcTempo(distNm, cruiseEff);
-          legsData.push({
-            from: codes[i-1],
-            to: codes[i],
-            distNm,
-            time,
-            custom_time: false
-          });
-        }
-      } else {
-        // Ambiente navegador: buscar coordenadas reais
-        const coords = await Promise.all(codes.map(fetchAirportByCode));
-        updateLegsPanel(codes, coords, cruiseEff);
-      }
-    }
-
-    let totalHours = 0;
-    let totalHhmm = '0:00';
-    // Advanced planning parameters
-    const advEnabled = document.getElementById('enableAdvancedPlanning') ? document.getElementById('enableAdvancedPlanning').checked : false;
-    const windPercent = document.getElementById('windBuffer') ? Number(document.getElementById('windBuffer').value) || 0 : 0;
-    const taxiMinutes = document.getElementById('taxiMinutes') ? Number(document.getElementById('taxiMinutes').value) || 0 : 0;
-    const minBillableMin = document.getElementById('minBillable') ? Number(document.getElementById('minBillable').value) || 0 : 0;
-
-    const advOpts = { enabled: advEnabled, windPercent, taxiMinutes, minBillableMinutes: minBillableMin };
-    (legsData || []).forEach(l => {
-      if (!l || !l.time || typeof l.time.hoursDecimal !== 'number') return;
-      const base = Number(l.time.hoursDecimal || 0);
-      totalHours += adjustLegTime(base, advOpts);
-    });
-    const mins = Math.round(totalHours * 60);
-    totalHhmm = `${Math.floor(mins/60)}:${String(mins%60).padStart(2,'0')}`;
-
-  const subtotal2 = totalHours * hourlyEff;
-  // Ajuste aplicado tal como método 1 (soma ou subtrai)
-  const ajusteAplicado = state2.tipoExtra === 'soma' ? state2.valorExtra : -state2.valorExtra;
-  const baseAjustada = subtotal2 + (Number.isFinite(ajusteAplicado) ? ajusteAplicado : 0);
-  const { totalComissao: totalComissao2, detalhesComissao: detalhesComissao2 } = calcularComissao(subtotal2, state2.valorExtra, state2.tipoExtra, state2.commissions || []);
-  const commissionAmount2 = obterComissao( (state2.nm||0)*1.852, state2.valorKm );
-  const total2 = subtotal2 + (Number.isFinite(ajusteAplicado) ? ajusteAplicado : 0) + totalComissao2 + commissionAmount2;
-  method2Summary = { totalHours, totalHhmm, subtotal: subtotal2, total: total2, detalhesComissao: detalhesComissao2, ajuste: ajusteAplicado };
-  window.__method2Summary = { totalHours, totalHhmm, subtotal: subtotal2, total: total2, ajuste: ajusteAplicado };
-  } catch (e) {
-    method2Summary = null;
-    commissionAmount2 = 0;
-  }
-
-  // Preparar detalhes do método 2 para renderização
-  const method2Details = method2Summary ? {
-    detalhesComissao: method2Summary.detalhesComissao,
-    commissionAmount: commissionAmount2
-  } : null;
-
-  // Make legs rows keyboard-focusable for accessibility
-  try {
-    const list = document.getElementById('legsList');
-    if (list) {
-      const rows = Array.from(list.querySelectorAll('div'));
-      rows.forEach((r, idx) => {
-        r.tabIndex = 0;
-        r.setAttribute('role', 'button');
-        r.addEventListener('keydown', (ev) => {
-          if (ev.key === 'Enter' || ev.key === ' ') {
-            const btn = r.querySelector('button.edit-leg');
-            if (btn) btn.click();
-            ev.preventDefault();
+    
+    // 4. Calcular conforme método selecionado
+    let quoteResult;
+    
+    if (selectedMethod === 'time') {
+      // Validações específicas do Método 2
+      const hourlyRateInput = document.getElementById('hourlyRate');
+      const cruiseSpeedInput = document.getElementById('cruiseSpeed');
+      const hourlyRate = hourlyRateInput ? Number(hourlyRateInput.value) || 0 : 0;
+      const cruiseSpeed = cruiseSpeedInput ? Number(cruiseSpeedInput.value) || 0 : 0;
+      
+      // Se não informado, buscar da aeronave selecionada
+      if ((!hourlyRate || !cruiseSpeed) && finalState.aeronave) {
+        const entry = Array.isArray(window.aircraftCatalog) ? 
+          window.aircraftCatalog.find(a => a.nome === finalState.aeronave || a.id === finalState.aeronave) : null;
+        
+        if (entry) {
+          if (!hourlyRate && hourlyRateInput) {
+            hourlyRateInput.value = entry.hourly_rate_brl_default || 0;
           }
-        });
-      });
+          if (!cruiseSpeed && cruiseSpeedInput) {
+            cruiseSpeedInput.value = entry.cruise_speed_kt_default || 0;
+          }
+        }
+      }
+      
+      quoteResult = computeByTime(finalState);
+    } else {
+      // Método 1 (distância) - validação da tarifa
+      const valorKmValido = Number.isFinite(finalState.valorKm) && finalState.valorKm > 0;
+      
+      if (!valorKmValido) {
+        if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Selecione uma aeronave ou informe a <strong>tarifa por km</strong>.</div>`;
+        return;
+      }
+      
+      quoteResult = computeByDistance(finalState);
     }
-  } catch (e) { /* ignore */ }
+    
+    // 5. Congelar o pré-orçamento (persistir método e snapshot)
+    freezePreQuote(selectedMethod, quoteResult);
+    
+    // 6. Exibir o resumo do pré-orçamento
+    displayPreQuoteResults(quoteResult, selectedMethod);
+    
+    if (saida) {
+      saida.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    
+  } catch (error) {
+    console.error('Erro ao gerar pré-orçamento:', error);
+    if (saida) {
+      saida.innerHTML = `<div style="padding:12px;border:1px solid #dc3545;background:#f8d7da;border-radius:6px;color:#721c24">
+        <strong>Erro:</strong> ${error.message}
+      </div>`;
+    }
+  }
+}
 
-  // Render do resumo completo
-  const html = renderResumo(state2, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount }, method2Details);
+/**
+ * Exibe os resultados do pré-orçamento na UI
+ * @param {Object} quoteResult - Resultado do cálculo
+ * @param {string} selectedMethod - Método selecionado ('distance' ou 'time')
+ */
+function displayPreQuoteResults(quoteResult, selectedMethod) {
+  const saida = document.getElementById('resultado');
+  if (!saida) return;
+  
+  const methodName = selectedMethod === 'time' ? 'Método 2 - Tempo de Voo' : 'Método 1 - Distância';
+  const icon = selectedMethod === 'time' ? '⏱️' : '📏';
+  
+  let detailsHtml = '';
+  
+  if (selectedMethod === 'time') {
+    // Detalhes específicos do Método 2
+    const hoursFormatted = quoteResult.totalFlightTimeHours ? 
+      `${quoteResult.totalFlightTimeHours.toFixed(2)}h` : '0h';
+    
+    detailsHtml = `
+      <div style="background:#e3f2fd;padding:12px;border-radius:6px;margin:12px 0">
+        <h4 style="margin:0 0 8px 0;color:#1976d2">${icon} ${methodName}</h4>
+        <div style="font-size:.9rem;color:#555">
+          <div><strong>Valor-hora:</strong> ${fmtBRL(quoteResult.hourlyRate)}</div>
+          <div><strong>Velocidade de cruzeiro:</strong> ${quoteResult.cruiseSpeed} KTAS</div>
+          <div><strong>Tempo total de voo:</strong> ${hoursFormatted}</div>
+          ${quoteResult.legs && quoteResult.legs.length > 0 ? 
+            `<div style="margin-top:8px"><strong>Pernas:</strong></div>
+             <ul style="margin:4px 0;padding-left:20px">
+               ${quoteResult.legs.map(leg => 
+                 `<li>${leg.from || '?'} → ${leg.to || '?'}: ${leg.distanceNM.toFixed(1)} NM, ${leg.timeHours.toFixed(2)}h</li>`
+               ).join('')}
+             </ul>` : ''}
+        </div>
+      </div>
+    `;
+  } else {
+    // Detalhes específicos do Método 1
+    detailsHtml = `
+      <div style="background:#e8f5e8;padding:12px;border-radius:6px;margin:12px 0">
+        <h4 style="margin:0 0 8px 0;color:#2e7d32">${icon} ${methodName}</h4>
+        <div style="font-size:.9rem;color:#555">
+          <div><strong>Distância:</strong> ${quoteResult.km.toFixed(1)} km</div>
+          <div><strong>Tarifa por km:</strong> ${fmtBRL(quoteResult.valorKm)}</div>
+        </div>
+      </div>
+    `;
+  }
+  
+  let extraHtml = '';
+  if (quoteResult.labelExtra) {
+    extraHtml = `<div><strong>Ajuste:</strong> ${quoteResult.labelExtra}</div>`;
+  }
+  
+  let commissionHtml = '';
+  if (quoteResult.commissionAmount > 0) {
+    commissionHtml = `<div><strong>Comissão:</strong> ${fmtBRL(quoteResult.commissionAmount)}</div>`;
+  }
+  
+  const html = `
+    <div style="background:#fff;border:1px solid #28a745;border-radius:8px;padding:20px">
+      <h3 style="margin:0 0 16px 0;color:#28a745">✅ Pré-Orçamento Gerado</h3>
+      
+      ${detailsHtml}
+      
+      <div style="background:#f8f9fa;padding:16px;border-radius:6px;margin:12px 0">
+        <div style="font-size:1.1rem;margin-bottom:8px">
+          <strong>Subtotal:</strong> ${fmtBRL(quoteResult.subtotal)}
+        </div>
+        ${extraHtml}
+        ${commissionHtml}
+        <hr style="margin:12px 0;border:0;border-top:1px solid #dee2e6">
+        <div style="font-size:1.3rem;font-weight:bold;color:#28a745">
+          <strong>TOTAL:</strong> ${fmtBRL(quoteResult.total)}
+        </div>
+      </div>
+      
+      <div style="background:#fff3cd;border:1px solid #ffeaa7;padding:12px;border-radius:6px;margin-top:16px">
+        <div style="font-size:.9rem;color:#856404">
+          <strong>💾 Orçamento congelado!</strong><br>
+          O método <strong>${methodName}</strong> foi selecionado e os dados foram salvos. 
+          Clique em "Gerar PDF" para criar o documento final baseado nestes valores.
+        </div>
+      </div>
+    </div>
+  `;
+  
   saida.innerHTML = html;
-  saida.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 /* ==== END PATCH ==== */
 
@@ -2449,86 +2681,149 @@ function getSelectedPdfMethod() {
   } catch { return 'method1'; }
 }
 
+/**
+ * Gera PDF usando APENAS os dados do pré-orçamento congelado
+ * Conforme requisitos: não recalcula nada, apenas lê quoteSnapshot
+ */
 async function gerarPDF(state, methodSelection = null) {
-  const s = state || buildState();
-  const selectedMethod = methodSelection || getSelectedPdfMethod();
-
-  // coletar opções a partir dos toggles inline armazenados em localStorage
+  const saida = document.getElementById('resultado');
+  
+  // 1. Verificar se existe pré-orçamento congelado
+  const frozenQuote = getFrozenQuote();
+  
+  if (!frozenQuote || !frozenQuote.quoteSnapshot) {
+    // Mostrar aviso se não há pré-orçamento
+    const warning = `
+      <div style="padding:16px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px;color:#856404">
+        <h4 style="margin:0 0 8px 0">⚠️ Pré-orçamento necessário</h4>
+        <p style="margin:0">Gere o pré-orçamento antes do PDF clicando no botão "Gerar Pré-Orçamento".</p>
+      </div>
+    `;
+    
+    if (saida) {
+      saida.innerHTML = warning;
+    } else {
+      alert('Gere o pré-orçamento antes do PDF.');
+    }
+    return;
+  }
+  
+  console.log('Gerando PDF com dados congelados:', frozenQuote);
+  
+  // 2. Usar dados congelados para gerar PDF
+  const { selectedMethod, quoteSnapshot } = frozenQuote;
+  const formState = quoteSnapshot.formState || buildState();
+  
+  // 3. Configurar opções de PDF (manter compatibilidade com sistema existente)
   const pdfOptions = {
-    includeMap: false,
-    includeCommission: false,
-    includeObservations: false,
-    includePayment: false,
-    includeDates: false,
-    includeAircraft: false,
-    includeDistance: false,
-    includeTariff: false,
-    includeMethod1: false,
-    includeMethod2: false,
-    includeLegs: false
+    includeMap: true,
+    includeCommission: true,
+    includeObservations: true,
+    includePayment: true,
+    includeDates: true,
+    includeAircraft: true,
+    includeDistance: true,
+    includeTariff: true,
+    includeMethod1: selectedMethod === 'distance',
+    includeMethod2: selectedMethod === 'time',
+    includeLegs: selectedMethod === 'time',
+    includeRoute: true
   };
+  
+  // Sobrescrever com preferências salvas se existirem
   try {
     if (typeof localStorage !== 'undefined') {
       const sel = JSON.parse(localStorage.getItem('pdfInlineToggles') || '{}');
-      pdfOptions.includeMap = sel.mapa !== false;
-      pdfOptions.includeCommission = sel.comissoes !== false;
-      pdfOptions.includeObservations = sel.observacoes !== false;
-      pdfOptions.includePayment = sel.pagamento !== false;
-      pdfOptions.includeDates = sel.datas !== false;
-      pdfOptions.includeAircraft = sel.aeronave !== false;
-      pdfOptions.includeDistance = sel.distancia !== false;
-      pdfOptions.includeTariff = sel.tarifa !== false;
-      pdfOptions.includeMethod1 = sel.method1 !== false; // ativo por padrão
-      pdfOptions.includeMethod2 = sel.method2 !== false; // ativo por padrão agora
-      pdfOptions.includeLegs = sel.pernas !== false;
-      pdfOptions.includeRoute = sel.rota !== false;
+      if (Object.keys(sel).length > 0) {
+        pdfOptions.includeMap = sel.mapa !== false;
+        pdfOptions.includeCommission = sel.comissoes !== false;
+        pdfOptions.includeObservations = sel.observacoes !== false;
+        pdfOptions.includePayment = sel.pagamento !== false;
+        pdfOptions.includeDates = sel.datas !== false;
+        pdfOptions.includeAircraft = sel.aeronave !== false;
+        pdfOptions.includeDistance = sel.distancia !== false;
+        pdfOptions.includeTariff = sel.tarifa !== false;
+        pdfOptions.includeRoute = sel.rota !== false;
+        // Método sempre baseado no congelado, não nos toggles
+        pdfOptions.includeMethod1 = selectedMethod === 'distance';
+        pdfOptions.includeMethod2 = selectedMethod === 'time';
+        pdfOptions.includeLegs = selectedMethod === 'time' && sel.pernas !== false;
+      }
     }
   } catch (e) { /* ignore */ }
   
-  if (typeof __refreshRouteNow === 'function') { await __refreshRouteNow(); }
-  let waypoints = [];
-  if (s.showMapa) {
-    const codes = [s.origem, s.destino, ...(s.stops || [])];
-    for (const code of codes) {
-      const point = await fetchAirportByCode(code);
-      if (point) waypoints.push(point);
-    }
-    updateDistanceFromAirports(waypoints);
-  }
+  // 4. Preparar dados para buildDocDefinition
+  const stateForPdf = {
+    ...formState,
+    // Garantir que os dados calculados sejam os congelados
+    __frozenQuoteData: quoteSnapshot,
+    __selectedMethod: selectedMethod
+  };
   
-  // Capture map dataURL if map inclusion is requested
-  if (pdfOptions.includeMap || s.showMapa) {
+  // 5. Capturar mapa se necessário
+  if (pdfOptions.includeMap) {
     try {
+      if (typeof __refreshRouteNow === 'function') { 
+        await __refreshRouteNow(); 
+      }
+      
+      const codes = [formState.origem, formState.destino, ...(formState.stops || [])].filter(Boolean);
+      const waypoints = [];
+      for (const code of codes) {
+        const point = await fetchAirportByCode(code);
+        if (point) waypoints.push(point);
+      }
+      updateDistanceFromAirports(waypoints);
+      
       const mapDataUrl = await captureMapDataUrl();
       if (mapDataUrl) {
-        s.mapDataUrl = mapDataUrl;
+        stateForPdf.mapDataUrl = mapDataUrl;
       }
     } catch (e) {
       console.warn('Failed to capture map for PDF:', e);
     }
   }
   
-  const docDefinition = buildDocDefinition(s, selectedMethod, pdfOptions);
+  // 6. Gerar e abrir PDF
   try {
+    const methodForPdf = selectedMethod === 'time' ? 'method2' : 'method1';
+    const docDefinition = buildDocDefinition(stateForPdf, methodForPdf, pdfOptions);
+    
     if (!docDefinition || !docDefinition.content || !docDefinition.content.length) {
-      console.warn('[PDF] docDefinition vazio, aplicando fallback simples.');
-      const fallback = { content: [{ text: 'Pré-Orçamento', fontSize: 16, bold: true }, { text: JSON.stringify(pdfOptions), fontSize: 8 }] };
+      console.warn('[PDF] docDefinition vazio, aplicando fallback.');
+      const fallback = { 
+        content: [
+          { text: 'Pré-Orçamento', fontSize: 16, bold: true }, 
+          { text: `Método: ${selectedMethod === 'time' ? 'Tempo de Voo' : 'Distância'}`, fontSize: 12 },
+          { text: `Total: ${fmtBRL(quoteSnapshot.total)}`, fontSize: 14, bold: true }
+        ] 
+      };
       if (typeof pdfMake !== 'undefined') pdfMake.createPdf(fallback).open();
       return fallback;
     }
-    console.debug('[PDF] docDefinition ok. Itens:', docDefinition.content.length, 'Opções:', pdfOptions);
+    
+    console.debug('[PDF] Gerando PDF com método:', selectedMethod, 'Total:', quoteSnapshot.total);
+    
     if (typeof pdfMake !== 'undefined') {
       pdfMake.createPdf(docDefinition).open();
     } else {
       console.error('[PDF] pdfMake indisponível.');
+      alert('Erro: Biblioteca de PDF não disponível.');
     }
+    
+    return docDefinition;
+    
   } catch (err) {
     console.error('[PDF] Erro ao gerar PDF:', err);
-    const fallback = { content: [{ text: 'Erro ao gerar PDF', color: 'red' }, { text: String(err), fontSize: 8 }] };
+    const fallback = { 
+      content: [
+        { text: 'Erro ao gerar PDF', color: 'red', fontSize: 16 }, 
+        { text: String(err), fontSize: 10, margin: [0, 10, 0, 0] }
+      ] 
+    };
     if (typeof pdfMake !== 'undefined') pdfMake.createPdf(fallback).open();
     return fallback;
   }
-  return docDefinition;
 }
 
 function limparCampos() {
@@ -2539,10 +2834,25 @@ function limparCampos() {
   });
   document.getElementById('tarifa').value = '';
   document.getElementById('resultado').innerHTML = '';
+  
   // Limpar localStorage dos toggles inline
   try {
     localStorage.removeItem('pdfInlineToggles');
+    // Limpar quote snapshot conforme requisitos
+    localStorage.removeItem('quote:last');
   } catch (e) { /* ignore */ }
+  
+  // Limpar estado global do quote congelado
+  if (typeof window !== 'undefined') {
+    window.__frozenQuote = null;
+  }
+  
+  // Resetar seleção de método para o padrão
+  const methodRadios = document.querySelectorAll('input[name="quoteMethodSelect"]');
+  methodRadios.forEach(radio => {
+    radio.checked = radio.value === 'distance'; // Método 1 como padrão
+  });
+  
   if (routeLayer && routeLayer.remove) routeLayer.remove();
   const comissoesDiv = document.getElementById('comissoes');
   if (comissoesDiv) comissoesDiv.innerHTML = '';
@@ -2555,7 +2865,7 @@ function limparCampos() {
     const percent = commissionComp.querySelector('#commissionPercent');
     const preview = commissionComp.querySelector('#commissionPreview');
     const amountHidden = commissionComp.querySelector('#commissionAmount');
-    panel.hidden = true;
+    if (panel) panel.hidden = true;
     if (btnAdd) {
       btnAdd.setAttribute('aria-pressed', 'false');
       btnAdd.textContent = 'Adicionar comissão';
