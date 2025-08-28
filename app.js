@@ -67,11 +67,11 @@ function loadAircraftCatalog() {
   // Always ensure we have the legacy aircraft data as fallback
   const ensureLegacyAircraft = () => {
     const legacyAugment = [
-      { nome: 'Hawker 400', cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
-      { nome: 'Phenom 100', cruise_speed_kt_default: 390, hourly_rate_brl_default: 16500 },
-      { nome: 'Citation II', cruise_speed_kt_default: 375, hourly_rate_brl_default: 15000 },
-      { nome: 'Sêneca IV', cruise_speed_kt_default: 190, hourly_rate_brl_default: 6500 },
-      { nome: 'Cirrus SR22', cruise_speed_kt_default: 180, hourly_rate_brl_default: 3300 }
+      { nome: 'Hawker 400', tarifa_km_brl_default: 36, cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
+      { nome: 'Phenom 100', tarifa_km_brl_default: 36, cruise_speed_kt_default: 390, hourly_rate_brl_default: 16500 },
+      { nome: 'Citation II', tarifa_km_brl_default: 36, cruise_speed_kt_default: 375, hourly_rate_brl_default: 15000 },
+      { nome: 'Sêneca IV', tarifa_km_brl_default: 22, cruise_speed_kt_default: 190, hourly_rate_brl_default: 6500 },
+      { nome: 'Cirrus SR22', tarifa_km_brl_default: 15, cruise_speed_kt_default: 180, hourly_rate_brl_default: 3300 }
     ];
     legacyAugment.forEach(l => {
       if (!aircraftCatalog.find(a => a.nome === l.nome)) {
@@ -251,11 +251,18 @@ function bindAircraftParamsUI() {
   if (select) select.addEventListener('change', (e) => applyFor(e.target.value));
   // Removidos listeners de salvar/restaurar padrões
 
-  // initial apply on load
-  document.addEventListener('DOMContentLoaded', () => {
+  // initial apply on load - handle both cases where DOMContentLoaded has/hasn't fired
+  const initializeOnReady = () => {
     loadAircraftCatalog();
     setTimeout(() => { try { applyFor(select.value); } catch (e) {} }, 200);
-  });
+  };
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeOnReady);
+  } else {
+    // DOM is already ready
+    setTimeout(initializeOnReady, 0);
+  }
 
   // Recalcula imediatamente quando velocidade ou valor-hora forem alterados
   try {
@@ -636,11 +643,18 @@ if (typeof document !== 'undefined') {
     if (typeof window.__refreshRouteNow === 'function') window.__refreshRouteNow();
   });
 }
-// Bind aircraft params UI when DOM is ready
+// Bind aircraft params UI when DOM is ready - handle both cases where DOMContentLoaded has/hasn't fired
 if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
+  const initializeUI = () => {
     try { bindAircraftParamsUI(); } catch (e) { /* ignore */ }
-  });
+  };
+  
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeUI);
+  } else {
+    // DOM is already ready
+    setTimeout(initializeUI, 0);
+  }
 }
 // --- [END ADD/REPLACE] ---
 
