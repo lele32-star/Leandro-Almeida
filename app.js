@@ -811,7 +811,23 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
     </div>
   ` : '';
 
-  const methodSelector = '';
+  // UI de seleção de método para geração de PDF
+  const storedMethod = (function(){
+    if (typeof localStorage === 'undefined') return 'method1';
+    try { return localStorage.getItem('selectedMethodPdf') || 'method1'; } catch { return 'method1'; }
+  })();
+  const methodSelector = `
+    <fieldset style="margin:12px 0;padding:12px;border:1px solid #e9ecef;border-radius:6px">
+      <legend style="padding:0 6px;font-weight:bold;font-size:.9rem">Selecione o método para o PDF</legend>
+      <label style="display:inline-flex;align-items:center;gap:6px;margin-right:20px;font-weight:normal">
+        <input type="radio" name="pdfMethodSelect" value="method1" ${storedMethod==='method1'?'checked':''}/> Método 1
+      </label>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-weight:normal">
+        <input type="radio" name="pdfMethodSelect" value="method2" ${storedMethod==='method2'?'checked':''} ${!hasMethod2Data?'disabled':''}/> Método 2
+      </label>
+      ${!hasMethod2Data ? '<div style="margin-top:6px;font-size:.75rem;color:#666">(Método 2 indisponível para esta rota)</div>' : ''}
+      <div style="margin-top:8px;font-size:.75rem;color:#555">Ao gerar o PDF apenas o método selecionado será incluído.</div>
+    </fieldset>`;
 
   const container = `
     ${togglesBar}
@@ -835,7 +851,14 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
       }});
     })();</script>`;
 
-  return `<h3>Pré-Orçamento</h3>${container}${script}`;
+  // Script adicional para persistir seleção de método
+  const methodSelectScript = `
+    <script>(function(){
+      const radios = document.querySelectorAll('input[name="pdfMethodSelect"]');
+      radios.forEach(r=>{r.addEventListener('change',e=>{ try{ localStorage.setItem('selectedMethodPdf', e.target.value); }catch{} });});
+    })();</script>`;
+
+  return `<h3>Pré-Orçamento</h3>${container}${script}${methodSelectScript}`;
 }
 
 if (typeof document !== 'undefined') {
@@ -1417,13 +1440,15 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
         state.commissions || []
       );
       const m2Commission = obterComissao(km, state.valorKm);
-      method2Total = m2.subtotal + (state.tipoExtra === 'soma' ? state.valorExtra : -state.valorExtra) + m2Details.totalComissao + m2Commission;
+  // Total do método 2 já inclui ajuste e comissões quando salvo em window.__method2Summary.total.
+  method2Total = m2.total || (m2.subtotal + (state.tipoExtra === 'soma' ? state.valorExtra : -state.valorExtra) + m2Details.totalComissao + m2Commission);
       
       method2Data = {
         subtotal: m2.subtotal,
         total: method2Total,
-        totalHours: m2.totalHours,
-        totalHhmm: m2.totalHhmm,
+  totalHours: m2.totalHours,
+  totalHhmm: m2.totalHhmm,
+  ajuste: m2.ajuste,
         detalhesComissao: m2Details.detalhesComissao,
         totalComissao: m2Details.totalComissao
       };
@@ -1533,8 +1558,20 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
 
   // Criar blocos de investimento baseados na seleção e nas opções do PDF
   const investmentBlocks = [];
-  const wantMethod1 = pdfOptions.includeMethod1 || methodSelection === 'method1' || methodSelection === 'both';
-  const wantMethod2 = pdfOptions.includeMethod2 || methodSelection === 'method2' || methodSelection === 'both';
+  let wantMethod1, wantMethod2;
+  if (methodSelection === 'method1') {
+    // Seleção explícita: somente Método 1, ignorar toggles
+    wantMethod1 = true;
+    wantMethod2 = false;
+  } else if (methodSelection === 'method2') {
+    // Seleção explícita: somente Método 2, ignorar toggles
+    wantMethod1 = false;
+    wantMethod2 = !!method2Data; // só exibe se houver dados
+  } else {
+    // Caso 'both' (ou fallback sem escolha explícita): respeitar toggles
+    wantMethod1 = pdfOptions.includeMethod1 !== false; // default true
+    wantMethod2 = (pdfOptions.includeMethod2 !== false) && !!method2Data; // default true se houver dados
+  }
 
   if (wantMethod1) {
     investmentBlocks.push({ text: 'Investimento (Método 1 - Tarifa por KM)', style: 'h2', margin: [0, 10, 0, 6] });
@@ -2192,13 +2229,15 @@ async function gerarPreOrcamento() {
     const mins = Math.round(totalHours * 60);
     totalHhmm = `${Math.floor(mins/60)}:${String(mins%60).padStart(2,'0')}`;
 
-    const subtotal2 = totalHours * hourlyEff;
-    // apply same commission logic to method2: use calcularComissao on subtotal2
-    const { totalComissao: totalComissao2, detalhesComissao: detalhesComissao2 } = calcularComissao(subtotal2, state2.valorExtra, state2.tipoExtra, state2.commissions || []);
-    const commissionAmount2 = obterComissao( (state2.nm||0)*1.852, state2.valorKm );
-    const total2 = subtotal2 + totalComissao2 + commissionAmount2;
-    method2Summary = { totalHours, totalHhmm, subtotal: subtotal2, total: total2, detalhesComissao: detalhesComissao2 };
-    window.__method2Summary = { totalHours, totalHhmm, subtotal: subtotal2, total: total2 };
+  const subtotal2 = totalHours * hourlyEff;
+  // Ajuste aplicado tal como método 1 (soma ou subtrai)
+  const ajusteAplicado = state2.tipoExtra === 'soma' ? state2.valorExtra : -state2.valorExtra;
+  const baseAjustada = subtotal2 + (Number.isFinite(ajusteAplicado) ? ajusteAplicado : 0);
+  const { totalComissao: totalComissao2, detalhesComissao: detalhesComissao2 } = calcularComissao(subtotal2, state2.valorExtra, state2.tipoExtra, state2.commissions || []);
+  const commissionAmount2 = obterComissao( (state2.nm||0)*1.852, state2.valorKm );
+  const total2 = subtotal2 + (Number.isFinite(ajusteAplicado) ? ajusteAplicado : 0) + totalComissao2 + commissionAmount2;
+  method2Summary = { totalHours, totalHhmm, subtotal: subtotal2, total: total2, detalhesComissao: detalhesComissao2, ajuste: ajusteAplicado };
+  window.__method2Summary = { totalHours, totalHhmm, subtotal: subtotal2, total: total2, ajuste: ajusteAplicado };
   } catch (e) {
     method2Summary = null;
     commissionAmount2 = 0;
@@ -2237,12 +2276,22 @@ async function gerarPreOrcamento() {
 /* ==== END PATCH ==== */
 
 function getSelectedPdfMethod() {
+  // Priorizar escolha explícita do usuário
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const explicit = localStorage.getItem('selectedMethodPdf');
+      if (explicit === 'method1' || explicit === 'method2') return explicit;
+    }
+  } catch {}
+  // Fallback para lógica de toggles
   try {
     const sel = typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('pdfInlineToggles')||'{}') : {};
+    const hasAnyKey = Object.keys(sel).length > 0;
+    if (!hasAnyKey) return 'method1';
     const m1 = sel.method1 !== false; // default true
-    const m2 = sel.method2 !== false; // default true agora
+    const m2 = sel.method2 !== false; // default true
     if (m1 && m2) return 'both';
-    if (m2) return 'method2';
+    if (m2 && !m1) return 'method2';
     return 'method1';
   } catch { return 'method1'; }
 }
@@ -2383,5 +2432,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft, adjustLegTime };
+  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft, adjustLegTime, getSelectedPdfMethod };
  }

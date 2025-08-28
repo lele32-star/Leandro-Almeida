@@ -320,3 +320,28 @@ console.log('calcTempo tests passed.');
   assert(Math.abs(r - 2) < 1e-9, 'Min billable enforced');
   console.log('adjustLegTime unit tests passed.');
 })();
+
+// === Teste: Persistência de selectedMethodPdf ===
+(() => {
+  // Simular localStorage em ambiente Node
+  if (typeof global.window === 'undefined') global.window = {};
+  const store = {};
+  global.localStorage = {
+    getItem: (k) => store[k] || null,
+    setItem: (k, v) => { store[k] = String(v); },
+    removeItem: (k) => { delete store[k]; }
+  };
+  // Não setado ainda -> fallback deve retornar 'method1'
+  const app = require('./app.js');
+  let sel = app.getSelectedPdfMethod ? app.getSelectedPdfMethod() : 'method1';
+  assert(sel === 'method1', 'Default selected PDF method should be method1 when nothing stored');
+  // Persistir método 2
+  localStorage.setItem('selectedMethodPdf', 'method2');
+  sel = app.getSelectedPdfMethod();
+  assert(sel === 'method2', 'Selected method should persist as method2');
+  // Persistir método 1
+  localStorage.setItem('selectedMethodPdf', 'method1');
+  sel = app.getSelectedPdfMethod();
+  assert(sel === 'method1', 'Selected method should switch back to method1');
+  console.log('selectedMethodPdf persistence test passed.');
+})();
