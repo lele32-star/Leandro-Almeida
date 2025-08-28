@@ -1,19 +1,24 @@
 /*
 PROMPT CIRÚRGICO: Autofill Valor-hora e Velocidade ao selecionar aeronave
 Objetivo: Preencher automaticamente os campos Valor-hora (R$/h) e Velocidade de Cruzeiro (KTAS) ao selecionar uma aeronave, usando o catálogo já existente.
-IDs usados: #aircraft-select, #aircraft-hourly-rate, #aircraft-ktas
-Não alterar lógica de cálculo, estilos ou duplicar catálogo. Apenas autofill.
+IDs usados: #aeronave, #hourlyRate, #cruiseSpeed
+Consolidar todos os listeners para evitar conflitos.
 */
 
 // Função utilitária para buscar dados da aeronave selecionada
 function getSelectedAircraftData(selectValue) {
   if (!selectValue || !Array.isArray(window.aircraftCatalog)) return null;
-  // Adapte os nomes conforme o catálogo real
-  const entry = window.aircraftCatalog.find(a => a.id === selectValue || a.nome === selectValue);
+  // Buscar por diferentes campos do catálogo
+  const entry = window.aircraftCatalog.find(a => 
+    a.id === selectValue || 
+    a.nome === selectValue || 
+    a.modelo === selectValue
+  );
   if (!entry) return null;
   return {
     hourlyRate: entry.hourly_rate_brl_default || entry.hourlyRate || null,
-    cruiseKtas: entry.cruise_speed_kt_default || entry.cruiseKtas || null
+    cruiseKtas: entry.cruise_speed_kt_default || entry.cruiseKtas || null,
+    tarifaKm: entry.tarifa_km_brl_default || entry.tarifaKm || null
   };
 }
 
@@ -23,47 +28,144 @@ function formatNumberBR(n) {
   return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 }
 
-// Listener de mudança para autofill
-function setupAircraftAutofill() {
-  const select = document.getElementById('aircraft-select') || document.getElementById('aeronave');
-  const hourlyInput = document.getElementById('aircraft-hourly-rate') || document.getElementById('hourlyRate');
-  const cruiseInput = document.getElementById('aircraft-ktas') || document.getElementById('cruiseSpeed');
-  if (!select || !hourlyInput || !cruiseInput) return;
+// Função consolidada de autofill para evitar conflitos de listeners
+function setupAircraftAutofillConsolidated() {
+  const select = document.getElementById('aeronave');
+  const hourlyInput = document.getElementById('hourlyRate');
+  const cruiseInput = document.getElementById('cruiseSpeed');
+  const tarifaInput = document.getElementById('tarifa');
+  
+  console.log('=== AUTOFILL CONSOLIDADO ===');
+  console.log('Select aeronave:', select);
+  console.log('Input hourlyRate:', hourlyInput);
+  console.log('Input cruiseSpeed:', cruiseInput);
+  console.log('AircraftCatalog carregado:', window.aircraftCatalog ? window.aircraftCatalog.length + ' aeronaves' : 'NÃO CARREGADO');
+  
+  if (!select) {
+    console.error('❌ Select #aeronave não encontrado!');
+    return;
+  }
 
-  function autofill() {
+  function handleAircraftChange() {
     const val = select.value;
+    console.log('🔄 Aeronave mudou para:', val);
+    
     const data = getSelectedAircraftData(val);
+    
+    console.log('📊 Dados da aeronave encontrados:', data);
+    
     if (!data) {
-      console.warn('Aeronave não encontrada no catálogo:', val);
+      console.warn('⚠️ Aeronave não encontrada no catálogo:', val);
       return;
     }
-    // Só preencher se o campo estiver vazio ou igual ao default
-    if (!hourlyInput.value || hourlyInput.value === '' || hourlyInput.value == hourlyInput.defaultValue) {
-      hourlyInput.value = data.hourlyRate ? formatNumberBR(data.hourlyRate) : '';
-      hourlyInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // Autofill hourly rate se campo existir e estiver vazio
+    if (hourlyInput) {
+      const currentValue = hourlyInput.value;
+      console.log('💰 Hourly Rate - Valor atual:', currentValue, 'Novo valor:', data.hourlyRate);
+      
+      if (!currentValue || currentValue === '' || currentValue == hourlyInput.defaultValue) {
+        hourlyInput.value = data.hourlyRate ? data.hourlyRate : '';
+        hourlyInput.dispatchEvent(new Event('input', { bubbles: true }));
+        console.log('✅ Hourly rate preenchido:', hourlyInput.value);
+      } else {
+        console.log('⏭️ Hourly rate não alterado (campo já preenchido)');
+      }
+    } else {
+      console.warn('⚠️ Campo #hourlyRate não encontrado');
     }
-    if (!cruiseInput.value || cruiseInput.value === '' || cruiseInput.value == cruiseInput.defaultValue) {
-      cruiseInput.value = data.cruiseKtas ? data.cruiseKtas : '';
-      cruiseInput.dispatchEvent(new Event('input', { bubbles: true }));
+    
+    // Autofill cruise speed se campo existir e estiver vazio
+    if (cruiseInput) {
+      const currentValue = cruiseInput.value;
+      console.log('✈️ Cruise Speed - Valor atual:', currentValue, 'Novo valor:', data.cruiseKtas);
+      
+      if (!currentValue || currentValue === '' || currentValue == cruiseInput.defaultValue) {
+        cruiseInput.value = data.cruiseKtas ? data.cruiseKtas : '';
+        cruiseInput.dispatchEvent(new Event('input', { bubbles: true }));
+        console.log('✅ Cruise speed preenchido:', cruiseInput.value);
+      } else {
+        console.log('⏭️ Cruise speed não alterado (campo já preenchido)');
+      }
+    } else {
+      console.warn('⚠️ Campo #cruiseSpeed não encontrado');
     }
-    // Persistência opcional
-    if (typeof localStorage !== 'undefined') {
+
+    // Gerenciar tarifa conforme lógica existente (compatibilidade)
+    if (tarifaInput && data.tarifaKm) {
+      console.log('💵 Processando tarifa:', data.tarifaKm);
+      // Verificar se há tarifa salva primeiro
       try {
-        localStorage.setItem('aircraft-hourly-rate', hourlyInput.value);
-        localStorage.setItem('aircraft-ktas', cruiseInput.value);
-      } catch {}
+        const store = typeof loadTarifasStore === 'function' ? loadTarifasStore() : {};
+        const saved = store[val];
+        if (saved !== undefined && saved !== null) {
+          tarifaInput.value = saved;
+          console.log('✅ Tarifa carregada do localStorage:', saved);
+        } else if (!tarifaInput.value || tarifaInput.value === '') {
+          tarifaInput.value = data.tarifaKm;
+          console.log('✅ Tarifa preenchida do catálogo:', data.tarifaKm);
+        }
+        // Atualizar preview se existir
+        if (typeof applyTarifaPreview === 'function') applyTarifaPreview();
+      } catch (e) {
+        console.warn('❌ Erro ao gerenciar tarifa:', e);
+      }
+    }
+
+    // Disparar recálculo se função existir
+    try { 
+      if (typeof gerarPreOrcamento === 'function') {
+        console.log('🔄 Disparando recálculo...');
+        setTimeout(gerarPreOrcamento, 50); // Pequeno delay para garantir que campos foram atualizados
+      } else {
+        console.warn('⚠️ Função gerarPreOrcamento não encontrada');
+      }
+    } catch (e) { 
+      console.warn('❌ Erro ao disparar recálculo:', e); 
     }
   }
 
-  select.addEventListener('change', autofill);
+  // Remover listeners existentes clonando o elemento
+  const newSelect = select.cloneNode(true);
+  select.parentNode.replaceChild(newSelect, select);
+  console.log('🔄 Select clonado para remover listeners antigos');
+
+  // Adicionar único listener consolidado
+  newSelect.addEventListener('change', handleAircraftChange);
+  console.log('✅ Listener de change adicionado');
+  
   // Chamar no carregamento se já houver seleção
-  if (select.value) {
-    setTimeout(autofill, 0);
+  if (newSelect.value) {
+    console.log('🚀 Executando autofill inicial para aeronave pré-selecionada:', newSelect.value);
+    setTimeout(handleAircraftChange, 200);
   }
+
+  console.log('✅ Autofill consolidado configurado com sucesso');
+}
+
+// Inicializar apenas uma vez quando DOM estiver carregado
+let autofillConsolidatedInitialized = false;
+function initAutofillWhenReady() {
+  if (autofillConsolidatedInitialized) return;
+  
+  // Verificar se catálogo já foi carregado
+  if (!window.aircraftCatalog || !Array.isArray(window.aircraftCatalog) || window.aircraftCatalog.length === 0) {
+    console.log('⏳ Aguardando carregamento do catálogo...');
+    // Tentar novamente em 500ms
+    setTimeout(initAutofillWhenReady, 500);
+    return;
+  }
+  
+  autofillConsolidatedInitialized = true;
+  console.log('🚀 Inicializando autofill com catálogo carregado (' + window.aircraftCatalog.length + ' aeronaves)');
+  setupAircraftAutofillConsolidated();
 }
 
 if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', setupAircraftAutofill);
+  document.addEventListener('DOMContentLoaded', () => {
+    // Aguardar um pouco para o catálogo carregar, então tentar inicializar
+    setTimeout(initAutofillWhenReady, 300);
+  });
 }
 // Função de compatibilidade para obter tarifa por km de aeronave selecionada
 function getTarifaKmFromAircraft(aircraftName) {
@@ -161,6 +263,8 @@ function loadAircraftCatalog() {
         .then(j => {
           if (Array.isArray(j)) {
             aircraftCatalog = j;
+            // Expor globalmente para compatibilidade
+            window.aircraftCatalog = aircraftCatalog;
             // Augmentar com aeronaves legadas que possuem tarifa mas não estão no catálogo oficial
             const legacyAugment = [
               { nome: 'Hawker 400', cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
@@ -707,6 +811,8 @@ if (typeof document !== 'undefined') {
   });
 }
 // Implementação de autofill conforme requisitos com suporte aos IDs especificados
+// COMENTADO: Esta função foi consolidada em setupAircraftAutofillConsolidated para evitar conflitos
+/*
 function setupAircraftAutofill() {
   if (typeof document === 'undefined') return;
   
@@ -768,17 +874,10 @@ function setupAircraftAutofill() {
     }
   }
 }
+*/
 
-// Executar quando o catálogo estiver carregado
-document.addEventListener('DOMContentLoaded', () => {
-  // Manter compatibilidade com sistema existente
-  try { bindAircraftParamsUI(); } catch (e) { /* ignore */ }
-  
-  // Aguardar carregamento do catálogo antes de configurar autofill
-  setTimeout(() => {
-    setupAircraftAutofill();
-  }, 300);
-});
+// Autofill antigo substituído por setupAircraftAutofillConsolidated
+
 // --- [END ADD/REPLACE] ---
 
 /* ==== BEGIN PATCH: pre-orcamento resumo + validações + datas ==== */
@@ -1136,7 +1235,8 @@ if (typeof document !== 'undefined') {
       // Recalcular imediatamente se função existir
       try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
     };
-    aeronaveSel.addEventListener('change', syncTarifaFromAeronave);
+    // COMENTADO: Listener duplicado comentado para evitar conflito com setupAircraftAutofillConsolidated
+    // aeronaveSel.addEventListener('change', syncTarifaFromAeronave);
     tarifaInput.addEventListener('input', () => {
       if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
       // Atualiza pré-orçamento ao editar tarifa manualmente
@@ -1181,6 +1281,8 @@ if (typeof document !== 'undefined') {
     };
 
     // Ao trocar de aeronave, aplicar tarifa padrão ou a salva
+    // COMENTADO: Listener duplicado comentado para evitar conflito com setupAircraftAutofillConsolidated
+    /*
     aeronaveSel.addEventListener('change', () => {
       const store = loadTarifasStore();
       const saved = store[aeronaveSel.value];
@@ -1194,6 +1296,7 @@ if (typeof document !== 'undefined') {
       applyTarifaPreview();
       saveAndRefresh();
     });
+    */
 
     // Ao carregar a página, aplicar tarifa salva ou padrão
     document.addEventListener('DOMContentLoaded', () => {
