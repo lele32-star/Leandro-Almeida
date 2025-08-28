@@ -194,7 +194,7 @@ function bindAircraftParamsUI() {
 
   function applyFor(name) {
     // find catalog entry by name (fallback)
-  const entry = aircraftCatalog.find(a => a.nome === name || a.id === name || a.id === (name && name.toLowerCase().replace(/[^a-z0-9]/g,'')));
+  const entry = aircraftCatalog.find(a => a.nome === name || a.id === name);
   let cruise = entry ? entry.cruise_speed_kt_default : 0;
   let hourly = entry ? entry.hourly_rate_brl_default : 0;
     cruiseEl.value = cruise || '';
@@ -364,19 +364,30 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
     const calc = distNm ? calcTempo(distNm, speed) : { hoursDecimal: 0, hhmm: '—' };
     const distText = distNm ? `${distNm.toFixed(0)} NM` : '—';
     // include edit button for manual override
+    // default flags: custom_time pode ser preenchido depois; showCustom controla se tempo custom será mostrado
+    const defaultIdx = i-1;
+    const showCustomDefault = true;
     const timeDisplay = calc.hoursDecimal !== undefined ? `${calc.hoursDecimal} h (${calc.hhmm})` : '—';
-    row.innerHTML = `<div><strong>${from} → ${to}</strong> | Distância: ${distText} | Tempo: <span class="leg-time" data-idx="${i-1}">${timeDisplay}</span> <button class="edit-leg" data-idx="${i-1}" aria-label="Editar tempo da perna">✏️</button></div>`;
+    row.innerHTML = `
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        <div style="flex:1"><strong>${from} → ${to}</strong><br/><small>Distância: ${distText}</small></div>
+        <div style="min-width:220px">Tempo: <span class="leg-time" data-idx="${defaultIdx}">${timeDisplay}</span></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="font-size:0.85rem;display:flex;align-items:center;gap:6px"><input type="checkbox" class="leg-show-custom" data-idx="${defaultIdx}" ${showCustomDefault ? 'checked' : ''} /> Mostrar tempo custom</label>
+          <button class="edit-leg" data-idx="${defaultIdx}" aria-label="Editar tempo da perna">✏️</button>
+        </div>
+      </div>
+    `;
     list.appendChild(row);
-    legsData.push({ from, to, distNm, time: calc, custom_time: false });
+    legsData.push({ from, to, distNm, time: calc, custom_time: false, showCustom: showCustomDefault });
   }
-
   // attach edit handlers
   const editButtons = list.querySelectorAll('button.edit-leg');
   editButtons.forEach(btn => {
     btn.addEventListener('click', (e) => {
       const idx = Number(btn.getAttribute('data-idx'));
-      const container = btn.parentElement;
-      const span = container.querySelector('.leg-time');
+      const container = btn.closest('div');
+      const span = list.querySelector(`.leg-time[data-idx="${idx}"]`);
       if (!span) return;
       // create input for hoursDecimal
       const input = document.createElement('input');
@@ -392,37 +403,64 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
       cancelBtn.textContent = 'Cancelar';
       cancelBtn.style.marginLeft = '6px';
 
-      // replace span with input + buttons
+      // hide small controls area and append editor next to span
+      const btnElem = btn;
+      btnElem.style.display = 'none';
       span.style.display = 'none';
-      btn.style.display = 'none';
-      container.appendChild(input);
-      container.appendChild(saveBtn);
-      container.appendChild(cancelBtn);
+      btnElem.parentElement.appendChild(input);
+      btnElem.parentElement.appendChild(saveBtn);
+      btnElem.parentElement.appendChild(cancelBtn);
 
       saveBtn.addEventListener('click', async () => {
         const v = Number(input.value) || 0;
         if (!Number.isFinite(v) || v < 0) return alert('Informe um número válido de horas.');
-        // compute hhmm from decimal hours
         const totalMinutes = Math.round(v * 60);
         const hh = Math.floor(totalMinutes / 60);
         const mm = totalMinutes % 60;
         const hhmm = `${hh}:${String(mm).padStart(2,'0')}`;
-        // persist override in legsData
         if (!legsData[idx]) return;
         legsData[idx].time = { hoursDecimal: Number(v.toFixed(2)), hhmm };
         legsData[idx].custom_time = true;
-        // update UI
-        span.textContent = `${legsData[idx].time.hoursDecimal} h (${legsData[idx].time.hhmm})`;
+        // update UI depending on showCustom
+        const showCustom = !!legsData[idx].showCustom;
+        if (showCustom) {
+          span.textContent = `${legsData[idx].time.hoursDecimal} h (${legsData[idx].time.hhmm})`;
+        } else {
+          // keep calculated time if available
+          const speed = document.getElementById('cruiseSpeed') ? Number(document.getElementById('cruiseSpeed').value) || 0 : 0;
+          const calc2 = legsData[idx].distNm ? calcTempo(legsData[idx].distNm, speed) : { hoursDecimal: 0, hhmm: '—' };
+          span.textContent = `${calc2.hoursDecimal} h (${calc2.hhmm})`;
+        }
         span.style.display = '';
-        input.remove(); saveBtn.remove(); cancelBtn.remove(); btn.style.display = '';
-        // trigger recalculation
+        input.remove(); saveBtn.remove(); cancelBtn.remove(); btnElem.style.display = '';
         try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
       });
 
       cancelBtn.addEventListener('click', () => {
         span.style.display = '';
-        input.remove(); saveBtn.remove(); cancelBtn.remove(); btn.style.display = '';
+        input.remove(); saveBtn.remove(); cancelBtn.remove(); btnElem.style.display = '';
       });
+    });
+  });
+
+  // attach show-custom toggles
+  const showToggles = list.querySelectorAll('input.leg-show-custom');
+  showToggles.forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const idx = Number(cb.getAttribute('data-idx'));
+      if (!legsData[idx]) return;
+      legsData[idx].showCustom = !!cb.checked;
+      // update displayed time accordingly
+      const span = list.querySelector(`.leg-time[data-idx="${idx}"]`);
+      if (!span) return;
+      if (legsData[idx].showCustom && legsData[idx].custom_time && legsData[idx].time) {
+        span.textContent = `${legsData[idx].time.hoursDecimal} h (${legsData[idx].time.hhmm})`;
+      } else {
+        const speed = document.getElementById('cruiseSpeed') ? Number(document.getElementById('cruiseSpeed').value) || 0 : 0;
+        const calc2 = legsData[idx].distNm ? calcTempo(legsData[idx].distNm, speed) : { hoursDecimal: 0, hhmm: '—' };
+        span.textContent = `${calc2.hoursDecimal} h (${calc2.hhmm})`;
+      }
+      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
     });
   });
 }
@@ -438,6 +476,45 @@ function ensureMap() {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
     setTimeout(() => { try { map.invalidateSize(); } catch {} }, 0);
+  }
+}
+
+// Function to capture map as dataURL for PDF inclusion
+async function captureMapDataUrl() {
+  if (typeof document === 'undefined') return null;
+  const mapEl = document.getElementById('map');
+  if (!mapEl) return null;
+
+  try {
+    // Try html2canvas if available (external library)
+    if (typeof html2canvas !== 'undefined') {
+      const canvas = await html2canvas(mapEl, {
+        useCORS: true,
+        allowTaint: false,
+        scale: 1,
+        width: mapEl.offsetWidth,
+        height: mapEl.offsetHeight
+      });
+      return canvas.toDataURL('image/png');
+    }
+
+    // Fallback: try to find canvas inside map container
+    const canvas = mapEl.querySelector('canvas');
+    if (canvas && typeof canvas.toDataURL === 'function') {
+      return canvas.toDataURL('image/png');
+    }
+
+    // Fallback: try to find img with dataURL
+    const img = mapEl.querySelector('img');
+    if (img && img.src && img.src.startsWith('data:')) {
+      return img.src;
+    }
+
+    // If nothing works, return null
+    return null;
+  } catch (error) {
+    console.warn('Failed to capture map dataURL:', error);
+    return null;
   }
 }
 
@@ -568,67 +645,147 @@ function fmtBRL(n) {
   }
 }
 
+function renderMetodoCard(titulo, dados, metodo) {
+  const cardStyle = metodo === 1 ? 'border-left: 4px solid #28a745;' : 'border-left: 4px solid #007bff;';
+  const card = [];
+  
+  card.push(`<div style="padding:12px;border:1px solid #e9ecef;border-radius:6px;background:#fff;${cardStyle}">`);
+  card.push(`<h4 style="margin:0 0 12px 0;color:#333">${titulo}</h4>`);
+  
+  // Informações básicas padronizadas
+  card.push(`<p><strong>Rota:</strong> ${dados.rota || '—'}</p>`);
+  card.push(`<p><strong>Aeronave:</strong> ${dados.aeronave || '—'}</p>`);
+  card.push(`<p><strong>Distância:</strong> ${dados.distancia || '—'}</p>`);
+  card.push(`<p><strong>Datas:</strong> ${dados.datas || '—'}</p>`);
+  
+  // Informações específicas do método
+  if (metodo === 1) {
+    card.push(`<p><strong>Tarifa por km:</strong> ${dados.tarifaKm || '—'}</p>`);
+    card.push(`<p><strong>Subtotal (km×tarifa):</strong> ${dados.subtotal || '—'}</p>`);
+  } else {
+    card.push(`<p><strong>Valor por hora:</strong> ${dados.valorHora || '—'}</p>`);
+    card.push(`<p><strong>Tempo total:</strong> ${dados.tempoTotal || '—'}</p>`);
+    card.push(`<p><strong>Subtotal (hora×tempo):</strong> ${dados.subtotal || '—'}</p>`);
+  }
+  
+  // Ajustes e comissões
+  if (dados.ajuste) card.push(`<p><strong>Ajuste:</strong> ${dados.ajuste}</p>`);
+  (dados.comissoes || []).forEach((c, i) => {
+    card.push(`<p><strong>Comissão ${i + 1}:</strong> ${c}</p>`);
+  });
+  if (dados.comissaoGeral) card.push(`<p><strong>Comissão:</strong> ${dados.comissaoGeral}</p>`);
+  
+  // Observações e pagamento (apenas uma vez por card)
+  if (dados.observacoes && metodo === 1) card.push(`<p><strong>Observações:</strong> ${dados.observacoes}</p>`);
+  
+  card.push(`<hr style="margin:12px 0;border:none;border-top:1px solid #eee" />`);
+  card.push(`<p style="font-size:1.1rem;font-weight:bold;color:${metodo === 1 ? '#28a745' : '#007bff'}">Total Estimado: ${dados.total}</p>`);
+  card.push(`</div>`);
+  
+  return card.join('');
+}
+
 function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount }, method2Details = null) {
   const rota = [state.origem, state.destino, ...(state.stops || [])]
     .filter(Boolean)
     .join(' → ');
 
-  // Left card: Método 1 (Tarifa x km)
-  const left = [];
-  left.push(`<p><strong>Rota:</strong> ${rota || '—'}</p>`);
-  left.push(`<p><strong>Aeronave:</strong> ${state.aeronave || '—'} <span style="opacity:.8">(${fmtBRL(state.valorKm)}/km)</span></p>`);
-  left.push(`<p><strong>Distância:</strong> ${Number(state.nm || 0)} NM (${km.toFixed(1)} km)</p>`);
-  left.push(`<p><strong>Datas:</strong> ${state.dataIda || '—'}${state.dataVolta ? ' → ' + state.dataVolta : ''}</p>`);
-  left.push(`<p><strong>Total Parcial (km×tarifa):</strong> ${fmtBRL(subtotal)}</p>`);
-  if (state.valorExtra > 0) left.push(`<p><strong>Ajuste:</strong> ${labelExtra}</p>`);
-  (detalhesComissao || []).forEach((c, i) => {
-    left.push(`<p><strong>Comissão ${i + 1}:</strong> ${fmtBRL(c.calculado)}</p>`);
-  });
-  if (commissionAmount > 0) left.push(`<p><strong>Comissão:</strong> ${fmtBRL(commissionAmount)}</p>`);
-  if (state.observacoes) left.push(`<p><strong>Observações:</strong> ${state.observacoes}</p>`);
-  if (state.pagamento) left.push(`<p><strong>Pagamento:</strong><br><pre style="white-space:pre-wrap;margin:0">${state.pagamento}</pre></p>`);
-  left.push(`<hr style="margin:12px 0;border:none;border-top:1px solid #eee" />`);
-  left.push(`<p style="font-size:1.1rem"><strong>Total Estimado (Método 1 - km):</strong> ${fmtBRL(total)}</p>`);
+  // Dados comuns padronizados
+  const dadosComuns = {
+    rota: rota || '—',
+    aeronave: state.aeronave || '—',
+    distancia: `${Number(state.nm || 0)} NM (${km.toFixed(1)} km)`,
+    datas: `${state.dataIda || '—'}${state.dataVolta ? ' → ' + state.dataVolta : ''}`,
+    ajuste: state.valorExtra > 0 ? labelExtra : null,
+    observacoes: state.observacoes
+  };
 
-  // Right card: Método 2 (Hora x Tempo)
-  const right = [];
+  // Dados específicos do Método 1
+  const dadosMetodo1 = {
+    ...dadosComuns,
+    tarifaKm: `${fmtBRL(state.valorKm)}/km`,
+    subtotal: fmtBRL(subtotal),
+    comissoes: (detalhesComissao || []).map(c => fmtBRL(c.calculado)),
+    comissaoGeral: commissionAmount > 0 ? fmtBRL(commissionAmount) : null,
+    total: fmtBRL(total)
+  };
+
+  let dadosMetodo2 = null;
+  let hasMethod2Data = false;
+
+  // Verificar se temos dados do método 2 para renderizar
   try {
-    // Verificar se temos dados do método 2 para renderizar
-    const hasMethod2Data = (typeof window !== 'undefined' && window.__method2Summary) || method2Summary;
     const m2 = (typeof window !== 'undefined' && window.__method2Summary) ? window.__method2Summary : method2Summary;
-    
-    if (hasMethod2Data && m2) {
-      right.push(`<h4 style="margin:6px 0">Método 2 — Hora de voo</h4>`);
-      right.push(`<p><strong>Rota:</strong> ${rota || '—'}</p>`);
-      right.push(`<p><strong>Aeronave:</strong> ${state.aeronave || '—'}</p>`);
-      right.push(`<p><strong>Distância:</strong> ${Number(state.nm || 0)} NM (${km.toFixed(1)} km)</p>`);
-      right.push(`<p><strong>Datas:</strong> ${state.dataIda || '—'}${state.dataVolta ? ' → ' + state.dataVolta : ''}</p>`);
-      right.push(`<p><strong>Tempo total:</strong> ${m2.totalHours.toFixed(2)} h (${m2.totalHhmm})</p>`);
-      right.push(`<p><strong>Total por hora (base):</strong> ${fmtBRL(m2.subtotal)}</p>`);
-      if (state.valorExtra > 0) right.push(`<p><strong>Ajuste:</strong> ${labelExtra}</p>`);
-      // Incluir detalhes de comissão do método 2 se disponíveis
-      if (method2Details && method2Details.detalhesComissao) {
-        (method2Details.detalhesComissao || []).forEach((c, i) => {
-          right.push(`<p><strong>Comissão ${i + 1}:</strong> ${fmtBRL(c.calculado)}</p>`);
-        });
-      }
-      if (method2Details && method2Details.commissionAmount > 0) {
-        right.push(`<p><strong>Comissão:</strong> ${fmtBRL(method2Details.commissionAmount)}</p>`);
-      }
-      if (state.observacoes) right.push(`<p><strong>Observações:</strong> ${state.observacoes}</p>`);
-      if (state.pagamento) right.push(`<p><strong>Pagamento:</strong><br><pre style="white-space:pre-wrap;margin:0">${state.pagamento}</pre></p>`);
-      right.push(`<hr style="margin:12px 0;border:none;border-top:1px solid #eee" />`);
-      right.push(`<p style="font-size:1.1rem"><strong>Total Estimado (Método 2 - hora):</strong> ${fmtBRL(m2.total)}</p>`);
-    } else {
-      right.push(`<p style="opacity:.7">Sem dados de pernas calculadas. Preencha aeroportos ou verifique a aeronave.</p>`);
+    if (m2) {
+      hasMethod2Data = true;
+      const entry = aircraftCatalog.find(a => a.nome === state.aeronave || a.id === state.aeronave);
+      const hourlyRate = entry ? entry.hourly_rate_brl_default : 0;
+      
+      dadosMetodo2 = {
+        ...dadosComuns,
+        valorHora: `${fmtBRL(hourlyRate)}/h`,
+        tempoTotal: `${m2.totalHours.toFixed(2)} h (${m2.totalHhmm})`,
+        subtotal: fmtBRL(m2.subtotal),
+        comissoes: method2Details && method2Details.detalhesComissao ? 
+          method2Details.detalhesComissao.map(c => fmtBRL(c.calculado)) : [],
+        comissaoGeral: method2Details && method2Details.commissionAmount > 0 ? 
+          fmtBRL(method2Details.commissionAmount) : null,
+        total: fmtBRL(m2.total)
+      };
     }
-  } catch (e) { right.push(`<p>Erro ao renderizar método 2: ${e.message}</p>`); }
+  } catch (e) { 
+    hasMethod2Data = false;
+  }
+
+  // Renderizar cards
+  const metodo1Card = renderMetodoCard('Método 2 — Hora de Voo', dadosMetodo1, 1);
+  
+  let metodo2Card;
+  if (hasMethod2Data) {
+    metodo2Card = renderMetodoCard('Método 2 — Hora de Voo', dadosMetodo2, 2);
+  } else {
+    metodo2Card = `<div style="padding:12px;border:1px solid #e9ecef;border-radius:6px;background:#fff;border-left: 4px solid #6c757d;">
+      <h4 style="margin:0 0 12px 0;color:#6c757d">Método 2 — Hora de Voo</h4>
+      <p style="opacity:.7">Sem dados de pernas calculadas. Preencha aeroportos ou verifique a aeronave.</p>
+    </div>`;
+  }
+
+  // Informações de pagamento (separadas)
+  const pagamentoSection = state.pagamento ? `
+    <div style="margin-top:12px;padding:12px;border:1px solid #e9ecef;border-radius:6px;background:#f8f9fa;">
+      <h4 style="margin:0 0 8px 0;color:#333">Dados para Pagamento</h4>
+      <pre style="white-space:pre-wrap;margin:0;font-family:monospace;font-size:0.9rem">${state.pagamento}</pre>
+    </div>
+  ` : '';
+
+  // Controles de seleção de método para PDF
+  const methodSelector = `
+    <div style="margin-top:12px;padding:12px;border:1px solid #17a2b8;border-radius:6px;background:#d1ecf1;">
+      <h4 style="margin:0 0 8px 0;color:#0c5460">Escolha o método para geração do PDF</h4>
+      <div style="display:flex;gap:12px;align-items:center;">
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="radio" name="pdfMethod" value="method1" checked>
+          <span>Método 1 (Tarifa×KM)</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="radio" name="pdfMethod" value="method2" ${!hasMethod2Data ? 'disabled' : ''}>
+          <span>Método 2 (Hora×Tempo)</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer">
+          <input type="radio" name="pdfMethod" value="both" ${!hasMethod2Data ? 'disabled' : ''}>
+          <span>Ambos os métodos</span>
+        </label>
+      </div>
+    </div>
+  `;
 
   const container = `
-    <div style="display:flex;gap:12px;align-items:flex-start">
-      <div style="flex:1;padding:12px;border:1px solid #e9ecef;border-radius:6px;background:#fff">${left.join('')}</div>
-      <div style="flex:1;padding:12px;border:1px solid #e9ecef;border-radius:6px;background:#fff">${right.join('')}</div>
+    <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:12px">
+      <div style="flex:1">${metodo1Card}</div>
+      <div style="flex:1">${metodo2Card}</div>
     </div>
+    ${pagamentoSection}
+    ${methodSelector}
   `;
 
   return `<h3>Pré-Orçamento</h3>${container}`;
@@ -705,24 +862,36 @@ if (typeof document !== 'undefined') {
     const cruisePreview = typeof document !== 'undefined' ? document.getElementById('cruisePreview') : null;
     const hourlyPreview = typeof document !== 'undefined' ? document.getElementById('hourlyPreview') : null;
     const syncTarifaFromAeronave = () => {
-  // Atualizar tarifa
-  const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value);
-  const val = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
-  tarifaInput.value = (val !== undefined && val !== null) ? val : '';
-  if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
-  
-  // Atualizar velocidade e valor-hora baseado no catálogo
-  if (entry && cruiseInput) {
-    cruiseInput.value = entry.cruise_speed_kt_default || '';
-    if (cruisePreview) cruisePreview.textContent = entry.cruise_speed_kt_default ? `${entry.cruise_speed_kt_default} KTAS` : '';
-  }
-  if (entry && hourlyInput) {
-    hourlyInput.value = entry.hourly_rate_brl_default || '';
-    if (hourlyPreview) hourlyPreview.textContent = entry.hourly_rate_brl_default ? `R$ ${Number(entry.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : '';
-  }
-  
-  // Recalcular imediatamente se função existir
-  try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+      // lookup robusto da aeronave (tenta nome exato, id, versão normalizada e contains)
+      const resolveEntry = (name) => {
+        if (!name) return null;
+        const byExact = aircraftCatalog.find(a => a.nome === name || a.id === name);
+        if (byExact) return byExact;
+        const norm = String(name).toLowerCase().replace(/[^a-z0-9]+/g, '');
+        const byNorm = aircraftCatalog.find(a => (a.nome && a.nome.toLowerCase().replace(/[^a-z0-9]+/g,'') === norm) || (a.id && a.id.toLowerCase() === norm));
+        if (byNorm) return byNorm;
+        const lower = String(name).toLowerCase();
+        return aircraftCatalog.find(a => (a.nome && a.nome.toLowerCase().includes(lower)) || (a.id && a.id.toLowerCase().includes(lower)));
+      };
+
+      const entry = resolveEntry(aeronaveSel.value);
+      // Atualizar tarifa (mantém fallback para valoresKm)
+      const val = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
+      tarifaInput.value = (val !== undefined && val !== null) ? val : '';
+      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+
+      // Garantir preenchimento dos inputs de velocidade e valor-hora — mesmo quando a correspondência não foi exata, tentamos preencher via lookup
+      if (cruiseInput) {
+        cruiseInput.value = entry && entry.cruise_speed_kt_default ? entry.cruise_speed_kt_default : '';
+        cruiseInput.placeholder = entry && entry.cruise_speed_kt_default ? `${entry.cruise_speed_kt_default} KTAS` : 'Ex: 430';
+      }
+      if (hourlyInput) {
+        hourlyInput.value = entry && entry.hourly_rate_brl_default ? entry.hourly_rate_brl_default : '';
+        hourlyInput.placeholder = entry && entry.hourly_rate_brl_default ? `R$ ${Number(entry.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : 'Ex: 18000';
+      }
+
+      // Recalcular imediatamente se função existir
+      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
     };
     aeronaveSel.addEventListener('change', syncTarifaFromAeronave);
     tarifaInput.addEventListener('input', () => {
@@ -730,6 +899,20 @@ if (typeof document !== 'undefined') {
       // Atualiza pré-orçamento ao editar tarifa manualmente
       try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
     });
+
+    // Atualizar pré-orçamento ao editar velocidade manualmente
+    if (cruiseInput) {
+      cruiseInput.addEventListener('input', () => {
+        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
+      });
+    }
+
+    // Atualizar pré-orçamento ao editar valor-hora manualmente
+    if (hourlyInput) {
+      hourlyInput.addEventListener('input', () => {
+        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
+      });
+    }
 
     // botão Mostrar/Editar Tarifa
     const btnShowTarifa = document.getElementById('btnShowTarifa');
@@ -1154,7 +1337,7 @@ function buildState() {
   };
 }
 
-function buildDocDefinition(state) {
+function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {}) {
   const km = state.nm * 1.852;
   const subtotal = valorParcialFn(km, state.valorKm);
   const totalSemComissao = valorTotalFn(
@@ -1171,118 +1354,112 @@ function buildDocDefinition(state) {
   const commissionAmount = obterComissao(km, state.valorKm);
   const total = totalSemComissao + totalComissao + commissionAmount;
 
-  // Cabeçalho sem imagem (evita falha caso não exista dataURL)
-  const headerBlock = {
-    columns: [
-      { width: 80, stack: [ { canvas: [ { type: 'rect', x: 0, y: 0, w: 60, h: 40, color: '#f0f0f0' } ] } ], margin: [0,0,0,0] },
-      { stack: [ { text: '[NOME_EMPRESA]', style: 'brand' }, { text: '[SLOGAN_CURTO]', style: 'muted' } ], alignment: 'left' },
-      { stack: [ { text: '[EMAIL_CONTATO]', style: 'mini' }, { text: '[WHATSAPP_LINK]', style: 'mini' }, { text: '[CNPJ_OPCIONAL]', style: 'mini' } ], alignment: 'right' }
-    ],
-    columnGap: 10,
-    margin: [0, 0, 0, 12]
-  };
+  // Simple, clean PDF design instead of complex premium version
+  return buildSimpleDocDefinition(state, { km, subtotal, total, totalComissao, detalhesComissao, commissionAmount }, methodSelection, pdfOptions);
+}
 
-  const resumoLeft = [];
-  if (state.showRota) {
-    const codes = [state.origem, state.destino, ...(state.stops || [])].filter(Boolean).join(' → ');
-    resumoLeft.push({ text: `Rota: ${codes}`, style: 'row' });
+function buildSimpleDocDefinition(state, calculations, methodSelection = 'method1', pdfOptions = {}) {
+  const { km, subtotal, total, totalComissao, detalhesComissao, commissionAmount } = calculations;
+
+  // Build content based on selected fields
+  const content = [];
+  
+  // Header
+  content.push({ text: 'Cotação de Voo Executivo', style: 'header' });
+  
+  // Route information
+  if (state.showRota && (state.origem || state.destino)) {
+    const routeParts = [];
+    if (state.origem) routeParts.push(state.origem);
+    if (state.destino) routeParts.push(state.destino);
+    if (state.stops && state.stops.length > 0) {
+      routeParts.push(...state.stops.filter(Boolean));
+    }
+    content.push({ text: `Rota: ${routeParts.join(' → ')}`, margin: [0, 10, 0, 0] });
   }
-  if (state.showAeronave) resumoLeft.push({ text: `Aeronave: ${state.aeronave}`, style: 'row' });
-  if (state.showDatas) resumoLeft.push({ text: `Datas: ${state.dataIda} - ${state.dataVolta}`, style: 'row' });
-
-  const resumoRight = [];
-  if (state.showDistancia) resumoRight.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)`, style: 'row' });
-  if (state.showTarifa) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'row' });
-
-  const resumoBlock = {
-    table: {
-      widths: ['*','*'],
-      body: [
-        [ { stack: resumoLeft, margin: [0,0,0,0] }, { stack: resumoRight, margin: [0,0,0,0] } ]
-      ]
-    },
-    layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingTop: () => 6, paddingBottom: () => 6 },
-    margin: [0, 6, 0, 10]
-  };
-
-  // Tabela de investimento
-  const investBody = [];
-  investBody.push([{ text: `Total parcial: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
-
+  
+  // Aircraft information
+  if (state.showAeronave && state.aeronave) {
+    content.push({ text: `Aeronave: ${state.aeronave}`, margin: [0, 5, 0, 0] });
+  }
+  
+  // Dates
+  if (state.showDatas && (state.dataIda || state.dataVolta)) {
+    const dateText = [state.dataIda, state.dataVolta].filter(Boolean).join(' → ');
+    content.push({ text: `Datas: ${dateText}`, margin: [0, 5, 0, 0] });
+  }
+  
+  // Distance
+  if (state.showDistancia && state.nm) {
+    content.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)`, margin: [0, 5, 0, 0] });
+  }
+  
+  // Tariff
+  if (state.showTarifa && state.valorKm) {
+    content.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin: [0, 5, 0, 0] });
+  }
+  
+  // Calculation details
+  content.push({ text: `Total parcial: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin: [0, 10, 0, 0] });
+  
+  // Adjustments
   if (state.showAjuste && state.valorExtra > 0) {
-    const label = state.tipoExtra === 'soma' ? 'Outras Despesas' : 'Desconto';
-    investBody.push([{ text: `${label}: R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+    const adjustmentLabel = state.tipoExtra === 'soma' ? 'Acréscimo' : 'Desconto';
+    const adjustmentSign = state.tipoExtra === 'soma' ? '+' : '-';
+    content.push({ text: `${adjustmentLabel}: ${adjustmentSign} R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin: [0, 5, 0, 0] });
   }
-
-  if (state.showComissao) {
-    (detalhesComissao || []).forEach((c, idx) => {
-      investBody.push([{ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+  
+  // Commission details
+  if (state.showComissao && (detalhesComissao.length > 0 || commissionAmount > 0)) {
+    detalhesComissao.forEach((c, idx) => {
+      content.push({ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin: [0, 5, 0, 0] });
     });
     if (commissionAmount > 0) {
-      investBody.push([{ text: `Comissão: R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+      content.push({ text: `Comissão: R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin: [0, 5, 0, 0] });
     }
   }
-
-  investBody.push([{ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right', bold: true }]);
-
-  const investimentoBlock = {
-    table: { widths: ['*'], body: investBody },
-    layout: {
-      fillColor: (rowIndex) => (rowIndex === investBody.length - 1 ? '#0d6efd' : (rowIndex % 2 === 0 ? null : '#fafafa')),
-      hLineColor: () => '#eaeaea',
-      vLineColor: () => '#ffffff',
-      paddingTop: (i) => (i === investBody.length - 1 ? 8 : 6),
-      paddingBottom: (i) => (i === investBody.length - 1 ? 8 : 6)
-    },
-    margin: [0, 6, 0, 12]
-  };
-
-  const extras = [];
-  if (state.showObservacoes && state.observacoes) extras.push({ text: `Observações: ${state.observacoes}`, margin: [0, 2, 0, 0] });
-  if (state.showPagamento && state.pagamento) extras.push({ text: `Dados de pagamento: ${state.pagamento}`, margin: [0, 2, 0, 0] });
-  if (state.showMapa) extras.push({ text: 'Mapa:', margin: [0, 2, 0, 0] });
-
-  // Texto invisível preserva palavras-chave para testes
-  const resumoTextForTest = [...resumoLeft, ...resumoRight].map(r => r.text).join(' ');
-
-  const content = [
-  { text: 'Cotação de Voo Executivo', style: 'h1' },
-  headerBlock,
-  { text: '', margin: [0,2,0,0] },
-  resumoBlock,
-  { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
-  { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: '#eaeaea' }] },
-  { text: 'Investimento', style: 'h2', margin: [0, 10, 0, 6] },
-  investimentoBlock,
-  ...(extras.length ? [{ text: 'Informações adicionais', style: 'h2', margin: [0, 6, 0, 4] }, ...extras] : [])
-  ];
-
+  
+  // Total
+  content.push({ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'total', margin: [0, 15, 0, 10] });
+  
+  // Payment information
+  if (state.showPagamento && state.pagamento) {
+    content.push({ text: 'Dados de Pagamento:', style: 'sectionHeader', margin: [0, 10, 0, 5] });
+    content.push({ text: state.pagamento, style: 'payment', margin: [0, 0, 0, 10] });
+  }
+  
+  // Observations
+  if (state.showObservacoes && state.observacoes) {
+    content.push({ text: 'Observações:', style: 'sectionHeader', margin: [0, 10, 0, 5] });
+    content.push({ text: state.observacoes, margin: [0, 0, 0, 10] });
+  }
+  
   return {
     content,
     pageSize: 'A4',
     pageMargins: [40, 60, 40, 60],
-    defaultStyle: { fontSize: 10, lineHeight: 1.25, color: '#222' },
+    defaultStyle: { fontSize: 10, lineHeight: 1.3, color: '#333333' },
     styles: {
-      h1: { fontSize: 18, bold: true, margin: [0, 0, 0, 8] },
-      h2: { fontSize: 12, bold: true, color: '#0d6efd' },
-      brand: { fontSize: 14, bold: true },
-      muted: { color: '#666', margin: [0, 2, 0, 0] },
-      mini: { color: '#777', fontSize: 9 },
-      row: { margin: [0, 2, 0, 0] }
+      header: { fontSize: 18, bold: true, alignment: 'center', margin: [0, 0, 0, 20] },
+      total: { fontSize: 14, bold: true, color: '#1a5490' },
+      sectionHeader: { fontSize: 12, bold: true, color: '#1a5490' },
+      payment: { fontSize: 9, font: 'Courier' }
     },
-    info: { title: 'Cotação de Voo Executivo', author: '[NOME_EMPRESA]' },
+    info: { 
+      title: 'Cotação de Voo Executivo', 
+      author: '[NOME_EMPRESA]'
+    },
     footer: function(currentPage, pageCount) {
       return {
         columns: [
-          { text: '[NOME_EMPRESA] • [WHATSAPP_LINK] • [EMAIL_CONTATO]', style: 'mini' },
-          { text: `${currentPage} / ${pageCount}`, alignment: 'right', style: 'mini' }
+          { text: '[NOME_EMPRESA] • [WHATSAPP_LINK] • [EMAIL_CONTATO]', style: { fontSize: 8, color: '#666666' } },
+          { text: `${currentPage} / ${pageCount}`, alignment: 'right', style: { fontSize: 8, color: '#666666' } }
         ],
         margin: [40, 0, 40, 20]
       };
     }
   };
 }
-
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
 async function gerarPreOrcamento() {
   // Build state first
@@ -1462,8 +1639,44 @@ async function gerarPreOrcamento() {
 }
 /* ==== END PATCH ==== */
 
-async function gerarPDF(state) {
+function getSelectedPdfMethod() {
+  if (typeof document === 'undefined' || !document.querySelector) return 'method1'; // Default para testes
+  const selected = document.querySelector('input[name="pdfMethod"]:checked');
+  return selected ? selected.value : 'method1';
+}
+
+async function gerarPDF(state, methodSelection = null) {
   const s = state || buildState();
+  const selectedMethod = methodSelection || getSelectedPdfMethod();
+
+  // coletar opções do painel de PDF (se no navegador)
+  const pdfOptions = {
+    includeMap: false,
+    includeCommission: false,
+    includeObservations: false,
+    includePayment: false,
+    includeDates: false,
+    includeAircraft: false,
+    includeDistance: false,
+    includeTariff: false,
+    includeMethod1: false,
+    includeMethod2: false
+  };
+  try {
+    if (typeof document !== 'undefined') {
+      pdfOptions.includeMap = !!document.getElementById('pdf_include_map')?.checked;
+      pdfOptions.includeCommission = !!document.getElementById('pdf_include_commission')?.checked;
+      pdfOptions.includeObservations = !!document.getElementById('pdf_include_observations')?.checked;
+      pdfOptions.includePayment = !!document.getElementById('pdf_include_payment')?.checked;
+      pdfOptions.includeDates = !!document.getElementById('pdf_include_dates')?.checked;
+      pdfOptions.includeAircraft = !!document.getElementById('pdf_include_aircraft')?.checked;
+      pdfOptions.includeDistance = !!document.getElementById('pdf_include_distance')?.checked;
+      pdfOptions.includeTariff = !!document.getElementById('pdf_include_tariff')?.checked;
+      pdfOptions.includeMethod1 = !!document.getElementById('pdf_include_method1')?.checked;
+      pdfOptions.includeMethod2 = !!document.getElementById('pdf_include_method2')?.checked;
+    }
+  } catch (e) { /* ignore */ }
+  
   if (typeof __refreshRouteNow === 'function') { await __refreshRouteNow(); }
   let waypoints = [];
   if (s.showMapa) {
@@ -1474,7 +1687,20 @@ async function gerarPDF(state) {
     }
     updateDistanceFromAirports(waypoints);
   }
-  const docDefinition = buildDocDefinition(s);
+  
+  // Capture map dataURL if map inclusion is requested
+  if (pdfOptions.includeMap || s.showMapa) {
+    try {
+      const mapDataUrl = await captureMapDataUrl();
+      if (mapDataUrl) {
+        s.mapDataUrl = mapDataUrl;
+      }
+    } catch (e) {
+      console.warn('Failed to capture map for PDF:', e);
+    }
+  }
+  
+  const docDefinition = buildDocDefinition(s, selectedMethod, pdfOptions);
   if (typeof pdfMake !== 'undefined') {
     pdfMake.createPdf(docDefinition).open();
   }

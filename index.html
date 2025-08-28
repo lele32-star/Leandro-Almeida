@@ -9,6 +9,15 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/pdfmake.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.7/vfs_fonts.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  
+  <!-- Fallback local scripts -->
+  <script>
+    // Check if CDN resources loaded, otherwise use local fallbacks
+    if (typeof pdfMake === 'undefined') {
+      document.write('<script src="libs/pdfmake.min.js"><\/script>');
+      document.write('<script src="libs/vfs_fonts.js"><\/script>');
+    }
+  </script>
   <style>
   /* Modal simples para edição de tarifa */
   .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 9999; }
@@ -93,14 +102,12 @@
         </div>
         <div style="min-width:160px">
           <label for="cruiseSpeed">Velocidade de Cruzeiro (KTAS):</label>
-          <input type="number" id="cruiseSpeed" step="1" aria-describedby="cruiseHelp" />
-          <div id="cruisePreview" style="font-size:.75rem;color:#333;opacity:.85;margin-top:4px"></div>
+          <input type="number" id="cruiseSpeed" step="1" placeholder="Ex: 430" aria-describedby="cruiseHelp" />
           <div id="cruiseHelp" style="font-size:.65rem;color:#666;margin-top:2px">Velocidade típica de cruzeiro.</div>
         </div>
         <div style="min-width:160px">
           <label for="hourlyRate">Valor-hora (R$/h):</label>
-          <input type="number" id="hourlyRate" step="1" aria-describedby="hourlyHelp" />
-          <div id="hourlyPreview" style="font-size:.75rem;color:#333;opacity:.85;margin-top:4px"></div>
+          <input type="number" id="hourlyRate" step="1" placeholder="Ex: 18000" aria-describedby="hourlyHelp" />
           <div id="hourlyHelp" style="font-size:.65rem;color:#666;margin-top:2px">Valor faturado por hora.</div>
         </div>
       </div>
@@ -270,18 +277,19 @@ Conta: 25691815-5</textarea>
     <textarea id="observacoes" rows="4"></textarea>
 
     <div id="pdfFilters">
-      <h4>Campos do PDF</h4>
+      <h4>Configurações do PDF</h4>
+      <p style="font-size: 0.9rem; color: #666; margin: 0 0 10px 0;">Escolha quais informações incluir no PDF:</p>
       <label><input type="checkbox" id="showRota" checked /> Rota</label>
       <label><input type="checkbox" id="showAeronave" checked /> Aeronave</label>
-      <label><input type="checkbox" id="showTarifa" checked /> Tarifa</label>
+      <label><input type="checkbox" id="showTarifa" checked /> Tarifa por km</label>
       <label><input type="checkbox" id="showDistancia" checked /> Distância</label>
       <label><input type="checkbox" id="showDatas" checked /> Datas</label>
-      <label><input type="checkbox" id="showAjuste" checked /> Ajuste</label>
+      <label><input type="checkbox" id="showAjuste" checked /> Ajustes (acréscimos/descontos)</label>
       <label><input type="checkbox" id="showObservacoes" checked /> Observações</label>
-      <label><input type="checkbox" id="showPagamento" checked /> Pagamento</label>
+      <label><input type="checkbox" id="showPagamento" checked /> Dados de pagamento</label>
       <label><input type="checkbox" id="showMapa" checked /> Mapa</label>
       <label for="pdfCommissionToggle" style="margin-right:1rem;display:inline-flex;align-items:center;gap:.4rem;">
-        <input type="checkbox" id="pdfCommissionToggle" checked> Comissão
+        <input type="checkbox" id="pdfCommissionToggle" checked> Comissões
       </label>
       <script>
         // Toggle de visibilidade da comissão no PDF (hidden compat)
