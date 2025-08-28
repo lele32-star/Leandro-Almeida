@@ -42,61 +42,80 @@ const airportCache = new Map();
 // Aircraft catalog (sem overrides)
 let aircraftCatalog = [];
 function loadAircraftCatalog() {
-  // try fetch data/aircraftCatalog.json in browser
+  // Fallback legacy data that should always be available
+  const legacyAugment = [
+    { nome: 'Hawker 400', cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
+    { nome: 'Phenom 100', cruise_speed_kt_default: 390, hourly_rate_brl_default: 16500 },
+    { nome: 'Citation II', cruise_speed_kt_default: 375, hourly_rate_brl_default: 15000 },
+    { nome: 'King Air C90', cruise_speed_kt_default: 217, hourly_rate_brl_default: 8700 },
+    { nome: 'Sêneca IV', cruise_speed_kt_default: 190, hourly_rate_brl_default: 6500 },
+    { nome: 'Cirrus SR22', cruise_speed_kt_default: 180, hourly_rate_brl_default: 3300 }
+  ];
+
+  // Function to apply catalog data and update UI
+  function applyCatalogData(catalogData) {
+    // Start with the official catalog data (if any)
+    aircraftCatalog = Array.isArray(catalogData) ? [...catalogData] : [];
+    
+    // Add legacy aircraft if not already present
+    legacyAugment.forEach(l => {
+      if (!aircraftCatalog.find(a => a.nome === l.nome)) {
+        const id = l.nome.toLowerCase().replace(/[^a-z0-9]+/g,'-');
+        aircraftCatalog.push({ id, categoria: 'legacy', ...l });
+      }
+    });
+
+    // Update the select dropdown if it exists
+    const sel = document.getElementById('aeronave');
+    if (sel) {
+      const alreadyDynamic = sel.getAttribute('data-dynamic-loaded') === 'true';
+      if (!alreadyDynamic) {
+        // Preserve primeiro option (placeholder) e limpa demais
+        const placeholder = sel.querySelector('option[disabled]');
+        sel.innerHTML = '';
+        if (placeholder) sel.appendChild(placeholder); else sel.insertAdjacentHTML('beforeend', '<option value="" disabled selected>Escolha uma aeronave</option>');
+        aircraftCatalog.forEach(ac => {
+          const kmRate = valoresKm[ac.nome];
+          const rateTxt = kmRate ? `R$${Number(kmRate).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+          const speedTxt = ac.cruise_speed_kt_default ? `${ac.cruise_speed_kt_default}KT` : '';
+          const hourTxt = ac.hourly_rate_brl_default ? `R$${Number(ac.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : '';
+          const info = [rateTxt, speedTxt, hourTxt].filter(Boolean).join(' · ');
+          const opt = document.createElement('option');
+          opt.value = ac.nome;
+          opt.textContent = info ? `${ac.nome} — ${info}` : ac.nome;
+          sel.appendChild(opt);
+        });
+        sel.setAttribute('data-dynamic-loaded', 'true');
+        // Se nada selecionado, auto-seleciona primeira aeronave disponível
+        if (!sel.value) {
+          const first = sel.querySelector('option:not([disabled])');
+          if (first) sel.value = first.value;
+        }
+        // Força disparo de change para preencher campos
+        try { sel.dispatchEvent(new Event('change')); } catch(e) {}
+      }
+    }
+  }
+
+  // Try to fetch data/aircraftCatalog.json in browser, but always apply fallback
   if (typeof fetch === 'function') {
     try {
       fetch('data/aircraftCatalog.json')
         .then(r => r.ok ? r.json() : null)
         .then(j => {
-          if (Array.isArray(j)) {
-            aircraftCatalog = j;
-            // Augmentar com aeronaves legadas que possuem tarifa mas não estão no catálogo oficial
-            const legacyAugment = [
-              { nome: 'Hawker 400', cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
-              { nome: 'Phenom 100', cruise_speed_kt_default: 390, hourly_rate_brl_default: 16500 },
-              { nome: 'Citation II', cruise_speed_kt_default: 375, hourly_rate_brl_default: 15000 },
-              { nome: 'Sêneca IV', cruise_speed_kt_default: 190, hourly_rate_brl_default: 6500 },
-              { nome: 'Cirrus SR22', cruise_speed_kt_default: 180, hourly_rate_brl_default: 3300 }
-            ];
-            legacyAugment.forEach(l => {
-              if (!aircraftCatalog.find(a => a.nome === l.nome)) {
-                const id = l.nome.toLowerCase().replace(/[^a-z0-9]+/g,'-');
-                aircraftCatalog.push({ id, categoria: 'legacy', ...l });
-              }
-            });
-            // Popular o <select> se existir e ainda não estiver populado dinamicamente
-            const sel = document.getElementById('aeronave');
-            if (sel) {
-              const alreadyDynamic = sel.getAttribute('data-dynamic-loaded') === 'true';
-              if (!alreadyDynamic) {
-                // Preserve primeiro option (placeholder) e limpa demais
-                const placeholder = sel.querySelector('option[disabled]');
-                sel.innerHTML = '';
-                if (placeholder) sel.appendChild(placeholder); else sel.insertAdjacentHTML('beforeend', '<option value="" disabled selected>Escolha uma aeronave</option>');
-                aircraftCatalog.forEach(ac => {
-                  const kmRate = valoresKm[ac.nome];
-                  const rateTxt = kmRate ? `R$${Number(kmRate).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
-                  const speedTxt = ac.cruise_speed_kt_default ? `${ac.cruise_speed_kt_default}KT` : '';
-                  const hourTxt = ac.hourly_rate_brl_default ? `R$${Number(ac.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : '';
-                  const info = [rateTxt, speedTxt, hourTxt].filter(Boolean).join(' · ');
-                  const opt = document.createElement('option');
-                  opt.value = ac.nome;
-                  opt.textContent = info ? `${ac.nome} — ${info}` : ac.nome;
-                  sel.appendChild(opt);
-                });
-                sel.setAttribute('data-dynamic-loaded', 'true');
-                // Se nada selecionado, auto-seleciona primeira aeronave disponível
-                if (!sel.value) {
-                  const first = sel.querySelector('option:not([disabled])');
-                  if (first) sel.value = first.value;
-                }
-                // Força disparo de change para preencher campos
-                try { sel.dispatchEvent(new Event('change')); } catch(e) {}
-              }
-            }
-          }
+          applyCatalogData(j);
+        })
+        .catch(e => {
+          // If fetch fails, just apply the fallback data
+          applyCatalogData(null);
         });
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      // If there's any error, apply fallback data
+      applyCatalogData(null);
+    }
+  } else {
+    // If fetch is not available, apply fallback data
+    applyCatalogData(null);
   }
 }
 // Overrides removidos
@@ -199,11 +218,11 @@ function bindAircraftParamsUI() {
   if (select) select.addEventListener('change', (e) => applyFor(e.target.value));
   // Removidos listeners de salvar/restaurar padrões
 
-  // initial apply on load
-  document.addEventListener('DOMContentLoaded', () => {
-    loadAircraftCatalog();
-    setTimeout(() => { try { applyFor(select.value); } catch (e) {} }, 200);
-  });
+  // Load catalog immediately when binding UI
+  loadAircraftCatalog();
+  
+  // Apply for current selection after a short delay to allow catalog to load
+  setTimeout(() => { try { applyFor(select.value); } catch (e) {} }, 300);
 
   // Recalcula imediatamente quando velocidade ou valor-hora forem alterados
   try {
