@@ -61,12 +61,14 @@ function loadAircraftCatalog() {
                 sel.innerHTML = '';
                 if (placeholder) sel.appendChild(placeholder); else sel.insertAdjacentHTML('beforeend', '<option value="" disabled selected>Escolha uma aeronave</option>');
                 aircraftCatalog.forEach(ac => {
-                  // Tarifa por km se existir no mapa valoresKm (opcional)
                   const kmRate = valoresKm[ac.nome];
-                  const labelRate = kmRate ? ` — R$${Number(kmRate).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+                  const rateTxt = kmRate ? `R$${Number(kmRate).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+                  const speedTxt = ac.cruise_speed_kt_default ? `${ac.cruise_speed_kt_default}KT` : '';
+                  const hourTxt = ac.hourly_rate_brl_default ? `R$${Number(ac.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : '';
+                  const info = [rateTxt, speedTxt, hourTxt].filter(Boolean).join(' · ');
                   const opt = document.createElement('option');
-                  opt.value = ac.nome; // usamos nome como value
-                  opt.textContent = ac.nome + labelRate;
+                  opt.value = ac.nome;
+                  opt.textContent = info ? `${ac.nome} — ${info}` : ac.nome;
                   sel.appendChild(opt);
                 });
                 sel.setAttribute('data-dynamic-loaded', 'true');
@@ -169,6 +171,16 @@ function bindAircraftParamsUI() {
     }
     cruiseEl.value = cruise || '';
     hourlyEl.value = hourly || '';
+    // tarifa
+    try {
+      const tarifaInput = document.getElementById('tarifa');
+      const tarifaPreview = document.getElementById('tarifaPreview');
+      if (tarifaInput) {
+        const baseTarifa = valoresKm[name];
+        if (baseTarifa !== undefined) tarifaInput.value = baseTarifa;
+        if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR',{minimumFractionDigits:2})}/km` : '';
+      }
+    } catch(e) {}
   // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
   try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
   }
