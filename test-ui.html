@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste da Interface - Cotação de Voo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.9/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.9/vfs_fonts.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 8px 16px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #resultado { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 5px; background: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <h1>Teste da Nova Interface - Seleção de Métodos para PDF</h1>
+    
+    <div class="test-section">
+        <h2>Simulação de Dados de Teste</h2>
+        <button onclick="setupTestData()">Configurar Dados de Teste</button>
+        <button onclick="generatePreBudget()">Gerar Pré-Orçamento</button>
+        <button onclick="testPdfGeneration()">Testar Geração de PDF</button>
+    </div>
+
+    <div id="resultado"></div>
+
+    <script src="./src/services/aircraftCatalog.js"></script>
+    <script src="./src/services/pricingSource.js"></script>
+    <script src="./app.js"></script>
+    
+    <script>
+        // Simular window.method2Summary para teste
+        window.__method2Summary = {
+            totalHours: 2.5,
+            totalHhmm: "2:30",
+            subtotal: 5000.00,
+            total: 6500.00
+        };
+
+        function setupTestData() {
+            // Dados fictícios para teste
+            window.testState = {
+                origem: "SBBR",
+                destino: "SBSP",
+                stops: [],
+                aeronave: "Citation CJ3",
+                dataIda: "2024-01-15",
+                dataVolta: "2024-01-15",
+                nm: 270,
+                valorKm: 12.50,
+                valorExtra: 500,
+                tipoExtra: "soma",
+                commissions: [5, 3],
+                observacoes: "Voo executivo de teste",
+                pagamento: "PIX: 11.999.999-999\nConta: Banco Teste\nCNPJ: 12.345.678/0001-90",
+                showRota: true,
+                showAeronave: true,
+                showDatas: true,
+                showDistancia: true,
+                showTarifa: true,
+                showAjuste: true,
+                showComissao: true,
+                showObservacoes: true,
+                showPagamento: true,
+                showMapa: false
+            };
+            alert("Dados de teste configurados!");
+        }
+
+        async function generatePreBudget() {
+            if (!window.testState) {
+                alert("Configure os dados de teste primeiro!");
+                return;
+            }
+
+            try {
+                // Simular o cálculo do método 2
+                const km = window.testState.nm * 1.852;
+                const { km: kmCalc, subtotal, total, labelExtra, detalhesComissao, commissionAmount } = {
+                    km: km,
+                    subtotal: km * window.testState.valorKm,
+                    total: (km * window.testState.valorKm) + window.testState.valorExtra + 300, // +300 de comissão simulada
+                    labelExtra: "Outras Despesas: R$ 500,00",
+                    detalhesComissao: [
+                        { percentual: 5, calculado: 150 },
+                        { percentual: 3, calculado: 90 }
+                    ],
+                    commissionAmount: 60
+                };
+
+                const method2Details = {
+                    detalhesComissao: [
+                        { percentual: 5, calculado: 250 },
+                        { percentual: 3, calculado: 150 }
+                    ],
+                    commissionAmount: 100
+                };
+
+                const html = renderResumo(window.testState, { 
+                    km: kmCalc, 
+                    subtotal, 
+                    total, 
+                    labelExtra, 
+                    detalhesComissao, 
+                    commissionAmount 
+                }, method2Details);
+                
+                document.getElementById('resultado').innerHTML = html;
+            } catch (error) {
+                console.error("Erro ao gerar pré-orçamento:", error);
+                alert("Erro: " + error.message);
+            }
+        }
+
+        async function testPdfGeneration() {
+            if (!window.testState) {
+                alert("Configure os dados de teste primeiro!");
+                return;
+            }
+
+            try {
+                // Simular a geração do PDF com método selecionado
+                const selectedMethod = getSelectedPdfMethod();
+                console.log("Método selecionado:", selectedMethod);
+                
+                const docDef = buildDocDefinition(window.testState, selectedMethod);
+                console.log("Document definition:", docDef);
+                
+                if (typeof pdfMake !== 'undefined') {
+                    pdfMake.createPdf(docDef).open();
+                } else {
+                    alert("PDF gerado com sucesso! (pdfMake não disponível para abrir)");
+                }
+            } catch (error) {
+                console.error("Erro ao gerar PDF:", error);
+                alert("Erro: " + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
