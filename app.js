@@ -662,19 +662,7 @@ if (typeof document !== 'undefined') {
       try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
     });
 
-    // botão Mostrar/Editar Tarifa
-    const btnShowTarifa = document.getElementById('btnShowTarifa');
-    const modal = document.getElementById('modalTarifa');
-    const modalInput = document.getElementById('tarifaModalInput');
-    const modalSave = document.getElementById('tarifaModalSave');
-    const modalCancel = document.getElementById('tarifaModalCancel');
-
-    // Persistência simples em localStorage
-    const LKEY = 'cotacao:tarifas';
-    function loadTarifasStore() {
-      try { return JSON.parse(localStorage.getItem(LKEY) || '{}'); } catch { return {}; }
-    }
-    function saveTarifasStore(store) { try { localStorage.setItem(LKEY, JSON.stringify(store)); } catch {} }
+    // Removido: funcionalidades de modal e save/restore de tarifa
 
     // Atualiza preview e persiste se necessário (debounced)
     const saveAndRefresh = debounce(() => {
@@ -685,75 +673,27 @@ if (typeof document !== 'undefined') {
       if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
     };
 
-    // Ao trocar de aeronave, aplicar tarifa padrão ou a salva
+    // Ao trocar de aeronave, aplicar tarifa padrão
     aeronaveSel.addEventListener('change', () => {
-      const store = loadTarifasStore();
-      const saved = store[aeronaveSel.value];
       const defaultVal = valoresKm[aeronaveSel.value];
-      if (saved !== undefined && saved !== null) {
-        tarifaInput.value = saved;
-      } else if (!tarifaInput.value || tarifaInput.value === '') {
+      if (!tarifaInput.value || tarifaInput.value === '') {
         tarifaInput.value = defaultVal || '';
       }
       applyTarifaPreview();
       saveAndRefresh();
     });
 
-    // Ao carregar a página, aplicar tarifa salva ou padrão
+    // Ao carregar a página, aplicar tarifa padrão
     document.addEventListener('DOMContentLoaded', () => {
       try {
-        const store = loadTarifasStore();
-        const saved = store[aeronaveSel.value];
-        if (saved !== undefined && saved !== null) tarifaInput.value = saved;
-        else if (!tarifaInput.value || tarifaInput.value === '') tarifaInput.value = valoresKm[aeronaveSel.value] || '';
+        if (!tarifaInput.value || tarifaInput.value === '') {
+          tarifaInput.value = valoresKm[aeronaveSel.value] || '';
+        }
         applyTarifaPreview();
       } catch (e) {}
     });
 
-    // substituir comportamento do botão para abrir modal
-    if (btnShowTarifa && modal && modalInput && modalSave && modalCancel) {
-      btnShowTarifa.addEventListener('click', () => {
-        const cur = tarifaInput.value || valoresKm[aeronaveSel.value] || '';
-        modalInput.value = cur;
-        modal.classList.add('show');
-        // focar input
-        setTimeout(() => modalInput.focus(), 50);
-      });
-
-      modalCancel.addEventListener('click', () => {
-        modal.classList.remove('show');
-      });
-
-      modalSave.addEventListener('click', () => {
-        const raw = modalInput.value;
-        const v = Number(String(raw).replace(',', '.'));
-        if (!Number.isFinite(v) || v < 0) {
-          alert('Valor inválido');
-          return;
-        }
-        tarifaInput.value = String(Number(v.toFixed(2)));
-        // Persistir por aeronave
-        const store = loadTarifasStore();
-        if (aeronaveSel.value) store[aeronaveSel.value] = tarifaInput.value;
-        saveTarifasStore(store);
-        applyTarifaPreview();
-        modal.classList.remove('show');
-        saveAndRefresh();
-      });
-
-      // salvar com Enter no input
-      modalInput.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter') {
-          ev.preventDefault();
-          modalSave.click();
-        }
-      });
-
-      // fechar modal com ESC
-      document.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Escape' && modal.classList.contains('show')) modal.classList.remove('show');
-      });
-    }
+    // Removido: modal de edição de tarifa e toda a funcionalidade relacionada
   }
 
   // ====== [ADD] ICAO uppercase + cálculo instantâneo de rota/distância ======
