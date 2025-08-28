@@ -186,11 +186,15 @@ function bindAircraftParamsUI() {
     try {
       const tarifaInput = document.getElementById('tarifa');
       const tarifaPreview = document.getElementById('tarifaPreview');
+  const cruisePreview = document.getElementById('cruisePreview');
+  const hourlyPreview = document.getElementById('hourlyPreview');
       if (tarifaInput) {
         const baseTarifa = valoresKm[name];
         if (baseTarifa !== undefined) tarifaInput.value = baseTarifa;
         if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR',{minimumFractionDigits:2})}/km` : '';
       }
+  if (cruisePreview) cruisePreview.textContent = cruise ? `${cruise} KTAS` : '';
+  if (hourlyPreview) hourlyPreview.textContent = hourly ? `R$ ${Number(hourly).toLocaleString('pt-BR')}/h` : '';
     } catch(e) {}
   // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
   try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
@@ -207,8 +211,20 @@ function bindAircraftParamsUI() {
 
   // Recalcula imediatamente quando velocidade ou valor-hora forem alterados
   try {
-    if (cruiseEl) cruiseEl.addEventListener('input', () => { try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {} });
-    if (hourlyEl) hourlyEl.addEventListener('input', () => { try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {} });
+    if (cruiseEl) cruiseEl.addEventListener('input', () => {
+      try {
+        const cruisePreview = document.getElementById('cruisePreview');
+        if (cruisePreview) cruisePreview.textContent = cruiseEl.value ? `${cruiseEl.value} KTAS` : '';
+        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento();
+      } catch (e) {}
+    });
+    if (hourlyEl) hourlyEl.addEventListener('input', () => {
+      try {
+        const hourlyPreview = document.getElementById('hourlyPreview');
+        if (hourlyPreview) hourlyPreview.textContent = hourlyEl.value ? `R$ ${Number(hourlyEl.value).toLocaleString('pt-BR')}/h` : '';
+        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento();
+      } catch (e) {}
+    });
   } catch (e) { /* ignore */ }
 }
 
@@ -645,13 +661,29 @@ if (typeof document !== 'undefined') {
 
   const aeronaveSel = document.getElementById('aeronave');
   const tarifaInput = document.getElementById('tarifa');
+  const cruiseInput = document.getElementById('cruiseSpeed');
+  const hourlyInput = document.getElementById('hourlyRate');
   if (aeronaveSel && tarifaInput) {
     const tarifaPreview = typeof document !== 'undefined' ? document.getElementById('tarifaPreview') : null;
+    const cruisePreview = typeof document !== 'undefined' ? document.getElementById('cruisePreview') : null;
+    const hourlyPreview = typeof document !== 'undefined' ? document.getElementById('hourlyPreview') : null;
     const syncTarifaFromAeronave = () => {
+  // Atualizar tarifa
   const val = valoresKm[aeronaveSel.value];
-  // Sempre atualizar a tarifa quando trocar de aeronave (exibir padrão daquela aeronave)
   tarifaInput.value = (val !== undefined && val !== null) ? val : '';
   if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+  
+  // Atualizar velocidade e valor-hora baseado no catálogo
+  const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value || a.id === (aeronaveSel.value && aeronaveSel.value.toLowerCase().replace(/[^a-z0-9]/g,'')));
+  if (entry && cruiseInput) {
+    cruiseInput.value = entry.cruise_speed_kt_default || '';
+    if (cruisePreview) cruisePreview.textContent = entry.cruise_speed_kt_default ? `${entry.cruise_speed_kt_default} KTAS` : '';
+  }
+  if (entry && hourlyInput) {
+    hourlyInput.value = entry.hourly_rate_brl_default || '';
+    if (hourlyPreview) hourlyPreview.textContent = entry.hourly_rate_brl_default ? `R$ ${Number(entry.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : '';
+  }
+  
   // Recalcular imediatamente se função existir
   try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
     };
