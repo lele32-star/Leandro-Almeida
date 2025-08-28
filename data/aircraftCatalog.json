@@ -1,0 +1,9 @@
+[
+  {"id":"kingair-c90","nome":"King Air C90","categoria":"turboprop","tarifa_km_brl_default":36.00,"cruise_speed_kt_default":217,"hourly_rate_brl_default":8700},
+  {"id":"caravan-208b","nome":"Cessna 208B Grand Caravan","categoria":"turboprop","tarifa_km_brl_default":36.00,"cruise_speed_kt_default":185,"hourly_rate_brl_default":8700},
+  {"id":"seneca-v","nome":"Piper Seneca V","categoria":"piston_twin","tarifa_km_brl_default":25.00,"cruise_speed_kt_default":200,"hourly_rate_brl_default":7300},
+  {"id":"bonanza-a36","nome":"Beechcraft Bonanza A36","categoria":"piston_single","tarifa_km_brl_default":25.00,"cruise_speed_kt_default":169,"hourly_rate_brl_default":3300},
+  {"id":"baron-58","nome":"Beechcraft Baron 58/G58","categoria":"piston_twin","tarifa_km_brl_default":25.00,"cruise_speed_kt_default":200,"hourly_rate_brl_default":6500},
+  {"id":"citation-cj3","nome":"Cessna Citation CJ3","categoria":"light_jet","tarifa_km_brl_default":40.00,"cruise_speed_kt_default":416,"hourly_rate_brl_default":19500},
+  {"id":"hawker-400xp","nome":"Hawker 400XP","categoria":"light_jet","tarifa_km_brl_default":40.00,"cruise_speed_kt_default":450,"hourly_rate_brl_default":19000}
+]

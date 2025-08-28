@@ -1,0 +1,26 @@
+name: Release Notes
+on:
+  milestone:
+    types: [closed]
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gerar notas (placeholder)
+        run: |
+          echo "Milestone fechada: ${{ github.event.milestone.title }}"
+name: Release Notes
+on:
+  milestone:
+    types: [closed]
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gerar notas (placeholder)
+        run: |
+          echo "Milestone fechada: ${{ github.event.milestone.title }}"
