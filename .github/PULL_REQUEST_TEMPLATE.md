@@ -1,28 +1,24 @@
-## Objetivo
-- Descreva o que este PR faz em 1–2 frases.
+## Título
+[Fase X][UI/CALC/STATE] <nome curto>
 
-## Escopo
-- [ ] Não altera nenhuma lógica/função do método **Tarifa x km**
-- [ ] Mudanças limitadas a .github/, docs/ e/ou data/
-- [ ] PR pequeno e focado
+## Descrição
+- Contexto curto
+- Objetivo e impacto
 
-## Testes/Checks
-- [ ] Passou CI
-- [ ] Se houver UI nova, incluir prints
+## O que mudou
+- Liste de forma breve as alterações (arquivos principais / comportamento)
 
-## Notas
-- Links para issues/milestone
-## Objetivo
-- Descreva o que este PR faz em 1–2 frases.
+## Checklist do PR
+- [ ] PR pequeno e focado (um épico/feature por PR)
+- [ ] Não altera o método **Tarifa x km** (verificação obrigatória)
+- [ ] Testes locais passando (`npm test`)
+- [ ] Se houve alteração de UI, anexar prints antes/depois
 
-## Escopo
-- [ ] Não altera nenhuma lógica/função do método **Tarifa x km**
-- [ ] Mudanças limitadas a .github/, docs/ e/ou data/
-- [ ] PR pequeno e focado
+## Testes realizados
+- Descreva os passos e resultado (smoke tests)
 
-## Testes/Checks
-- [ ] Passou CI
-- [ ] Se houver UI nova, incluir prints
+## Riscos
+- Riscos breves e mitigação
 
-## Notas
-- Links para issues/milestone
+## Links
+- Issue relacionada / Milestone

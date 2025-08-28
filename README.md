@@ -2,6 +2,23 @@
 
 Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas, mapa Leaflet e lookup de aeroportos via AVWX.
 
+## Documentação rápida
+
+- Fórmulas principais:
+  - KM = NM × 1.852
+  - Subtotal (Método 1) = KM × Tarifa por km
+  - Tempo por perna = Distância (NM) / KTAS (nós) → horas decimais
+  - Total por hora (Método 2) = (soma horas por perna) × Valor-hora (R$/h)
+  - Comissões aplicadas sobre a base (mesma função usada para ambos os métodos)
+
+- Limitações conhecidas:
+  - AVWX token embutido no código em alguns ambientes de teste; para produção, use variável de ambiente `AVWX_TOKEN` ou um backend seguro.
+  - Rascunhos são salvos localmente (localStorage) sob a chave `cotacao:currentDraft`.
+
+## QA e checklist
+
+Um checklist de QA manual e passos de regressão está disponível em `scripts/QA_CHECKLIST.md` — siga-o antes de criar PRs de release.
+
 ## Configurar AVWX_TOKEN (token AVWX)
 
 O projeto usa a API AVWX para obter METARs e coordenadas de estações. Configure o token AVWX para que chamadas autenticadas funcionem em desenvolvimento e em deploy.
