@@ -94,12 +94,14 @@
         <div style="min-width:160px">
           <label for="cruiseSpeed">Velocidade de Cruzeiro (KTAS):</label>
           <input type="number" id="cruiseSpeed" step="1" aria-describedby="cruiseHelp" />
-          <div id="cruiseHelp" style="font-size:.75rem;color:#666;margin-top:4px">Velocidade típica de cruzeiro.</div>
+          <div id="cruisePreview" style="font-size:.75rem;color:#333;opacity:.85;margin-top:4px"></div>
+          <div id="cruiseHelp" style="font-size:.65rem;color:#666;margin-top:2px">Velocidade típica de cruzeiro.</div>
         </div>
         <div style="min-width:160px">
           <label for="hourlyRate">Valor-hora (R$/h):</label>
           <input type="number" id="hourlyRate" step="1" aria-describedby="hourlyHelp" />
-          <div id="hourlyHelp" style="font-size:.75rem;color:#666;margin-top:4px">Valor faturado por hora.</div>
+          <div id="hourlyPreview" style="font-size:.75rem;color:#333;opacity:.85;margin-top:4px"></div>
+          <div id="hourlyHelp" style="font-size:.65rem;color:#666;margin-top:2px">Valor faturado por hora.</div>
         </div>
       </div>
       <div style="margin-top:12px;border-top:1px dashed var(--border);padding-top:10px">
@@ -127,14 +129,6 @@
             </div>
           </div>
         </div>
-      </div>
-    </div>
-
-    <!-- Painel de Pernas (modo pernas) -->
-    <div id="legsPanel" style="margin-top:12px;border:1px dashed var(--border);padding:12px;border-radius:6px;background:#fff">
-      <h3 style="margin:0 0 8px 0">Pernas (ICAO → ICAO)</h3>
-      <div id="legsList">
-        <!-- Linhas serão injetadas por app.js -->
       </div>
     </div>
 
@@ -320,6 +314,15 @@ Conta: 25691815-5</textarea>
     </div>
 
     <div id="resultado"></div>
+
+    <!-- Painel de Pernas (modo pernas) - movido para cima do mapa -->
+    <div id="legsPanel" style="margin-top:12px;border:1px dashed var(--border);padding:12px;border-radius:6px;background:#fff">
+      <h3 style="margin:0 0 8px 0">Pernas (ICAO → ICAO)</h3>
+      <div id="legsList">
+        <!-- Linhas serão injetadas por app.js -->
+      </div>
+    </div>
+
     <div id="map"></div>
 
     <script src="cotacao.js"></script>
