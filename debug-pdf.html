@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug PDF</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.5/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.5/vfs_fonts.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .debug-output {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border-color: #f5c6cb;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Debug PDF - Verificação de Erros</h1>
+        
+        <button class="btn" onclick="debugPDF()">🔍 Debug PDF Completo</button>
+        <button class="btn" onclick="testSimplePDF()">📄 Teste PDF Simples</button>
+        <button class="btn" onclick="clearDebug()">🗑️ Limpar Debug</button>
+        
+        <div id="debug-output" class="debug-output"></div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        let debugLog = [];
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            debugLog.push({ timestamp, message, type });
+            updateDebugOutput();
+            console.log(`[${timestamp}] ${message}`);
+        }
+        
+        function updateDebugOutput() {
+            const output = document.getElementById('debug-output');
+            output.innerHTML = debugLog.map(entry => 
+                `<div class="${entry.type}"><strong>${entry.timestamp}:</strong> ${entry.message}</div>`
+            ).join('');
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function clearDebug() {
+            debugLog = [];
+            updateDebugOutput();
+        }
+        
+        // Mock das funções necessárias para o teste
+        window.legsData = [
+            { from: 'SBSP', to: 'SBRJ', distNm: 180, time: { hhmm: '0:45', hoursDecimal: 0.75 }, showCustom: true }
+        ];
+        
+        window.aircraftCatalog = [
+            { nome: 'Citation CJ3+', hourly_rate_brl_default: 9500, cruise_speed_kt_default: 280 }
+        ];
+        
+        // Mock functions
+        function valorParcialFn(km, valorKm) { return km * valorKm; }
+        function valorTotalFn(km, valorKm, extra) { return km * valorKm + extra; }
+        function calcularComissao(subtotal, extra, tipo, commissions) { 
+            return { totalComissao: 1650, detalhesComissao: [{ calculado: 1650 }] }; 
+        }
+        function obterComissao() { return 750; }
+        function calcTempo(distNm, speed) { 
+            const hours = distNm / speed;
+            const h = Math.floor(hours);
+            const m = Math.round((hours - h) * 60);
+            return { hhmm: `${h}:${m.toString().padStart(2, '0')}`, hoursDecimal: hours };
+        }
+        
+        window.valorParcialFn = valorParcialFn;
+        window.valorTotalFn = valorTotalFn;
+        window.calcularComissao = calcularComissao;
+        window.obterComissao = obterComissao;
+        window.calcTempo = calcTempo;
+        
+        function debugPDF() {
+            try {
+                log('🔄 Iniciando debug do PDF...', 'info');
+                
+                // 1. Verificar se buildState existe
+                if (typeof buildState !== 'function') {
+                    log('❌ Função buildState não encontrada!', 'error');
+                    return;
+                }
+                log('✅ Função buildState encontrada', 'success');
+                
+                // 2. Verificar se buildDocDefinition existe
+                if (typeof buildDocDefinition !== 'function') {
+                    log('❌ Função buildDocDefinition não encontrada!', 'error');
+                    return;
+                }
+                log('✅ Função buildDocDefinition encontrada', 'success');
+                
+                // 3. Criar estado de teste
+                const testState = {
+                    origem: 'SBSP',
+                    destino: 'SBRJ',
+                    stops: [],
+                    nm: 180,
+                    valorKm: 18.50,
+                    aeronave: 'Citation CJ3+',
+                    dataIda: '2025-08-28',
+                    dataVolta: '2025-08-28',
+                    valorExtra: 1500,
+                    tipoExtra: 'soma',
+                    observacoes: 'Teste de debug',
+                    pagamento: 'PIX: teste@teste.com',
+                    showRota: true,
+                    showAeronave: true,
+                    showDatas: true,
+                    showDistancia: true,
+                    showTarifa: true,
+                    showAjuste: true,
+                    showComissao: true,
+                    showObservacoes: true,
+                    showPagamento: true,
+                    showMapa: false,
+                    cruiseSpeed: 280,
+                    commissions: [{ percentual: 5, sobre: 'subtotal' }]
+                };
+                
+                log('✅ Estado de teste criado', 'success');
+                
+                // 4. Testar buildDocDefinition
+                log('🔄 Testando buildDocDefinition...', 'info');
+                
+                const pdfOptions = {
+                    includeMethod1: true,
+                    includeLegs: true,
+                    includeDistance: true,
+                    includeTariff: true,
+                    includeAircraft: true,
+                    includeDates: true,
+                    includeObservations: true,
+                    includePayment: true
+                };
+                
+                const docDef = buildDocDefinition(testState, 'method1', pdfOptions);
+                
+                if (!docDef) {
+                    log('❌ buildDocDefinition retornou null/undefined', 'error');
+                    return;
+                }
+                
+                log('✅ buildDocDefinition executou com sucesso', 'success');
+                
+                // 5. Verificar estrutura do documento
+                if (!docDef.content || !Array.isArray(docDef.content)) {
+                    log('❌ docDef.content não é um array válido', 'error');
+                    return;
+                }
+                
+                log(`✅ Documento tem ${docDef.content.length} elementos de conteúdo`, 'success');
+                
+                // 6. Verificar se pdfMake está disponível
+                if (typeof pdfMake === 'undefined') {
+                    log('❌ pdfMake não está carregado!', 'error');
+                    return;
+                }
+                log('✅ pdfMake está disponível', 'success');
+                
+                // 7. Tentar gerar o PDF
+                log('🔄 Gerando PDF...', 'info');
+                
+                const pdfDocGenerator = pdfMake.createPdf(docDef);
+                
+                if (!pdfDocGenerator) {
+                    log('❌ Falha ao criar gerador de PDF', 'error');
+                    return;
+                }
+                
+                log('✅ Gerador de PDF criado com sucesso', 'success');
+                
+                // 8. Abrir o PDF
+                try {
+                    pdfDocGenerator.open();
+                    log('✅ PDF aberto com sucesso!', 'success');
+                } catch (openError) {
+                    log(`❌ Erro ao abrir PDF: ${openError.message}`, 'error');
+                    log(`Stack trace: ${openError.stack}`, 'error');
+                }
+                
+            } catch (error) {
+                log(`❌ Erro no debug: ${error.message}`, 'error');
+                log(`Stack trace: ${error.stack}`, 'error');
+            }
+        }
+        
+        function testSimplePDF() {
+            try {
+                log('🔄 Testando PDF simples...', 'info');
+                
+                const simpleDoc = {
+                    content: [
+                        { text: 'Teste PDF Simples', style: 'header' },
+                        { text: 'Se este PDF abrir corretamente, o problema está no buildDocDefinition.', margin: [0, 10] },
+                        { text: 'Data/Hora: ' + new Date().toLocaleString(), margin: [0, 10] }
+                    ],
+                    styles: {
+                        header: {
+                            fontSize: 18,
+                            bold: true,
+                            color: '#2E4053'
+                        }
+                    }
+                };
+                
+                pdfMake.createPdf(simpleDoc).open();
+                log('✅ PDF simples gerado com sucesso!', 'success');
+                
+            } catch (error) {
+                log(`❌ Erro no PDF simples: ${error.message}`, 'error');
+            }
+        }
+        
+        // Capturar erros globais
+        window.addEventListener('error', function(e) {
+            log(`❌ Erro JavaScript global: ${e.message} em ${e.filename}:${e.lineno}`, 'error');
+        });
+        
+        window.addEventListener('unhandledrejection', function(e) {
+            log(`❌ Promise rejeitada: ${e.reason}`, 'error');
+        });
+        
+        log('🔧 Debug PDF inicializado. Use os botões acima para testar.', 'info');
+    </script>
+</body>
+</html>

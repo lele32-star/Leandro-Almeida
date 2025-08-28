@@ -1571,13 +1571,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
         ]
       },
       layout: { 
-        fillColor: (rowIndex) => ({
-          gradient: 'linear',
-          stops: [
-            { position: 0, color: '#2E4053' },
-            { position: 1, color: '#1A5276' }
-          ]
-        }),
+        fillColor: () => '#2E4053',
         hLineWidth: () => 0,
         vLineWidth: () => 0,
         paddingTop: () => 25,
@@ -1662,7 +1656,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
                   [{ text: 'Distância', style: 'label' }, { text: `${state.nm} NM (${km.toFixed(1)} km)`, style: 'value' }],
                   [{ text: 'Total Parcial (km×tarifa)', style: 'label' }, { text: `R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'value' }],
                   ...(state.showAjuste && state.valorExtra > 0 ? [[{ text: 'Ajuste', style: 'label' }, { text: `+ R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'value' }]] : []),
-                  ...(state.showComissao ? (detalhesComissao || []).map((c, i) => [{ text: `Comissão ${i+1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, colSpan: 2, style: 'value', fillColor: '#FFF9E6' }, {}]) : []),
+                  ...((state.showComissao && (pdfOptions.includeCommission || pdfOptions.includeCommission === undefined)) ? (detalhesComissao || []).map((c, i) => [{ text: `Comissão ${i+1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, colSpan: 2, style: 'value', fillColor: '#FFF9E6' }, {}]) : []),
                   [{ text: 'Total Estimado', style: 'labelBold' }, { text: `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'valueBold' }]
                 ] 
               }, 
@@ -1735,13 +1729,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
         ]] 
       }, 
       layout: { 
-        fillColor: () => ({
-          gradient: 'linear',
-          stops: [
-            { position: 0, color: '#F1C40F' },
-            { position: 1, color: '#D4AC0D' }
-          ]
-        }),
+        fillColor: () => '#F1C40F',
         hLineWidth: () => 0,
         vLineWidth: () => 0
       }, 
@@ -1749,7 +1737,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
     },
 
     // Pernas do voo com design premium
-    ...(pdfOptions.includeLegs && typeof legsData !== 'undefined' && legsData.length ? [
+  ...((pdfOptions.includeLegs || (pdfOptions.includeLegs === undefined && state.showRota)) && typeof legsData !== 'undefined' && legsData.length ? [
       { text: 'Pernas (ICAO → ICAO)', style: 'sectionTitle', margin: [0,10,0,15] },
       { 
         table: { 
@@ -2209,7 +2197,8 @@ async function gerarPDF(state, methodSelection = null) {
     includeDistance: false,
     includeTariff: false,
     includeMethod1: false,
-    includeMethod2: false
+    includeMethod2: false,
+    includeLegs: false
   };
   try {
     if (typeof document !== 'undefined') {
@@ -2223,6 +2212,7 @@ async function gerarPDF(state, methodSelection = null) {
       pdfOptions.includeTariff = !!document.getElementById('pdf_include_tariff')?.checked;
       pdfOptions.includeMethod1 = !!document.getElementById('pdf_include_method1')?.checked;
       pdfOptions.includeMethod2 = !!document.getElementById('pdf_include_method2')?.checked;
+      pdfOptions.includeLegs = !!document.getElementById('pdf_include_legs')?.checked;
     }
   } catch (e) { /* ignore */ }
   

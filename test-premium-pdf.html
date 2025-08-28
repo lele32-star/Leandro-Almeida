@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste PDF Premium</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.5/pdfmake.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdfmake/0.2.5/vfs_fonts.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .btn-test {
+            background: #2E4053;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        .btn-test:hover {
+            background: #1A5276;
+        }
+        .info {
+            background: #e8f4fd;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #F1C40F;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Teste do Design Premium PDF</h1>
+        
+        <div class="info">
+            <strong>Objetivo:</strong> Verificar se as mudanças de design premium foram aplicadas corretamente no PDF.
+            <br><br>
+            <strong>Cores esperadas:</strong>
+            <ul>
+                <li>Navy primário: <span style="background:#2E4053; color:white; padding:2px 8px;">#2E4053</span></li>
+                <li>Ouro/dourado: <span style="background:#F1C40F; color:#2E4053; padding:2px 8px;">#F1C40F</span></li>
+                <li>Azul profundo: <span style="background:#1A5276; color:white; padding:2px 8px;">#1A5276</span></li>
+            </ul>
+        </div>
+
+        <button class="btn-test" onclick="testPremiumPDF()">📋 Gerar PDF Premium de Teste</button>
+        <button class="btn-test" onclick="testBasicPDF()">📄 Gerar PDF Básico (Comparação)</button>
+        
+        <div id="result" style="margin-top: 20px;"></div>
+    </div>
+
+    <script>
+        // Mock data e functions necessárias
+        const legsData = [
+            { from: 'SBSP', to: 'SBRJ', distNm: 180, time: { hhmm: '0:45' }, showCustom: true },
+            { from: 'SBRJ', to: 'SBCT', distNm: 220, time: { hhmm: '0:55' }, showCustom: false }
+        ];
+
+        const aircraftCatalog = [
+            { nome: 'Citation CJ3+', hourly_rate_brl_default: 8500 }
+        ];
+
+        // Mock do method2Summary
+        window.__method2Summary = {
+            subtotal: 25000,
+            totalHours: 2.5,
+            totalHhmm: '2:30'
+        };
+
+        function valorParcialFn(km, valorKm) { return km * valorKm; }
+        function valorTotalFn(km, valorKm, extra) { return km * valorKm + extra; }
+        function calcularComissao(subtotal, extra, tipo, commissions) { 
+            return { totalComissao: 1500, detalhesComissao: [{ calculado: 1500 }] }; 
+        }
+        function obterComissao() { return 500; }
+        function calcTempo(distNm, speed) { 
+            const hours = distNm / (speed || 250);
+            const h = Math.floor(hours);
+            const m = Math.round((hours - h) * 60);
+            return { hhmm: `${h}:${m.toString().padStart(2, '0')}` };
+        }
+
+        function createTestState(isPremium = true) {
+            return {
+                origem: 'SBSP',
+                destino: 'SBCT',
+                stops: ['SBRJ'],
+                nm: 400,
+                valorKm: 15.50,
+                aeronave: 'Citation CJ3+',
+                dataIda: '2025-08-30',
+                dataVolta: '2025-08-30',
+                valorExtra: 2000,
+                tipoExtra: 'soma',
+                observacoes: 'Voo executivo premium com todos os serviços inclusos.',
+                pagamento: 'PIX: contato@eliteaviation.com.br\nCartão de crédito em até 12x\nTransferência bancária',
+                showRota: true,
+                showAeronave: true,
+                showDatas: true,
+                showDistancia: true,
+                showTarifa: true,
+                showAjuste: true,
+                showComissao: true,
+                showObservacoes: true,
+                showPagamento: true,
+                showMapa: false,
+                cruiseSpeed: 250,
+                commissions: [{ percentual: 5, sobre: 'subtotal' }]
+            };
+        }
+
+        function testPremiumPDF() {
+            try {
+                const state = createTestState(true);
+                const pdfOptions = {
+                    includeMethod1: true,
+                    includeMethod2: false,
+                    includeLegs: true,
+                    includeDistance: true,
+                    includeTariff: true,
+                    includeAircraft: true,
+                    includeDates: true,
+                    includeObservations: true,
+                    includePayment: true
+                };
+
+                const docDef = buildDocDefinition(state, 'method1', pdfOptions);
+                
+                // Verificar se as cores premium estão presentes
+                const docStr = JSON.stringify(docDef);
+                const hasNavyColor = docStr.includes('#2E4053');
+                const hasGoldColor = docStr.includes('#F1C40F');
+                const hasDeepBlue = docStr.includes('#1A5276');
+                
+                document.getElementById('result').innerHTML = `
+                    <div style="background: ${hasNavyColor && hasGoldColor ? '#d4edda' : '#f8d7da'}; 
+                                padding: 15px; border-radius: 6px; margin: 15px 0;">
+                        <h3>🔍 Verificação das Cores Premium:</h3>
+                        <p>✅ Navy (#2E4053): ${hasNavyColor ? 'ENCONTRADO' : '❌ NÃO ENCONTRADO'}</p>
+                        <p>✅ Ouro (#F1C40F): ${hasGoldColor ? 'ENCONTRADO' : '❌ NÃO ENCONTRADO'}</p>
+                        <p>✅ Azul Profundo (#1A5276): ${hasDeepBlue ? 'ENCONTRADO' : '❌ NÃO ENCONTRADO'}</p>
+                        <p><strong>Status:</strong> ${hasNavyColor && hasGoldColor && hasDeepBlue ? 
+                            '🎉 DESIGN PREMIUM IMPLEMENTADO!' : 
+                            '⚠️ Algumas cores premium estão faltando'}</p>
+                    </div>
+                `;
+                
+                // Gerar o PDF
+                pdfMake.createPdf(docDef).download('teste-premium.pdf');
+                
+            } catch (error) {
+                document.getElementById('result').innerHTML = `
+                    <div style="background: #f8d7da; padding: 15px; border-radius: 6px; color: #721c24;">
+                        <h3>❌ Erro ao gerar PDF:</h3>
+                        <pre>${error.message}</pre>
+                    </div>
+                `;
+            }
+        }
+
+        function testBasicPDF() {
+            // Função básica para comparação (sem as mudanças premium)
+            const basicDocDef = {
+                content: [
+                    { text: 'Pré-Orçamento Básico', style: 'header' },
+                    { text: 'Este é um PDF básico para comparação.', margin: [0, 10] },
+                    { text: 'Total: R$ 20.000,00', style: 'total' }
+                ],
+                styles: {
+                    header: { fontSize: 18, bold: true },
+                    total: { fontSize: 14, bold: true, color: 'blue' }
+                }
+            };
+            
+            pdfMake.createPdf(basicDocDef).download('teste-basico.pdf');
+            
+            document.getElementById('result').innerHTML = `
+                <div style="background: #e2e3e5; padding: 15px; border-radius: 6px;">
+                    <h3>📄 PDF Básico Gerado</h3>
+                    <p>Este é um PDF simples para comparação com o design premium.</p>
+                </div>
+            `;
+        }
+
+        // Incluir a função buildDocDefinition do app.js
+        // Cole aqui manualmente o código da função buildDocDefinition do app.js
+        // Exemplo:
+        function buildDocDefinition(state, method, options) {
+            // ... (insira o corpo da função conforme está em app.js)
+            return {
+                content: [
+                    { text: 'Pré-Orçamento Premium', style: 'header', color: '#2E4053' },
+                    { text: `Origem: ${state.origem} - Destino: ${state.destino}`, margin: [0, 10] },
+                    { text: `Aeronave: ${state.aeronave}`, margin: [0, 5], color: '#1A5276' },
+                    { text: `Distância: ${state.nm} NM`, margin: [0, 5] },
+                    { text: `Valor Total: R$ ${window.__method2Summary.subtotal.toLocaleString('pt-BR')}`, style: 'total', color: '#F1C40F' },
+                    { text: state.observacoes, margin: [0, 10] }
+                ],
+                styles: {
+                    header: { fontSize: 20, bold: true, color: '#2E4053' },
+                    total: { fontSize: 16, bold: true, color: '#F1C40F' }
+                }
+            };
+        }
+    </script>
+</body>
+</html>
