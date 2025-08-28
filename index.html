@@ -93,14 +93,19 @@
         </div>
         <div style="min-width:160px">
           <label for="cruiseSpeed">Velocidade de Cruzeiro (KTAS):</label>
-          <input type="number" id="cruiseSpeed" data-aircraft-ktas="true" step="1" placeholder="Ex: 430" aria-describedby="cruiseHelp" />
+          <input type="number" id="cruiseSpeed" data-aircraft-ktas="true" step="1" placeholder="Ex: 430" aria-describedby="cruiseHelp" readonly />
           <div id="cruiseHelp" style="font-size:.65rem;color:#666;margin-top:2px">Velocidade típica de cruzeiro.</div>
         </div>
         <div style="min-width:160px">
           <label for="hourlyRate">Valor-hora (R$/h):</label>
-          <input type="number" id="hourlyRate" data-aircraft-hourly-rate="true" step="1" placeholder="Ex: 18000" aria-describedby="hourlyHelp" inputmode="decimal" />
+          <input type="text" id="hourlyRate" data-aircraft-hourly-rate="true" placeholder="Ex: 18000" aria-describedby="hourlyHelp" inputmode="decimal" readonly />
           <div id="hourlyHelp" style="font-size:.65rem;color:#666;margin-top:2px">Valor faturado por hora.</div>
         </div>
+      </div>
+      <div id="aircraft-params-controls" style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;display:flex;align-items:center;gap:12px;">
+        <span id="aircraft-params-badge" style="font-weight:bold;font-size:.8rem;padding:4px 8px;border-radius:4px;"></span>
+        <button type="button" id="btn-edit-params" style="padding:6px 12px;font-size:14px;">Editar parâmetros</button>
+        <button type="button" id="btn-reset-params" style="padding:6px 12px;font-size:14px;display:none;">Resetar para Catálogo</button>
       </div>
       <div style="margin-top:12px;border-top:1px dashed var(--border);padding-top:10px">
         <label style="font-weight:600">Parâmetros avançados de planejamento</label>
