@@ -1390,16 +1390,17 @@ function buildState() {
         return el && el.value ? el.value : 'distanceTotal';
       } catch(e) { return 'distanceTotal'; }
     })(),
-    showRota: document.getElementById('showRota').checked,
-    showAeronave: document.getElementById('showAeronave').checked,
-    showTarifa: document.getElementById('showTarifa').checked,
-    showDistancia: document.getElementById('showDistancia').checked,
-    showDatas: document.getElementById('showDatas').checked,
-    showAjuste: document.getElementById('showAjuste').checked,
+    // PDF configuration: use defaults since checkboxes were removed and options are now in pre-budget
+    showRota: true,
+    showAeronave: true,
+    showTarifa: true,
+    showDistancia: true,
+    showDatas: true,
+    showAjuste: true,
     showComissao,
-    showObservacoes: document.getElementById('showObservacoes').checked,
-    showPagamento: document.getElementById('showPagamento').checked,
-    showMapa: document.getElementById('showMapa').checked
+    showObservacoes: true,
+    showPagamento: true,
+    showMapa: true
   };
 }
 
@@ -2341,15 +2342,7 @@ function limparCampos() {
     else el.value = '';
   });
   document.getElementById('tarifa').value = '';
-  document.getElementById('showRota').checked = true;
-  document.getElementById('showAeronave').checked = true;
-  document.getElementById('showTarifa').checked = true;
-  document.getElementById('showDistancia').checked = true;
-  document.getElementById('showDatas').checked = true;
-  document.getElementById('showAjuste').checked = true;
-  document.getElementById('showObservacoes').checked = true;
-  document.getElementById('showPagamento').checked = true;
-  document.getElementById('showMapa').checked = true;
+  // Removed references to missing PDF configuration checkboxes since they are now handled in pre-budget process
   document.getElementById('resultado').innerHTML = '';
   if (routeLayer && routeLayer.remove) routeLayer.remove();
   const comissoesDiv = document.getElementById('comissoes');
