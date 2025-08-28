@@ -568,7 +568,7 @@ function fmtBRL(n) {
   }
 }
 
-function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount }) {
+function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount }, method2Details = null) {
   const rota = [state.origem, state.destino, ...(state.stops || [])]
     .filter(Boolean)
     .join(' → ');
@@ -596,9 +596,26 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
     if (typeof window !== 'undefined' && window.__method2Summary) {
       const m2 = window.__method2Summary;
       right.push(`<h4 style="margin:6px 0">Método 2 — Hora de voo</h4>`);
+      right.push(`<p><strong>Rota:</strong> ${rota || '—'}</p>`);
+      right.push(`<p><strong>Aeronave:</strong> ${state.aeronave || '—'}</p>`);
+      right.push(`<p><strong>Distância:</strong> ${Number(state.nm || 0)} NM (${km.toFixed(1)} km)</p>`);
+      right.push(`<p><strong>Datas:</strong> ${state.dataIda || '—'}${state.dataVolta ? ' → ' + state.dataVolta : ''}</p>`);
       right.push(`<p><strong>Tempo total:</strong> ${m2.totalHours.toFixed(2)} h (${m2.totalHhmm})</p>`);
       right.push(`<p><strong>Total por hora (base):</strong> ${fmtBRL(m2.subtotal)}</p>`);
-      right.push(`<p style="font-size:1.05rem"><strong>Total Estimado (Método 2 - hora):</strong> ${fmtBRL(m2.total)}</p>`);
+      if (state.valorExtra > 0) right.push(`<p><strong>Ajuste:</strong> ${labelExtra}</p>`);
+      // Incluir detalhes de comissão do método 2 se disponíveis
+      if (method2Details && method2Details.detalhesComissao) {
+        (method2Details.detalhesComissao || []).forEach((c, i) => {
+          right.push(`<p><strong>Comissão ${i + 1}:</strong> ${fmtBRL(c.calculado)}</p>`);
+        });
+      }
+      if (method2Details && method2Details.commissionAmount > 0) {
+        right.push(`<p><strong>Comissão:</strong> ${fmtBRL(method2Details.commissionAmount)}</p>`);
+      }
+      if (state.observacoes) right.push(`<p><strong>Observações:</strong> ${state.observacoes}</p>`);
+      if (state.pagamento) right.push(`<p><strong>Pagamento:</strong><br><pre style="white-space:pre-wrap;margin:0">${state.pagamento}</pre></p>`);
+      right.push(`<hr style="margin:12px 0;border:none;border-top:1px solid #eee" />`);
+      right.push(`<p style="font-size:1.1rem"><strong>Total Estimado (Método 2 - hora):</strong> ${fmtBRL(m2.total)}</p>`);
     } else {
       right.push(`<p style="opacity:.7">Sem dados de pernas calculadas. Preencha aeroportos ou verifique a aeronave.</p>`);
     }
@@ -1407,7 +1424,11 @@ async function gerarPreOrcamento() {
   } catch (e) { /* ignore */ }
 
   // Render do resumo completo
-  const html = renderResumo(state2, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount });
+  const method2Details = method2Summary ? {
+    detalhesComissao: method2Summary.detalhesComissao,
+    commissionAmount: commissionAmount2
+  } : null;
+  const html = renderResumo(state2, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount }, method2Details);
   saida.innerHTML = html;
   saida.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
