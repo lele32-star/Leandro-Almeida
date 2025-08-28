@@ -26,6 +26,33 @@ const valoresKm = {
 
 // Removido legacyAircraftParams: agora somente catálogo JSON oficial alimenta velocidade/valor-hora.
 
+/**
+ * Função utilitária para obter dados da aeronave selecionada a partir do catálogo
+ * Conforme especificado nos requisitos
+ * @param {string} selectValue - Valor selecionado no dropdown de aeronaves
+ * @returns {Object|null} Objeto com hourlyRate e cruiseKtas ou null se não encontrado
+ */
+function getSelectedAircraftData(selectValue) {
+  if (!selectValue || (!aircraftCatalog || !Array.isArray(aircraftCatalog))) {
+    return null;
+  }
+
+  // Buscar no catálogo pelo nome ou ID exibido no select
+  const aircraft = aircraftCatalog.find(a => a.nome === selectValue || a.id === selectValue);
+  
+  if (!aircraft) {
+    console.warn(`Aircraft "${selectValue}" not found in catalog`);
+    return null;
+  }
+
+  // Retornar no formato especificado pelos requisitos
+  return {
+    hourlyRate: aircraft.hourly_rate_brl_default || 0,
+    cruiseKtas: aircraft.cruise_speed_kt_default || 0,
+    tarifaKm: aircraft.tarifa_km_brl_default || valoresKm[selectValue] || 0
+  };
+}
+
 let valorParcialFn = (distanciaKm, valorKm) => distanciaKm * valorKm;
 let valorTotalFn = (distanciaKm, valorKm, valorExtra = 0) =>
   valorParcialFn(distanciaKm, valorKm) + valorExtra;
@@ -194,27 +221,34 @@ function bindAircraftParamsUI() {
 
   function applyFor(name) {
     // find catalog entry by name (fallback)
-  const entry = aircraftCatalog.find(a => a.nome === name || a.id === name);
-  let cruise = entry ? entry.cruise_speed_kt_default : 0;
-  let hourly = entry ? entry.hourly_rate_brl_default : 0;
+    const entry = aircraftCatalog.find(a => a.nome === name || a.id === name);
+    let cruise = entry ? entry.cruise_speed_kt_default : 0;
+    let hourly = entry ? entry.hourly_rate_brl_default : 0;
+    
     cruiseEl.value = cruise || '';
     hourlyEl.value = hourly || '';
-    // tarifa
+    
+    // tarifa com fallback aprimorado para aeronaves legacy
     try {
       const tarifaInput = document.getElementById('tarifa');
       const tarifaPreview = document.getElementById('tarifaPreview');
-  const cruisePreview = document.getElementById('cruisePreview');
-  const hourlyPreview = document.getElementById('hourlyPreview');
+      const cruisePreview = document.getElementById('cruisePreview');
+      const hourlyPreview = document.getElementById('hourlyPreview');
+      
       if (tarifaInput) {
+        // Priorizar catálogo, depois fallback para valoresKm
         const baseTarifa = entry ? entry.tarifa_km_brl_default : valoresKm[name];
-        if (baseTarifa !== undefined) tarifaInput.value = baseTarifa;
+        if (baseTarifa !== undefined && baseTarifa !== null) {
+          tarifaInput.value = baseTarifa;
+        }
         if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR',{minimumFractionDigits:2})}/km` : '';
       }
-  if (cruisePreview) cruisePreview.textContent = cruise ? `${cruise} KTAS` : '';
-  if (hourlyPreview) hourlyPreview.textContent = hourly ? `R$ ${Number(hourly).toLocaleString('pt-BR')}/h` : '';
+      if (cruisePreview) cruisePreview.textContent = cruise ? `${cruise} KTAS` : '';
+      if (hourlyPreview) hourlyPreview.textContent = hourly ? `R$ ${Number(hourly).toLocaleString('pt-BR')}/h` : '';
     } catch(e) {}
-  // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
-  try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+    
+    // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
+    try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
   }
 
   if (select) select.addEventListener('change', (e) => applyFor(e.target.value));
@@ -605,12 +639,79 @@ if (typeof document !== 'undefined') {
     if (typeof window.__refreshRouteNow === 'function') window.__refreshRouteNow();
   });
 }
-// Bind aircraft params UI when DOM is ready
-if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
-    try { bindAircraftParamsUI(); } catch (e) { /* ignore */ }
-  });
+// Implementação de autofill conforme requisitos com suporte aos IDs especificados
+function setupAircraftAutofill() {
+  if (typeof document === 'undefined') return;
+  
+  // Buscar elementos pelos IDs atuais e pelos IDs especificados nos requisitos
+  const aircraftSelect = document.getElementById('aeronave') || document.getElementById('aircraft-select');
+  const hourlyRateInput = document.getElementById('hourlyRate') || document.getElementById('aircraft-hourly-rate');
+  const cruiseSpeedInput = document.getElementById('cruiseSpeed') || document.getElementById('aircraft-ktas');
+  const tarifaInput = document.getElementById('tarifa');
+
+  if (!aircraftSelect) return;
+
+  // Função de autofill principal conforme especificação
+  function updateAircraftFields() {
+    const selectedValue = aircraftSelect.value;
+    if (!selectedValue) return;
+
+    // Usar a função especificada nos requisitos
+    const aircraftData = getSelectedAircraftData(selectedValue);
+    
+    if (aircraftData) {
+      // Preencher Valor-hora (R$/h)
+      if (hourlyRateInput && aircraftData.hourlyRate) {
+        hourlyRateInput.value = aircraftData.hourlyRate;
+      }
+      
+      // Preencher Velocidade de Cruzeiro (KTAS)  
+      if (cruiseSpeedInput && aircraftData.cruiseKtas) {
+        cruiseSpeedInput.value = aircraftData.cruiseKtas;
+      }
+
+      // Preencher Tarifa por km (mantém compatibilidade)
+      if (tarifaInput && aircraftData.tarifaKm) {
+        tarifaInput.value = aircraftData.tarifaKm;
+        // Atualizar preview se existir
+        const tarifaPreview = document.getElementById('tarifaPreview');
+        if (tarifaPreview) {
+          tarifaPreview.textContent = `R$ ${Number(aircraftData.tarifaKm).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km`;
+        }
+      }
+
+      // Disparar recálculo se função existir
+      try { 
+        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+      } catch (e) { 
+        console.warn('Erro ao disparar recálculo:', e); 
+      }
+    } else {
+      console.warn(`Dados da aeronave "${selectedValue}" não encontrados no catálogo`);
+    }
+  }
+
+  // Adicionar listener de mudança conforme especificação
+  if (aircraftSelect) {
+    aircraftSelect.addEventListener('change', updateAircraftFields);
+    
+    // Executar uma vez no carregamento se já houver aeronave pré-selecionada
+    if (aircraftSelect.value) {
+      setTimeout(updateAircraftFields, 100);
+    }
+  }
 }
+
+// Executar quando o catálogo estiver carregado
+document.addEventListener('DOMContentLoaded', () => {
+  // Manter compatibilidade com sistema existente
+  try { bindAircraftParamsUI(); } catch (e) { /* ignore */ }
+  
+  // Aguardar carregamento do catálogo antes de configurar autofill
+  setTimeout(() => {
+    setupAircraftAutofill();
+  }, 300);
+});
 // --- [END ADD/REPLACE] ---
 
 /* ==== BEGIN PATCH: pre-orcamento resumo + validações + datas ==== */
