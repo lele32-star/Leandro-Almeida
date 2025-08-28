@@ -50,6 +50,20 @@ function loadAircraftCatalog() {
         .then(j => {
           if (Array.isArray(j)) {
             aircraftCatalog = j;
+            // Augmentar com aeronaves legadas que possuem tarifa mas não estão no catálogo oficial
+            const legacyAugment = [
+              { nome: 'Hawker 400', cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
+              { nome: 'Phenom 100', cruise_speed_kt_default: 390, hourly_rate_brl_default: 16500 },
+              { nome: 'Citation II', cruise_speed_kt_default: 375, hourly_rate_brl_default: 15000 },
+              { nome: 'Sêneca IV', cruise_speed_kt_default: 190, hourly_rate_brl_default: 6500 },
+              { nome: 'Cirrus SR22', cruise_speed_kt_default: 180, hourly_rate_brl_default: 3300 }
+            ];
+            legacyAugment.forEach(l => {
+              if (!aircraftCatalog.find(a => a.nome === l.nome)) {
+                const id = l.nome.toLowerCase().replace(/[^a-z0-9]+/g,'-');
+                aircraftCatalog.push({ id, categoria: 'legacy', ...l });
+              }
+            });
             // Popular o <select> se existir e ainda não estiver populado dinamicamente
             const sel = document.getElementById('aeronave');
             if (sel) {
