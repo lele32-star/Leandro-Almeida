@@ -323,7 +323,7 @@ function loadDraft() {
     return payload;
   } catch (e) { return null; }
 }
-function updateLegsPanel(codes, waypoints) {
+function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
   // codes: array of ICAOs in order; waypoints: array of points matching codes (may be partial)
   legsData = [];
   if (typeof document === 'undefined') return;
@@ -343,7 +343,7 @@ function updateLegsPanel(codes, waypoints) {
     const row = document.createElement('div');
     row.style.padding = '6px 0';
     row.style.borderBottom = '1px solid #f1f1f1';
-    const speed = document.getElementById('cruiseSpeed').value || 0;
+    const speed = overrideSpeed !== null ? overrideSpeed : (document.getElementById('cruiseSpeed').value || 0);
     const calc = distNm ? calcTempo(distNm, speed) : { hoursDecimal: 0, hhmm: '—' };
     const distText = distNm ? `${distNm.toFixed(0)} NM` : '—';
     // include edit button for manual override
@@ -1332,7 +1332,7 @@ async function gerarPreOrcamento() {
     const codes = [state2.origem, state2.destino, ...(state2.stops || [])].filter(Boolean);
     if (legsData.length === 0 && codes.length >= 2) {
       const coords = await Promise.all(codes.map(fetchAirportByCode));
-      updateLegsPanel(codes, coords);
+      updateLegsPanel(codes, coords, cruiseEff);
     }
 
     let totalHours = 0;
