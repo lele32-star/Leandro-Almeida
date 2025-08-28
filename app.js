@@ -7,6 +7,8 @@ const valoresKm = {
   "Cirrus SR22": 15
 };
 
+// Removido legacyAircraftParams: agora somente catálogo JSON oficial alimenta velocidade/valor-hora.
+
 let valorParcialFn = (distanciaKm, valorKm) => distanciaKm * valorKm;
 let valorTotalFn = (distanciaKm, valorKm, valorExtra = 0) =>
   valorParcialFn(distanciaKm, valorKm) + valorExtra;
@@ -44,7 +46,34 @@ function loadAircraftCatalog() {
   // try fetch data/aircraftCatalog.json in browser
   if (typeof fetch === 'function') {
     try {
-      fetch('data/aircraftCatalog.json').then(r => r.ok ? r.json() : null).then(j => { if (Array.isArray(j)) aircraftCatalog = j; });
+      fetch('data/aircraftCatalog.json')
+        .then(r => r.ok ? r.json() : null)
+        .then(j => {
+          if (Array.isArray(j)) {
+            aircraftCatalog = j;
+            // Popular o <select> se existir e ainda não estiver populado dinamicamente
+            const sel = document.getElementById('aeronave');
+            if (sel) {
+              const alreadyDynamic = sel.getAttribute('data-dynamic-loaded') === 'true';
+              if (!alreadyDynamic) {
+                // Preserve primeiro option (placeholder) e limpa demais
+                const placeholder = sel.querySelector('option[disabled]');
+                sel.innerHTML = '';
+                if (placeholder) sel.appendChild(placeholder); else sel.insertAdjacentHTML('beforeend', '<option value="" disabled selected>Escolha uma aeronave</option>');
+                aircraftCatalog.forEach(ac => {
+                  // Tarifa por km se existir no mapa valoresKm (opcional)
+                  const kmRate = valoresKm[ac.nome];
+                  const labelRate = kmRate ? ` — R$${Number(kmRate).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+                  const opt = document.createElement('option');
+                  opt.value = ac.nome; // usamos nome como value
+                  opt.textContent = ac.nome + labelRate;
+                  sel.appendChild(opt);
+                });
+                sel.setAttribute('data-dynamic-loaded', 'true');
+              }
+            }
+          }
+        });
     } catch (e) { /* ignore */ }
   }
 }
@@ -64,6 +93,26 @@ function calcTempo(dist_nm, ktas) {
   const mm = totalMinutes % 60;
   const hhmm = `${hh}:${String(mm).padStart(2,'0')}`;
   return { hoursDecimal: Number((hours).toFixed(2)), hhmm };
+}
+
+// Global-safe debounce (caso a versão interna não esteja em escopo)
+function _fallbackDebounce(fn, ms) {
+  let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+const ensureDebounce = (fn, ms=200) => (typeof debounce === 'function') ? debounce(fn, ms) : _fallbackDebounce(fn, ms);
+
+// Função pura para ajuste de tempo de perna (Fase 8)
+function adjustLegTime(baseHours, options) {
+  const o = options || {};
+  if (!o.enabled) return Number(baseHours) || 0;
+  const hours = Math.max(0, Number(baseHours) || 0);
+  const taxiMin = Math.max(0, Number(o.taxiMinutes) || 0);
+  const windPct = Math.max(0, Number(o.windPercent) || 0);
+  const minBillMin = Math.max(0, Number(o.minBillableMinutes) || 0);
+  const withTaxi = hours + (taxiMin/60);
+  const withWind = withTaxi * (1 + windPct/100);
+  const minH = minBillMin/60;
+  return Math.max(minH, withWind);
 }
 
 // Accessible toast helper: shows short messages in an ARIA live region
@@ -105,12 +154,11 @@ function bindAircraftParamsUI() {
   const select = document.getElementById('aeronave');
   const cruiseEl = document.getElementById('cruiseSpeed');
   const hourlyEl = document.getElementById('hourlyRate');
-  const btnSave = document.getElementById('btnSaveDefaults');
-  const btnRestore = document.getElementById('btnRestoreDefaults');
+  // Botões de salvar/restaurar removidos
 
   function applyFor(name) {
     // find catalog entry by name (fallback)
-    const entry = aircraftCatalog.find(a => a.nome === name || a.id === name || a.id === (name && name.toLowerCase().replace(/[^a-z0-9]/g,'-')));
+  const entry = aircraftCatalog.find(a => a.nome === name || a.id === name || a.id === (name && name.toLowerCase().replace(/[^a-z0-9]/g,'')));
     const store = loadOverrides();
     let cruise = entry ? entry.cruise_speed_kt_default : 0;
     let hourly = entry ? entry.hourly_rate_brl_default : 0;
@@ -121,29 +169,12 @@ function bindAircraftParamsUI() {
     }
     cruiseEl.value = cruise || '';
     hourlyEl.value = hourly || '';
+  // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
+  try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
   }
 
   if (select) select.addEventListener('change', (e) => applyFor(e.target.value));
-  if (btnSave) btnSave.addEventListener('click', () => {
-    const name = select.value;
-    const entry = aircraftCatalog.find(a => a.nome === name || a.id === name);
-    if (!entry) return alert('Selecione uma aeronave válida para salvar.');
-    const store = loadOverrides();
-    store[entry.id] = { cruise_speed_kt: Number(document.getElementById('cruiseSpeed').value) || entry.cruise_speed_kt_default, hourly_rate_brl: Number(document.getElementById('hourlyRate').value) || entry.hourly_rate_brl_default };
-    saveOverrides(store);
-    alert('Defaults salvos localmente.');
-  });
-  if (btnRestore) btnRestore.addEventListener('click', () => {
-    const name = select.value;
-    const entry = aircraftCatalog.find(a => a.nome === name || a.id === name);
-    if (!entry) return;
-    // remove override
-    const store = loadOverrides();
-    if (store[entry.id]) delete store[entry.id];
-    saveOverrides(store);
-    applyFor(name);
-    alert('Restaurado para padrão.');
-  });
+  // Removidos listeners de salvar/restaurar padrões
 
   // initial apply on load
   document.addEventListener('DOMContentLoaded', () => {
@@ -166,11 +197,18 @@ function saveDraft(name) {
   let payload = null;
   try {
     const state = buildState();
-    // include pricingMode, overrides, legsData and overrides
+    const advEnabledEl = typeof document !== 'undefined' ? document.getElementById('enableAdvancedPlanning') : null;
+    // assign to outer variable (no shadow) so fallback can see it
     payload = {
       state,
       legsData: (legsData || []).map(l => ({ ...l })),
       overrides: loadOverrides(),
+      advancedPlanning: advEnabledEl ? {
+        enabled: !!advEnabledEl.checked,
+        windPercent: Number((document.getElementById('windBuffer')||{}).value)||0,
+        taxiMinutes: Number((document.getElementById('taxiMinutes')||{}).value)||0,
+        minBillableMinutes: Number((document.getElementById('minBillable')||{}).value)||0
+      } : null,
       timestamp: new Date().toISOString()
     };
     if (typeof localStorage !== 'undefined') {
@@ -178,7 +216,7 @@ function saveDraft(name) {
       return true;
     }
   } catch (e) { /* ignore */ }
-  // fallback: attach to window for tests
+  // fallback: attach to window for tests (Node env)
   try {
     if (typeof window !== 'undefined' && payload) { window.__lastDraft = payload; return true; }
   } catch (e) {}
@@ -191,7 +229,7 @@ function loadDraft() {
     if (typeof localStorage !== 'undefined') raw = localStorage.getItem(DRAFT_KEY);
     if (!raw && typeof window !== 'undefined' && window.__lastDraft) raw = JSON.stringify(window.__lastDraft);
     if (!raw) return null;
-    const payload = JSON.parse(raw);
+  const payload = JSON.parse(raw);
     // apply overrides first
     try { if (payload.overrides) saveOverrides(payload.overrides); } catch (e) {}
     // apply state to DOM
@@ -222,6 +260,19 @@ function loadDraft() {
     } catch (e) { /* ignore DOM errors */ }
     // restore legsData
     try { legsData = (payload.legsData || []).map(l => ({ ...l })); } catch (e) { legsData = []; }
+    // restore advanced planning params
+    try {
+      if (payload.advancedPlanning && typeof document !== 'undefined') {
+        const ap = payload.advancedPlanning;
+        const setVal = (id, val) => { const el = document.getElementById(id); if (el) { if (el.type === 'checkbox') el.checked = !!val; else el.value = val; } };
+        setVal('enableAdvancedPlanning', ap.enabled);
+        setVal('windBuffer', ap.windPercent);
+        setVal('taxiMinutes', ap.taxiMinutes);
+        setVal('minBillable', ap.minBillableMinutes);
+        const panel = document.getElementById('advancedPlanningFields');
+        if (panel) panel.style.display = ap.enabled ? 'block' : 'none';
+      }
+    } catch (e) { /* ignore */ }
     // trigger recalculation only if resultado element exists (prevents errors in test/Node env)
     try {
       if (typeof gerarPreOrcamento === 'function') {
@@ -521,6 +572,38 @@ if (typeof document !== 'undefined') {
   });
 }
 
+// Advanced planning UI wiring: toggle and automatic recalculation
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    try {
+      const toggle = document.getElementById('enableAdvancedPlanning');
+      const panel = document.getElementById('advancedPlanningFields');
+      const wind = document.getElementById('windBuffer');
+      const taxi = document.getElementById('taxiMinutes');
+      const minB = document.getElementById('minBillable');
+      const trigger = debounce(() => { try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {} }, 250);
+
+      if (toggle && panel) {
+        // initialize visibility
+        panel.style.display = toggle.checked ? 'block' : 'none';
+        toggle.addEventListener('change', (e) => {
+          panel.style.display = e.target.checked ? 'block' : 'none';
+          trigger();
+        });
+      }
+
+      [wind, taxi, minB].forEach(el => {
+        if (!el) return;
+        el.addEventListener('input', () => {
+          // minor aria feedback
+          el.setAttribute('aria-live', 'polite');
+          trigger();
+        });
+      });
+    } catch (e) { /* ignore DOM wiring errors */ }
+  });
+}
+
 /* ==== END PATCH ==== */
 
 if (typeof document !== 'undefined') {
@@ -542,9 +625,12 @@ if (typeof document !== 'undefined') {
   if (aeronaveSel && tarifaInput) {
     const tarifaPreview = typeof document !== 'undefined' ? document.getElementById('tarifaPreview') : null;
     const syncTarifaFromAeronave = () => {
-      const val = valoresKm[aeronaveSel.value];
-      if (!tarifaInput.value || tarifaInput.value === '') tarifaInput.value = val || '';
-      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+  const val = valoresKm[aeronaveSel.value];
+  // Sempre atualizar a tarifa quando trocar de aeronave (exibir padrão daquela aeronave)
+  tarifaInput.value = (val !== undefined && val !== null) ? val : '';
+  if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+  // Recalcular imediatamente se função existir
+  try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
     };
     aeronaveSel.addEventListener('change', syncTarifaFromAeronave);
     tarifaInput.addEventListener('input', () => {
@@ -1204,19 +1290,11 @@ async function gerarPreOrcamento() {
     const taxiMinutes = document.getElementById('taxiMinutes') ? Number(document.getElementById('taxiMinutes').value) || 0 : 0;
     const minBillableMin = document.getElementById('minBillable') ? Number(document.getElementById('minBillable').value) || 0 : 0;
 
+    const advOpts = { enabled: advEnabled, windPercent, taxiMinutes, minBillableMinutes: minBillableMin };
     (legsData || []).forEach(l => {
       if (!l || !l.time || typeof l.time.hoursDecimal !== 'number') return;
-      let hours = Number(l.time.hoursDecimal || 0);
-      if (advEnabled) {
-        // add taxi minutes
-        const withTaxi = hours + (Number(taxiMinutes) || 0) / 60;
-        // apply wind buffer
-        const withWind = withTaxi * (1 + (Number(windPercent) || 0) / 100);
-        // enforce minimum billable per leg (convert minutes to hours)
-        const minH = (Number(minBillableMin) || 0) / 60;
-        hours = Math.max(minH, withWind);
-      }
-      totalHours += hours;
+      const base = Number(l.time.hoursDecimal || 0);
+      totalHours += adjustLegTime(base, advOpts);
     });
     const mins = Math.round(totalHours * 60);
     totalHhmm = `${Math.floor(mins/60)}:${String(mins%60).padStart(2,'0')}`;
@@ -1336,5 +1414,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft };
-}
+  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft, adjustLegTime };
+ }

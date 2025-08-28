@@ -9,7 +9,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Gerar notas (placeholder)
-        run: echo "Milestone fechada: ${{ github.event.milestone.title }}"
+        run: |
+          echo "Milestone fechada: ${{ github.event.milestone.title }}"
 name: Release Notes
 on:
   milestone:
@@ -21,4 +22,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Gerar notas (placeholder)
-        run: echo "Milestone fechada: ${{ github.event.milestone.title }}"
+        run: |
+          echo "Milestone fechada: ${{ github.event.milestone.title }}"

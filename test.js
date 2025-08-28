@@ -266,7 +266,27 @@ console.log('calcTempo tests passed.');
   elements.km = { value: '' };
   elements.origem = { value: 'SBBR' };
   elements.destino = { value: 'SBGR' };
+  elements.valorExtra = { value: '0' };
+  elements.tipoExtra = { value: 'soma' };
   elements.tarifa = { value: '40' };
+  elements.dataIda = { value: '2025-01-01' };
+  elements.dataVolta = { value: '2025-01-02' };
+  elements.observacoes = { value: 'Obs' };
+  elements.pagamento = { value: 'PG' };
+  elements.showRota = { checked: true };
+  elements.showAeronave = { checked: true };
+  elements.showTarifa = { checked: true };
+  elements.showDistancia = { checked: true };
+  elements.showDatas = { checked: true };
+  elements.showAjuste = { checked: true };
+  elements.showObservacoes = { checked: true };
+  elements.showPagamento = { checked: true };
+  elements.showMapa = { checked: true };
+  // Redefine document getter after populating elements
+  global.document = {
+    getElementById: id => elements[id],
+    querySelectorAll: sel => (sel === '.stop-input' ? [] : sel === '.commission-percent' ? [] : [])
+  };
   // ensure saveDraft exists
   const app = require('./app.js');
   if (typeof app.saveDraft === 'function' && typeof app.loadDraft === 'function') {
@@ -287,4 +307,18 @@ console.log('calcTempo tests passed.');
   } else {
     console.log('Draft API not available in this environment; skipping round-trip test.');
   }
+})();
+
+// === adjustLegTime unit tests ===
+(() => {
+  const { adjustLegTime } = require('./app.js');
+  let r = adjustLegTime(1, { enabled:false });
+  assert(Math.abs(r - 1) < 1e-9, 'Disabled should return base');
+  r = adjustLegTime(1, { enabled:true, taxiMinutes:30, windPercent:0, minBillableMinutes:0 });
+  assert(Math.abs(r - 1.5) < 1e-9, 'Taxi added');
+  r = adjustLegTime(1, { enabled:true, taxiMinutes:30, windPercent:10, minBillableMinutes:0 });
+  assert(Math.abs(r - 1.65) < 1e-9, 'Wind applied');
+  r = adjustLegTime(1, { enabled:true, taxiMinutes:0, windPercent:0, minBillableMinutes:120 });
+  assert(Math.abs(r - 2) < 1e-9, 'Min billable enforced');
+  console.log('adjustLegTime unit tests passed.');
 })();
