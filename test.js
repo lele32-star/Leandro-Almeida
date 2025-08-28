@@ -178,6 +178,33 @@ console.log('Route ordering test passed.');
   console.log('gerarPDF waypoint order test passed.');
 })();
 
+// Aircraft autofill functionality test
+const testAircraftAutofill = () => {
+  // Test that buildState correctly includes cruiseSpeed and hourlyRate fields
+  const testElements = {
+    ...elements,
+    cruiseSpeed: { value: '430' },
+    hourlyRate: { value: '18000' }
+  };
+  
+  const originalGetElementById = global.document.getElementById;
+  global.document.getElementById = (id) => testElements[id] || originalGetElementById(id);
+  
+  const state = buildState();
+  
+  // Restore original function
+  global.document.getElementById = originalGetElementById;
+  
+  assert(typeof state.cruiseSpeed !== 'undefined', 'buildState should include cruiseSpeed field');
+  assert(typeof state.hourlyRate !== 'undefined', 'buildState should include hourlyRate field');
+  assert(state.cruiseSpeed === 430, 'cruiseSpeed should be captured from user input');
+  assert(state.hourlyRate === 18000, 'hourlyRate should be captured from user input');
+  
+  console.log('Aircraft autofill buildState test passed.');
+};
+
+testAircraftAutofill();
+
 // === Novos testes para Fase 0: catálogo + overrides ===
 const acs = require('./data/aircraftCatalog.service.js');
 // catálogo deve existir e conter ao menos 7 entries
