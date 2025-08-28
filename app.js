@@ -1,3 +1,20 @@
+// Função de compatibilidade para obter tarifa por km de aeronave selecionada
+function getTarifaKmFromAircraft(aircraftName) {
+  if (!aircraftCatalog || !Array.isArray(aircraftCatalog)) return null;
+
+  // Primeiro tenta encontrar por nome exato
+  let aircraft = aircraftCatalog.find(a => a.nome === aircraftName);
+  if (!aircraft) {
+    // Tenta por id (alguns podem estar salvos com id)
+    aircraft = aircraftCatalog.find(a => a.id === aircraftName);
+  }
+  if (!aircraft) return null;
+
+  // Retorna tarifa efetiva (pode ter override)
+  return aircraft.tarifa_km_brl_default;
+}
+
+// Mantém valoresKm para compatibilidade, mas agora usa o catálogo
 const valoresKm = {
   "Hawker 400": 36,
   "Phenom 100": 36,
@@ -74,7 +91,7 @@ function loadAircraftCatalog() {
                 sel.innerHTML = '';
                 if (placeholder) sel.appendChild(placeholder); else sel.insertAdjacentHTML('beforeend', '<option value="" disabled selected>Escolha uma aeronave</option>');
                 aircraftCatalog.forEach(ac => {
-                  const kmRate = valoresKm[ac.nome];
+                  const kmRate = ac.tarifa_km_brl_default;
                   const rateTxt = kmRate ? `R$${Number(kmRate).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
                   const speedTxt = ac.cruise_speed_kt_default ? `${ac.cruise_speed_kt_default}KT` : '';
                   const hourTxt = ac.hourly_rate_brl_default ? `R$${Number(ac.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : '';
@@ -189,7 +206,7 @@ function bindAircraftParamsUI() {
   const cruisePreview = document.getElementById('cruisePreview');
   const hourlyPreview = document.getElementById('hourlyPreview');
       if (tarifaInput) {
-        const baseTarifa = valoresKm[name];
+        const baseTarifa = entry ? entry.tarifa_km_brl_default : valoresKm[name];
         if (baseTarifa !== undefined) tarifaInput.value = baseTarifa;
         if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR',{minimumFractionDigits:2})}/km` : '';
       }
@@ -669,12 +686,12 @@ if (typeof document !== 'undefined') {
     const hourlyPreview = typeof document !== 'undefined' ? document.getElementById('hourlyPreview') : null;
     const syncTarifaFromAeronave = () => {
   // Atualizar tarifa
-  const val = valoresKm[aeronaveSel.value];
+  const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value);
+  const val = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
   tarifaInput.value = (val !== undefined && val !== null) ? val : '';
   if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
   
   // Atualizar velocidade e valor-hora baseado no catálogo
-  const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value || a.id === (aeronaveSel.value && aeronaveSel.value.toLowerCase().replace(/[^a-z0-9]/g,'')));
   if (entry && cruiseInput) {
     cruiseInput.value = entry.cruise_speed_kt_default || '';
     if (cruisePreview) cruisePreview.textContent = entry.cruise_speed_kt_default ? `${entry.cruise_speed_kt_default} KTAS` : '';
@@ -721,7 +738,8 @@ if (typeof document !== 'undefined') {
     aeronaveSel.addEventListener('change', () => {
       const store = loadTarifasStore();
       const saved = store[aeronaveSel.value];
-      const defaultVal = valoresKm[aeronaveSel.value];
+      const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value);
+      const defaultVal = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
       if (saved !== undefined && saved !== null) {
         tarifaInput.value = saved;
       } else if (!tarifaInput.value || tarifaInput.value === '') {
@@ -736,8 +754,10 @@ if (typeof document !== 'undefined') {
       try {
         const store = loadTarifasStore();
         const saved = store[aeronaveSel.value];
+        const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value);
+        const defaultVal = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
         if (saved !== undefined && saved !== null) tarifaInput.value = saved;
-        else if (!tarifaInput.value || tarifaInput.value === '') tarifaInput.value = valoresKm[aeronaveSel.value] || '';
+        else if (!tarifaInput.value || tarifaInput.value === '') tarifaInput.value = defaultVal || '';
         applyTarifaPreview();
       } catch (e) {}
     });
@@ -745,7 +765,9 @@ if (typeof document !== 'undefined') {
     // substituir comportamento do botão para abrir modal
     if (btnShowTarifa && modal && modalInput && modalSave && modalCancel) {
       btnShowTarifa.addEventListener('click', () => {
-        const cur = tarifaInput.value || valoresKm[aeronaveSel.value] || '';
+        const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value);
+        const defaultVal = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
+        const cur = tarifaInput.value || defaultVal || '';
         modalInput.value = cur;
         modal.classList.add('show');
         // focar input
@@ -1067,7 +1089,9 @@ function buildState() {
   const valorExtra = parseFloat(document.getElementById('valorExtra').value) || 0;
   const tipoExtra = document.getElementById('tipoExtra').value;
   const tarifaVal = parseFloat(document.getElementById('tarifa').value);
-  const valorKm = Number.isFinite(tarifaVal) ? tarifaVal : valoresKm[aeronave];
+  const entry = aircraftCatalog.find(a => a.nome === aeronave || a.id === aeronave);
+  const defaultTarifa = entry ? entry.tarifa_km_brl_default : valoresKm[aeronave];
+  const valorKm = Number.isFinite(tarifaVal) ? tarifaVal : defaultTarifa;
   const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => i.value).filter(Boolean);
   const commissions = Array.from(document.querySelectorAll('.commission-percent')).map(input => parseFloat(input.value) || 0);
   const commissionAmountEl = document.getElementById('commissionAmount');
