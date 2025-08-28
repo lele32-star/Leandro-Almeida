@@ -1845,8 +1845,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
     defaultStyle: { 
       fontSize: 10, 
       lineHeight: 1.6, 
-      color: '#2E4053',
-      font: 'Helvetica'
+      color: '#2E4053'
     },
     styles: {
       h1: { 
@@ -1934,8 +1933,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
       paymentDetails: {
         fontSize: 12,
         color: '#7F8C8D',
-        lineHeight: 1.8,
-        font: 'Courier'
+        lineHeight: 1.8
       },
       observationsTitle: {
         fontSize: 14,
