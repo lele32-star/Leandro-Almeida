@@ -24,15 +24,252 @@ Requisitos desta entrega:
 // ================= SNAPSHOT / PRE-QUOTE API =================
 let __frozenQuote = null; // { selectedMethod: 'distance'|'time', snapshot: {...}, ts }
 const FROZEN_KEY = 'quote:last';
+const QUOTE_VERSION = '1.0';
 
 function getFrozenQuote(){
   if (__frozenQuote) return __frozenQuote;
-  try { const raw = localStorage.getItem(FROZEN_KEY); if (raw) { __frozenQuote = JSON.parse(raw); return __frozenQuote; } } catch{}
+  try { 
+    const raw = localStorage.getItem(FROZEN_KEY); 
+    if (raw) { 
+      const parsed = JSON.parse(raw);
+      // Check version compatibility
+      if (parsed.version && parsed.version !== QUOTE_VERSION) {
+        console.warn(`Quote version mismatch. Expected ${QUOTE_VERSION}, got ${parsed.version}`);
+        showToast && showToast(`Versão do orçamento incompatível (${parsed.version}). Ignorado.`, 5000, 'warning');
+        return null;
+      }
+      __frozenQuote = parsed.data || parsed; // Handle both versioned and legacy formats
+      return __frozenQuote; 
+    } 
+  } catch{}
   return null;
 }
-function freezePreQuote(method, snapshot){
+
+async function freezePreQuote(method, snapshot){
+  // Capture map snapshot if map exists
+  if (snapshot && typeof captureMapSnapshot === 'function') {
+    try {
+      const mapDataUrl = await captureMapSnapshot();
+      if (mapDataUrl) {
+        snapshot.mapDataUrl = mapDataUrl;
+      }
+    } catch (e) {
+      console.warn('Failed to capture map snapshot:', e);
+    }
+  }
+  
   __frozenQuote = { selectedMethod: method, snapshot, ts: Date.now() };
-  try { localStorage.setItem(FROZEN_KEY, JSON.stringify(__frozenQuote)); } catch{}
+  
+  // Save with version
+  const versionedData = {
+    version: QUOTE_VERSION,
+    timestamp: __frozenQuote.ts,
+    data: __frozenQuote
+  };
+  
+  try { 
+    localStorage.setItem(FROZEN_KEY, JSON.stringify(versionedData)); 
+  } catch{}
+  
+  // Enable UI freeze
+  enableUIFreeze();
+}
+
+function enableUIFreeze() {
+  const banner = document.getElementById('freezeBanner');
+  const timestamp = document.getElementById('freezeTimestamp');
+  
+  if (banner && timestamp) {
+    const now = new Date();
+    timestamp.textContent = now.toLocaleString('pt-BR');
+    banner.style.display = 'block';
+    banner.focus(); // Accessibility: focus on banner
+  }
+  
+  // Disable key inputs
+  const inputsToDisable = [
+    'input[name="metodoCalculo"]',
+    '#tarifa',
+    '#hourlyRate', 
+    '#cruiseSpeed',
+    '#nm',
+    '#km',
+    '#origem',
+    '#destino',
+    '#valorExtra',
+    '#tipoExtra',
+    '#aeronave',
+    '#windBuffer',
+    '#taxiMinutes',
+    '#minBillable',
+    '#enableAdvancedPlanning'
+  ];
+  
+  inputsToDisable.forEach(selector => {
+    const elements = document.querySelectorAll(selector);
+    elements.forEach(el => {
+      el.disabled = true;
+      el.style.opacity = '0.6';
+      el.style.cursor = 'not-allowed';
+    });
+  });
+  
+  // Also disable stop inputs
+  const stopInputs = document.querySelectorAll('.stop-input');
+  stopInputs.forEach(el => {
+    el.disabled = true;
+    el.style.opacity = '0.6';
+    el.style.cursor = 'not-allowed';
+  });
+}
+
+function disableUIFreeze() {
+  const banner = document.getElementById('freezeBanner');
+  if (banner) {
+    banner.style.display = 'none';
+  }
+  
+  // Re-enable all inputs
+  const inputsToEnable = [
+    'input[name="metodoCalculo"]',
+    '#tarifa',
+    '#hourlyRate', 
+    '#cruiseSpeed',
+    '#nm',
+    '#km',
+    '#origem',
+    '#destino',
+    '#valorExtra',
+    '#tipoExtra',
+    '#aeronave',
+    '#windBuffer',
+    '#taxiMinutes',
+    '#minBillable',
+    '#enableAdvancedPlanning'
+  ];
+  
+  inputsToEnable.forEach(selector => {
+    const elements = document.querySelectorAll(selector);
+    elements.forEach(el => {
+      el.disabled = false;
+      el.style.opacity = '';
+      el.style.cursor = '';
+      el.removeAttribute('aria-invalid');
+    });
+  });
+  
+  // Also re-enable stop inputs
+  const stopInputs = document.querySelectorAll('.stop-input');
+  stopInputs.forEach(el => {
+    el.disabled = false;
+    el.style.opacity = '';
+    el.style.cursor = '';
+  });
+}
+
+function novoPreOrcamento() {
+  // Clear frozen state
+  __frozenQuote = null;
+  try {
+    localStorage.removeItem(FROZEN_KEY);
+  } catch {}
+  
+  // Re-enable UI
+  disableUIFreeze();
+  
+  // Clear results
+  const resultado = document.getElementById('resultado');
+  if (resultado) {
+    resultado.innerHTML = '';
+  }
+  
+  showToast && showToast('Novo pré-orçamento iniciado. Inputs liberados.', 3000, 'success');
+}
+
+function reopenLastQuote() {
+  const frozen = getFrozenQuote();
+  if (!frozen) {
+    showToast && showToast('Nenhum orçamento salvo encontrado.', 3000, 'warning');
+    return;
+  }
+  
+  const resultado = document.getElementById('resultado');
+  if (resultado) {
+    renderFrozenPreview(resultado, frozen);
+    enableUIFreeze();
+    showToast && showToast('Último orçamento reaberto.', 3000, 'success');
+  }
+}
+
+async function copyQuoteJSON() {
+  const frozen = getFrozenQuote();
+  if (!frozen) {
+    showToast && showToast('Nenhum orçamento congelado para copiar.', 3000, 'warning');
+    return;
+  }
+  
+  try {
+    const jsonString = JSON.stringify(frozen, null, 2);
+    await navigator.clipboard.writeText(jsonString);
+    showToast && showToast('JSON copiado para a área de transferência.', 3000, 'success');
+  } catch (e) {
+    console.error('Failed to copy JSON:', e);
+    showToast && showToast('Falha ao copiar JSON.', 3000, 'error');
+  }
+}
+
+let currentBlobUrl = null;
+async function copyQuoteLink() {
+  const frozen = getFrozenQuote();
+  if (!frozen) {
+    showToast && showToast('Nenhum orçamento congelado para compartilhar.', 3000, 'warning');
+    return;
+  }
+  
+  try {
+    // Clean up previous blob URL
+    if (currentBlobUrl) {
+      URL.revokeObjectURL(currentBlobUrl);
+    }
+    
+    const jsonString = JSON.stringify(frozen);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    currentBlobUrl = URL.createObjectURL(blob);
+    
+    await navigator.clipboard.writeText(currentBlobUrl);
+    showToast && showToast('Link blob copiado para a área de transferência.', 3000, 'success');
+  } catch (e) {
+    console.error('Failed to copy link:', e);
+    showToast && showToast('Falha ao copiar link.', 3000, 'error');
+  }
+}
+
+async function captureMapSnapshot() {
+  const mapElement = document.getElementById('map');
+  if (!mapElement || typeof html2canvas === 'undefined') {
+    console.warn('Map element not found or html2canvas not available');
+    return null;
+  }
+  
+  // Check if map has content
+  if (!mapElement.hasChildNodes() || mapElement.offsetHeight === 0) {
+    console.warn('Map appears to be empty or hidden');
+    return null;
+  }
+  
+  try {
+    const canvas = await html2canvas(mapElement, {
+      backgroundColor: '#ffffff',
+      scale: 1,
+      useCORS: true,
+      allowTaint: false
+    });
+    
+    return canvas.toDataURL('image/png');
+  } catch (e) {
+    console.error('Failed to capture map:', e);
+    return null;
+  }
 }
 function baseQuoteResult(){
   return { method:null, distanciaKm:0, distanciaNm:0, valorKm:0, subtotal:0, ajusteAplicado:0, comissao:0, comissaoDetalhes:[], commissionAmountExtra:0, total:0, metodo2:null, aeronave:null, inputs:{}, legs:[], raw:{} };
@@ -167,6 +404,30 @@ function setupAircraftAutofillConsolidated() {
     try { localStorage.setItem(LKEY, JSON.stringify(store)); } catch {} 
   }
 
+  // User dirty flags to prevent overwriting manual input
+  const userDirtyFlags = {
+    tarifa: false,
+    hourlyRate: false,
+    cruiseSpeed: false
+  };
+
+  // Track when user manually changes inputs
+  if (tarifaInput) {
+    tarifaInput.addEventListener('input', () => {
+      userDirtyFlags.tarifa = true;
+    });
+  }
+  if (hourlyInput) {
+    hourlyInput.addEventListener('input', () => {
+      userDirtyFlags.hourlyRate = true;
+    });
+  }
+  if (cruiseInput) {
+    cruiseInput.addEventListener('input', () => {
+      userDirtyFlags.cruiseSpeed = true;
+    });
+  }
+
   function handleAircraftChange() {
     const val = select.value;
     const data = getSelectedAircraftData(val);
@@ -178,8 +439,13 @@ function setupAircraftAutofillConsolidated() {
       return;
     }
 
+    // Reset dirty flags when aircraft changes (user wants new aircraft data)
+    userDirtyFlags.tarifa = false;
+    userDirtyFlags.hourlyRate = false;
+    userDirtyFlags.cruiseSpeed = false;
+
     // 1. Gerenciar tarifa com localStorage (prioridade: salva > padrão > vazio)
-    if (tarifaInput && data.tarifaKm) {
+    if (tarifaInput && data.tarifaKm && !userDirtyFlags.tarifa) {
       const store = loadTarifasStore();
       const saved = store[val];
       
@@ -199,27 +465,37 @@ function setupAircraftAutofillConsolidated() {
       }
     }
 
-    // 2. Autofill hourly rate se campo existir e estiver vazio
-    if (hourlyInput && data.hourlyRate && (!hourlyInput.value || hourlyInput.value === '' || hourlyInput.value == hourlyInput.defaultValue)) {
-      hourlyInput.value = data.hourlyRate;
-      hourlyInput.placeholder = `R$ ${Number(data.hourlyRate).toLocaleString('pt-BR')}/h`;
-      hourlyInput.dispatchEvent(new Event('input', { bubbles: true }));
-      console.log('Hourly rate preenchido:', hourlyInput.value);
+    // 2. Autofill hourly rate se não estiver "sujo" (modificado pelo usuário)
+    if (hourlyInput && data.hourlyRate && !userDirtyFlags.hourlyRate) {
+      if (!hourlyInput.value || hourlyInput.value === '' || hourlyInput.value == hourlyInput.defaultValue) {
+        hourlyInput.value = data.hourlyRate;
+        hourlyInput.placeholder = `R$ ${Number(data.hourlyRate).toLocaleString('pt-BR')}/h`;
+        hourlyInput.dispatchEvent(new Event('input', { bubbles: true }));
+        console.log('Hourly rate preenchido:', hourlyInput.value);
+      }
     }
     
-    // 3. Autofill cruise speed se campo existir e estiver vazio
-    if (cruiseInput && data.cruiseKtas && (!cruiseInput.value || cruiseInput.value === '' || cruiseInput.value == cruiseInput.defaultValue)) {
-      cruiseInput.value = data.cruiseKtas;
-      cruiseInput.placeholder = `${data.cruiseKtas} KTAS`;
-      cruiseInput.dispatchEvent(new Event('input', { bubbles: true }));
-      console.log('Cruise speed preenchido:', cruiseInput.value);
+    // 3. Autofill cruise speed se não estiver "sujo" (modificado pelo usuário)
+    if (cruiseInput && data.cruiseKtas && !userDirtyFlags.cruiseSpeed) {
+      if (!cruiseInput.value || cruiseInput.value === '' || cruiseInput.value == cruiseInput.defaultValue) {
+        cruiseInput.value = data.cruiseKtas;
+        cruiseInput.placeholder = `${data.cruiseKtas} KTAS`;
+        cruiseInput.dispatchEvent(new Event('input', { bubbles: true }));
+        console.log('Cruise speed preenchido:', cruiseInput.value);
+      }
     }
 
-    // 4. Disparar recálculo
+    // 4. Disparar recálculo em tempo real quando autofill ocorrer
     try { 
       if (typeof gerarPreOrcamento === 'function') {
-        setTimeout(gerarPreOrcamento, 50);
-        console.log('Recálculo disparado');
+        // Only trigger if not frozen
+        const frozen = getFrozenQuote();
+        if (!frozen) {
+          setTimeout(gerarPreOrcamento, 50);
+          console.log('Recálculo disparado após autofill');
+        } else {
+          console.log('Recálculo evitado - orçamento está congelado');
+        }
       }
     } catch (e) { 
       console.warn('Erro ao disparar recálculo:', e); 
@@ -491,7 +767,11 @@ function adjustLegTime(baseHours, options) {
 
 // Accessible toast helper: shows short messages in an ARIA live region
 function showToast(message, timeout = 4000, type = 'info') {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined' || typeof window === 'undefined') {
+    console.log(`Toast: ${message} (${type})`);
+    return;
+  }
+  
   let container = document.getElementById('toastContainer');
   if (!container) {
     container = document.createElement('div');
@@ -502,7 +782,11 @@ function showToast(message, timeout = 4000, type = 'info') {
     container.style.right = '12px';
     container.style.top = '12px';
     container.style.zIndex = 99999;
-    document.body.appendChild(container);
+    if (document.body) {
+      document.body.appendChild(container);
+    } else {
+      return; // No body element, can't append
+    }
   }
   // create toast
   const t = document.createElement('div');
@@ -1727,11 +2011,16 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
     // Sem dados do método 2
   }
 
-  // Cabeçalho sem imagem (evita falha caso não exista dataURL)
+  // Cabeçalho com método
+  const methodLabel = methodSelection === 'method2' ? 'Base: Tempo (R$/h × horas)' : 'Base: Distância';
   const headerBlock = {
     columns: [
       { width: 80, stack: [ { canvas: [ { type: 'rect', x: 0, y: 0, w: 60, h: 40, color: '#f0f0f0' } ] } ], margin: [0,0,0,0] },
-      { stack: [ { text: '[NOME_EMPRESA]', style: 'brand' }, { text: '[SLOGAN_CURTO]', style: 'muted' } ], alignment: 'left' },
+      { stack: [ 
+          { text: '[NOME_EMPRESA]', style: 'brand' }, 
+          { text: `Método: ${methodLabel}`, style: 'muted', fontSize: 9, color: '#0d6efd' },
+          { text: '[SLOGAN_CURTO]', style: 'muted' } 
+        ], alignment: 'left' },
       { stack: [ { text: '[EMAIL_CONTATO]', style: 'mini' }, { text: '[WHATSAPP_LINK]', style: 'mini' }, { text: '[CNPJ_OPCIONAL]', style: 'mini' } ], alignment: 'right' }
     ],
     columnGap: 10,
@@ -2152,6 +2441,37 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
 
     // Extras e rodapé premium
     ...(extras.length ? [{ text: 'Informações Adicionais', style: 'sectionTitle', margin: [0,15,0,10] }, ...extras] : []),
+    
+    // Map section (if mapDataUrl exists in snapshot)
+    ...(state.mapDataUrl ? [{
+      text: 'Mapa da Rota:', 
+      style: 'sectionTitle', 
+      margin: [0, 20, 0, 10]
+    }, {
+      image: state.mapDataUrl,
+      width: 500,
+      alignment: 'center',
+      margin: [0, 0, 0, 20]
+    }] : []),
+    
+    // Legal copy section
+    {
+      text: 'Observações & Condições',
+      style: 'sectionTitle',
+      margin: [0, 20, 0, 10]
+    },
+    {
+      text: [
+        'Este pré-orçamento foi preparado com base nas informações fornecidas.\n',
+        'Valores sujeitos a confirmação e disponibilidade da aeronave.\n',
+        'Combustível, taxas aeroportuárias e serviços adicionais podem alterar o valor final.\n',
+        'Orçamento válido por 7 dias a partir da data de emissão.\n',
+        'Para confirmação da reserva, entre em contato conosco.'
+      ],
+      style: 'body',
+      color: '#5D6D7E',
+      margin: [0, 0, 0, 20]
+    },
 
     // Linha separadora final
     { 
@@ -2390,21 +2710,66 @@ async function gerarPreOrcamento() {
   // 4. Calcula usando API unificada garantindo snapshot estável
   let result;
   if (method === 'time') {
-    // validação específica valor-hora
-    const hourlyRate = Number(document.getElementById('hourlyRate')?.value || 0);
-    if (!hourlyRate) {
-      showToast && showToast('Informe o Valor-Hora para usar o Método 2.');
-      // fallback: não congela nada
-      if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #e67e22;background:#fff5eb;border-radius:6px">Preencha o <strong>Valor-Hora (#hourlyRate)</strong> para gerar o pré-orçamento por tempo.</div>`;
+    // Validações fortes para Método 2 (tempo)
+    const hourlyRateInput = document.getElementById('hourlyRate');
+    const cruiseSpeedInput = document.getElementById('cruiseSpeed');
+    const hourlyRate = Number(hourlyRateInput?.value || 0);
+    const cruiseKtas = Number(cruiseSpeedInput?.value || 0);
+    
+    let hasErrors = false;
+    
+    // Validate hourlyRate > 0
+    if (hourlyRate <= 0) {
+      hasErrors = true;
+      if (hourlyRateInput) {
+        hourlyRateInput.setAttribute('aria-invalid', 'true');
+        hourlyRateInput.style.borderColor = '#dc3545';
+      }
+    } else {
+      if (hourlyRateInput) {
+        hourlyRateInput.removeAttribute('aria-invalid');
+        hourlyRateInput.style.borderColor = '';
+      }
+    }
+    
+    // Validate cruiseKtas > 0
+    if (cruiseKtas <= 0) {
+      hasErrors = true;
+      if (cruiseSpeedInput) {
+        cruiseSpeedInput.setAttribute('aria-invalid', 'true');
+        cruiseSpeedInput.style.borderColor = '#dc3545';
+      }
+    } else {
+      if (cruiseSpeedInput) {
+        cruiseSpeedInput.removeAttribute('aria-invalid');
+        cruiseSpeedInput.style.borderColor = '';
+      }
+    }
+    
+    // If validation fails, show toast and abort
+    if (hasErrors) {
+      const messages = [];
+      if (hourlyRate <= 0) messages.push('Valor-hora deve ser maior que 0');
+      if (cruiseKtas <= 0) messages.push('Velocidade de cruzeiro (KTAS) deve ser maior que 0');
+      
+      showToast && showToast(`Erro: ${messages.join('; ')}.`, 5000, 'error');
+      
+      if (saida) {
+        saida.innerHTML = `<div style="padding:12px;border:1px solid #dc3545;background:#f8d7da;border-radius:6px;color:#721c24">
+          <strong>Validação falhada para Método 2:</strong><br>
+          ${messages.map(msg => `• ${msg}`).join('<br>')}
+        </div>`;
+      }
       return;
     }
+    
     result = computeByTime(state); // sempre puxa #hourlyRate atual (Requisito 1)
   } else {
     result = computeByDistance(state);
   }
 
   // 5. Congela (persistência + memória) (Requisito 2)
-  freezePreQuote(method, result);
+  await freezePreQuote(method, result);
 
   // 6. Render preview congelado simples e objetivo
   renderFrozenPreview(saida, getFrozenQuote());
@@ -2438,7 +2803,7 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
   const frozen = getFrozenQuote();
   if (!frozen) {
     showToast && showToast('Gere o Pré-Orçamento antes de exportar o PDF.');
-    alert && alert('Gere o Pré-Orçamento antes de exportar o PDF.');
+    (typeof alert !== 'undefined') && alert('Gere o Pré-Orçamento antes de exportar o PDF.');
     return;
   }
   const { selectedMethod, snapshot } = frozen;
@@ -2552,8 +2917,13 @@ if (typeof window !== 'undefined') {
   // Aliases para garantir que os botões chamem SEMPRE a versão do app.js
   window.appGerarPreOrcamento = gerarPreOrcamento;
   window.appGerarPDF = gerarPDF;
+  // New functions for enhanced quote system
+  window.novoPreOrcamento = novoPreOrcamento;
+  window.reopenLastQuote = reopenLastQuote;
+  window.copyQuoteJSON = copyQuoteJSON;
+  window.copyQuoteLink = copyQuoteLink;
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft, adjustLegTime, getSelectedPdfMethod };
+  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft, adjustLegTime, getSelectedPdfMethod, getFrozenQuote, freezePreQuote };
  }

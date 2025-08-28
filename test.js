@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { buildState, buildDocDefinition, gerarPDF, calcularComissao } = require('./app.js');
+const { buildState, buildDocDefinition, gerarPDF, calcularComissao, getFrozenQuote, freezePreQuote } = require('./app.js');
 
 function extractText(docDef) {
   return docDef.content
@@ -152,30 +152,41 @@ const routeText = extractText(routeDoc);
 assert(routeText.includes('SBBR → SBMO → SBBH → SBBR'), 'Route should list destination before extra stops');
 console.log('Route ordering test passed.');
 
-// gerarPDF should request coordinates in correct order
+// gerarPDF should work with frozen snapshots and not fetch new data
 (async () => {
   const fetchCalls = [];
   global.fetch = async (url) => {
     fetchCalls.push(url);
     return { ok: true, json: async () => ({ location: { lat: 0, lon: 0 } }) };
   };
-  await gerarPDF({
+  
+  // First create a frozen quote
+  const testState = {
     ...baseState,
     origem: 'SBBR',
     destino: 'SBMO',
     stops: ['SBBH', 'SBBR'],
     showMapa: true,
-    showRota: false,
-    showAeronave: false,
-    showTarifa: false,
-    showDistancia: false,
-    showDatas: false,
-    showAjuste: false,
-    showObservacoes: false,
+    nm: 100,
+    valorKm: 10
+  };
+  
+  // Mock freezePreQuote to simulate having a frozen quote
+  const originalGetFrozenQuote = getFrozenQuote;
+  global.getFrozenQuote = () => ({
+    selectedMethod: 'distance',
+    snapshot: testState,
+    ts: Date.now()
   });
-  const codes = fetchCalls.map(u => u.split('/').pop());
-  assert.deepStrictEqual(codes, ['SBBR', 'SBMO', 'SBBH'], 'gerarPDF should fetch coordinates in waypoint order');
-  console.log('gerarPDF waypoint order test passed.');
+  
+  await gerarPDF(); // Should use frozen snapshot, not fetch new data
+  
+  // Restore original function
+  global.getFrozenQuote = originalGetFrozenQuote;
+  
+  // New behavior: should NOT fetch coordinates when using frozen snapshot
+  assert.deepStrictEqual(fetchCalls, [], 'gerarPDF should not fetch coordinates when using frozen snapshot');
+  console.log('gerarPDF frozen snapshot test passed.');
 })();
 
 // === Novos testes para Fase 0: catálogo + overrides ===
