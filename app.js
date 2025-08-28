@@ -927,13 +927,18 @@ if (typeof document !== 'undefined') {
       tarifaInput.value = (val !== undefined && val !== null) ? val : '';
       if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
 
-      // Garantir preenchimento dos inputs de velocidade e valor-hora — mesmo quando a correspondência não foi exata, tentamos preencher via lookup
+      // Garantir preenchimento dos inputs de velocidade e valor-hora — somente preencher a partir do catálogo
+      // se o usuário não tiver informado um valor manualmente (preservar edits do usuário).
       if (cruiseInput) {
-        cruiseInput.value = entry && entry.cruise_speed_kt_default ? entry.cruise_speed_kt_default : '';
+        if (!cruiseInput.value || cruiseInput.value === '') {
+          cruiseInput.value = entry && entry.cruise_speed_kt_default ? entry.cruise_speed_kt_default : '';
+        }
         cruiseInput.placeholder = entry && entry.cruise_speed_kt_default ? `${entry.cruise_speed_kt_default} KTAS` : 'Ex: 430';
       }
       if (hourlyInput) {
-        hourlyInput.value = entry && entry.hourly_rate_brl_default ? entry.hourly_rate_brl_default : '';
+        if (!hourlyInput.value || hourlyInput.value === '') {
+          hourlyInput.value = entry && entry.hourly_rate_brl_default ? entry.hourly_rate_brl_default : '';
+        }
         hourlyInput.placeholder = entry && entry.hourly_rate_brl_default ? `R$ ${Number(entry.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : 'Ex: 18000';
       }
 
@@ -1009,6 +1014,13 @@ if (typeof document !== 'undefined') {
         if (saved !== undefined && saved !== null) tarifaInput.value = saved;
         else if (!tarifaInput.value || tarifaInput.value === '') tarifaInput.value = defaultVal || '';
         applyTarifaPreview();
+        // Preencher velocidade e valor-hora apenas se vazios
+        if (cruiseInput && (!cruiseInput.value || cruiseInput.value === '')) {
+          cruiseInput.value = entry && entry.cruise_speed_kt_default ? entry.cruise_speed_kt_default : '';
+        }
+        if (hourlyInput && (!hourlyInput.value || hourlyInput.value === '')) {
+          hourlyInput.value = entry && entry.hourly_rate_brl_default ? entry.hourly_rate_brl_default : '';
+        }
       } catch (e) {}
     });
 
