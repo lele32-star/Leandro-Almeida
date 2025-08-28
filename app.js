@@ -718,8 +718,8 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
     const m2 = (typeof window !== 'undefined' && window.__method2Summary) ? window.__method2Summary : method2Summary;
     if (m2) {
       hasMethod2Data = true;
-      const entry = aircraftCatalog.find(a => a.nome === state.aeronave || a.id === state.aeronave);
-      const hourlyRate = entry ? entry.hourly_rate_brl_default : 0;
+      // Use hourly rate from state (which includes user input) or fallback to catalog default
+      const hourlyRate = state.hourlyRate || 0;
       
       dadosMetodo2 = {
         ...dadosComuns,
@@ -1342,6 +1342,10 @@ function buildState() {
   const entry = aircraftCatalog.find(a => a.nome === aeronave || a.id === aeronave);
   const defaultTarifa = entry ? entry.tarifa_km_brl_default : valoresKm[aeronave];
   const valorKm = Number.isFinite(tarifaVal) ? tarifaVal : defaultTarifa;
+  const hourlyRateEl = document.getElementById('hourlyRate');
+  const hourlyRateVal = hourlyRateEl ? parseFloat(hourlyRateEl.value) : NaN;
+  const defaultHourlyRate = entry ? entry.hourly_rate_brl_default : 0;
+  const hourlyRate = Number.isFinite(hourlyRateVal) ? hourlyRateVal : defaultHourlyRate;
   const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => i.value).filter(Boolean);
   const commissions = Array.from(document.querySelectorAll('.commission-percent')).map(input => parseFloat(input.value) || 0);
   const commissionAmountEl = document.getElementById('commissionAmount');
@@ -1361,6 +1365,7 @@ function buildState() {
     valorExtra,
     tipoExtra,
     valorKm,
+    hourlyRate,
     stops,
     commissions,
     commissionAmount,
@@ -2117,7 +2122,7 @@ async function gerarPreOrcamento() {
   // find catalog entry
   const entry = aircraftCatalog.find(a => a.nome === craftName || a.id === craftName) || {};
   const cruiseEff = Number(document.getElementById('cruiseSpeed').value) || (entry && entry.cruise_speed_kt_default) || 0;
-  const hourlyEff = Number(document.getElementById('hourlyRate').value) || (entry && entry.hourly_rate_brl_default) || 0;
+  const hourlyEff = state2.hourlyRate || 0;
 
   // Determine if we should calculate method2: either explicit 'pernas' pricing mode, or when both cruise and hourly are available and we have route/legs (or running in test env)
   const codes = [state2.origem, state2.destino, ...(state2.stops || [])].filter(Boolean);
