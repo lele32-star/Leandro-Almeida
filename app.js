@@ -806,28 +806,29 @@ function buildDraftPayload() {
     timestamp: new Date().toISOString()
   };
 }
-function saveDraft(name){
+function saveDraft(){
   try {
     const payload = buildDraftPayload();
-    if (window.StoragePersist && window.StoragePersist.saveDraft) {
-      return window.StoragePersist.saveDraft(payload);
+    if (window.App && window.App.persist && typeof window.App.persist.saveDraft === 'function') {
+      window.App.persist.saveDraft(payload);
+      return true;
     }
-    // fallback legado
-    if (typeof window !== 'undefined') { window.__lastDraft = payload; }
+    // fallback
+    if (typeof window !== 'undefined') window.__lastDraft = payload;
     return true;
   } catch(e){ return false; }
 }
 function loadDraft(){
   try {
-    let wrapped = null;
-    if (window.StoragePersist && window.StoragePersist.loadDraft) {
-      wrapped = window.StoragePersist.loadDraft();
+    let payload = null;
+    if (window.App && window.App.persist && typeof window.App.persist.loadDraft === 'function') {
+      const data = window.App.persist.loadDraft();
+      if (data) payload = data; // já é o objeto salvo (equivalente a wrapped.data anterior)
     }
-    if (!wrapped) { // fallback legacy
-      wrapped = { data: (typeof window !== 'undefined' && window.__lastDraft) ? window.__lastDraft : null };
+    if (!payload && typeof window !== 'undefined' && window.__lastDraft) {
+      payload = window.__lastDraft;
     }
-    if (!wrapped || !wrapped.data) return null;
-    const payload = wrapped.data;
+    if (!payload) return null;
     const s = payload.state || {};
     if (typeof document !== 'undefined') {
       const set = (id, val) => { const el = document.getElementById(id); if (!el) return; if (el.type === 'checkbox') el.checked = !!val; else el.value = val == null ? '' : val; };
@@ -1394,6 +1395,7 @@ if (typeof document !== 'undefined') {
 // Optional save/load buttons wiring
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
+    try { if (window.App && window.App.persist && typeof window.App.persist.migrateIfNeeded === 'function') window.App.persist.migrateIfNeeded(); } catch(e) {}
     const btnSaveDraft = document.getElementById('btnSaveDraft');
     const btnLoadDraft = document.getElementById('btnLoadDraft');
     if (btnSaveDraft) btnSaveDraft.addEventListener('click', () => { const ok = saveDraft(); showToast(ok ? 'Rascunho salvo localmente.' : 'Falha ao salvar rascunho.'); });
