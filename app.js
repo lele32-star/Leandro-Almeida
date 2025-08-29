@@ -258,6 +258,16 @@ function newPreOrcamento(){
   if (btnPdf) btnPdf.disabled = false;
 }
 
+// Connect "Novo Pré-Orçamento" button to newPreOrcamento function
+if (typeof document !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', () => {
+    const newBtn = document.getElementById('newPreOrcamentoBtn');
+    if (newBtn) {
+      newBtn.addEventListener('click', newPreOrcamento);
+    }
+  });
+}
+
 function reabrirUltimoOrcamento(){
   const frozen = getFrozenQuote();
   if (!frozen) {
