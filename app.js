@@ -146,7 +146,10 @@ function getUiSelectedMethod(){
   const rDist = document.querySelector('input[name="metodoCalculo"][value="distance"]');
   if (rTime?.checked) return 'time';
   if (rDist?.checked) return 'distance';
-  try { const m = localStorage.getItem('selectedMethodPdf'); if (m==='method2') return 'time'; } catch{}
+  try { 
+    const m = safeStorageGet(STORAGE_KEYS.PDF_METHOD) || safeStorageGet(LEGACY_STORAGE_KEYS.PDF_METHOD); 
+    if (m==='method2') return 'time'; 
+  } catch{}
   return 'distance';
 }
 function renderFrozenPreview(container, frozen){
@@ -373,13 +376,23 @@ function setupAircraftAutofillConsolidated() {
 
   console.log('Configurando autofill consolidado para aeronave');
 
-  // Utilitários para localStorage de tarifas
-  const LKEY = 'cotacao:tarifas';
+  // Utilitários para localStorage de tarifas - sistema padronizado
   function loadTarifasStore() {
-    try { return JSON.parse(localStorage.getItem(LKEY) || '{}'); } catch { return {}; }
+    try { 
+      // Try new key first, fallback to legacy
+      const newData = safeStorageGet(STORAGE_KEYS.TARIFFS);
+      if (newData) return JSON.parse(newData);
+      const legacyData = safeStorageGet(LEGACY_STORAGE_KEYS.TARIFFS);
+      if (legacyData) {
+        // Migrate to new key
+        safeStorageSet(STORAGE_KEYS.TARIFFS, legacyData);
+        return JSON.parse(legacyData);
+      }
+      return {};
+    } catch { return {}; }
   }
   function saveTarifasStore(store) { 
-    try { localStorage.setItem(LKEY, JSON.stringify(store)); } catch {} 
+    try { safeStorageSet(STORAGE_KEYS.TARIFFS, JSON.stringify(store)); } catch {} 
   }
 
   // Flags para proteger contra sobrescrita
@@ -555,6 +568,82 @@ function getTarifaKmFromAircraft(aircraftName) {
 }
 
 // Mantém valoresKm para compatibilidade, mas agora usa o catálogo
+// ================= STORAGE API (STANDARDIZED) =================
+// Fase 6 — Persistência padronizada + drafts versionados
+const STORAGE_PREFIX = 'app:quote:';
+const CURRENT_DRAFT_VERSION = 1;
+
+const STORAGE_KEYS = {
+  DRAFT: `${STORAGE_PREFIX}draft`,
+  TARIFFS: `${STORAGE_PREFIX}tariffs`,
+  OVERRIDES: `${STORAGE_PREFIX}overrides`,
+  PDF_METHOD: `${STORAGE_PREFIX}pdfMethod`,
+  PDF_TOGGLES: `${STORAGE_PREFIX}pdfToggles`,
+  FROZEN_QUOTE: `${STORAGE_PREFIX}frozenQuote`
+};
+
+const LEGACY_STORAGE_KEYS = {
+  DRAFT: 'cotacao:currentDraft',
+  TARIFFS: 'cotacao:tarifas',
+  OVERRIDES: 'avCotacao.aircraftOverrides',
+  PDF_METHOD: 'selectedMethodPdf',
+  PDF_TOGGLES: 'pdfInlineToggles',
+  FROZEN_QUOTE: 'quote:last'
+};
+
+function safeStorageGet(key) {
+  try { return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null; } catch (e) { return null; }
+}
+
+function safeStorageSet(key, value) {
+  try { if (typeof localStorage !== 'undefined') { localStorage.setItem(key, value); return true; } } catch (e) { /* ignore */ }
+  return false;
+}
+
+function safeStorageRemove(key) {
+  try { if (typeof localStorage !== 'undefined') { localStorage.removeItem(key); } } catch (e) { /* ignore */ }
+}
+
+function safeStorageRemove(key) {
+  try { if (typeof localStorage !== 'undefined') { localStorage.removeItem(key); } } catch (e) { /* ignore */ }
+}
+
+function migrateIfNeeded() {
+  let migrated = false;
+  
+  // Migrate draft data
+  const hasDraftData = safeStorageGet(STORAGE_KEYS.DRAFT);
+  const hasLegacyDraftData = safeStorageGet(LEGACY_STORAGE_KEYS.DRAFT);
+  
+  if (!hasDraftData && hasLegacyDraftData) {
+    try {
+      const legacyData = JSON.parse(hasLegacyDraftData);
+      const versionedDraft = {
+        ...legacyData,
+        draftVersion: CURRENT_DRAFT_VERSION,
+        migratedFrom: 'legacy',
+        migrationTimestamp: new Date().toISOString()
+      };
+      safeStorageSet(STORAGE_KEYS.DRAFT, JSON.stringify(versionedDraft));
+      migrated = true;
+    } catch (e) { /* ignore */ }
+  }
+  
+  // Migrate other data types
+  Object.entries(LEGACY_STORAGE_KEYS).forEach(([type, legacyKey]) => {
+    if (type === 'DRAFT') return; // already handled
+    const standardKey = STORAGE_KEYS[type];
+    const hasStandardData = safeStorageGet(standardKey);
+    const hasLegacyData = safeStorageGet(legacyKey);
+    if (!hasStandardData && hasLegacyData) {
+      safeStorageSet(standardKey, hasLegacyData);
+      migrated = true;
+    }
+  });
+  
+  return migrated;
+}
+
 const valoresKm = {
   "Hawker 400": 36,
   "Phenom 100": 36,
@@ -804,9 +893,10 @@ function bindAircraftParamsUI() {
 
 // Legs data (keeps per-leg computed values)
 let legsData = [];
-const DRAFT_KEY = 'cotacao:currentDraft';
-
 function saveDraft(name) {
+  // Ensure migration has been attempted
+  migrateIfNeeded();
+  
   let payload = null;
   try {
     const state = buildState();
@@ -815,20 +905,21 @@ function saveDraft(name) {
     payload = {
       state,
       legsData: (legsData || []).map(l => ({ ...l })),
-  overrides: {},
+      overrides: {},
       advancedPlanning: advEnabledEl ? {
         enabled: !!advEnabledEl.checked,
         windPercent: Number((document.getElementById('windBuffer')||{}).value)||0,
         taxiMinutes: Number((document.getElementById('taxiMinutes')||{}).value)||0,
         minBillableMinutes: Number((document.getElementById('minBillable')||{}).value)||0
       } : null,
+      draftVersion: CURRENT_DRAFT_VERSION,
       timestamp: new Date().toISOString()
     };
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
-      return true;
-    }
+    
+    const success = safeStorageSet(STORAGE_KEYS.DRAFT, JSON.stringify(payload));
+    if (success) return true;
   } catch (e) { /* ignore */ }
+  
   // fallback: attach to window for tests (Node env)
   try {
     if (typeof window !== 'undefined' && payload) { window.__lastDraft = payload; return true; }
@@ -837,14 +928,39 @@ function saveDraft(name) {
 }
 
 function loadDraft() {
+  // Ensure migration has been attempted
+  migrateIfNeeded();
+  
   try {
     let raw = null;
-    if (typeof localStorage !== 'undefined') raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw && typeof window !== 'undefined' && window.__lastDraft) raw = JSON.stringify(window.__lastDraft);
+    
+    // Try standardized key first
+    raw = safeStorageGet(STORAGE_KEYS.DRAFT);
+    
+    // Fallback to legacy key if no standardized data
+    if (!raw) {
+      raw = safeStorageGet(LEGACY_STORAGE_KEYS.DRAFT);
+    }
+    
+    // Fallback for testing environments
+    if (!raw && typeof window !== 'undefined' && window.__lastDraft) {
+      raw = JSON.stringify(window.__lastDraft);
+    }
+    
     if (!raw) return null;
-  const payload = JSON.parse(raw);
-    // apply overrides first
-  // overrides removidos
+    
+    const payload = JSON.parse(raw);
+    
+    // Handle legacy drafts (no draftVersion)
+    if (!payload.draftVersion) {
+      payload.draftVersion = CURRENT_DRAFT_VERSION;
+      payload.migratedFrom = 'legacy';
+      payload.migrationTimestamp = new Date().toISOString();
+      
+      // Save migrated draft to new location
+      safeStorageSet(STORAGE_KEYS.DRAFT, JSON.stringify(payload));
+    }
+    
     // apply state to DOM
     try {
       const s = payload.state || {};
@@ -1290,9 +1406,11 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
   // Estado de seleção (persistência simples em localStorage)
   const sel = (function(){
     if (typeof localStorage === 'undefined') return {};
-    try { return JSON.parse(localStorage.getItem('pdfInlineToggles')||'{}'); } catch { return {}; }
+    try { 
+      return JSON.parse(safeStorageGet(STORAGE_KEYS.PDF_TOGGLES) || safeStorageGet(LEGACY_STORAGE_KEYS.PDF_TOGGLES) || '{}'); 
+    } catch { return {}; }
   })();
-  const saveSel = (obj) => { try { localStorage.setItem('pdfInlineToggles', JSON.stringify(obj)); } catch {} };
+  const saveSel = (obj) => { try { safeStorageSet(STORAGE_KEYS.PDF_TOGGLES, JSON.stringify(obj)); } catch {} };
 
   // Helper para checkbox
   const cb = (key, label, checkedDefault=true) => {
@@ -1364,7 +1482,9 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
   // UI de seleção de método para geração de PDF
   const storedMethod = (function(){
     if (typeof localStorage === 'undefined') return 'method1';
-    try { return localStorage.getItem('selectedMethodPdf') || 'method1'; } catch { return 'method1'; }
+    try { 
+      return safeStorageGet(STORAGE_KEYS.PDF_METHOD) || safeStorageGet(LEGACY_STORAGE_KEYS.PDF_METHOD) || 'method1'; 
+    } catch { return 'method1'; }
   })();
   const methodSelector = `
     <fieldset style="margin:12px 0;padding:12px;border:1px solid #e9ecef;border-radius:6px">
@@ -1396,7 +1516,13 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
       if(!root) return; 
       root.addEventListener('change',e=>{ if(e.target && e.target.matches('input[data-inline-pdf-toggle]')){ 
         const key=e.target.getAttribute('data-inline-pdf-toggle');
-        try{const data=JSON.parse(localStorage.getItem('pdfInlineToggles')||'{}'); data[key]=e.target.checked; localStorage.setItem('pdfInlineToggles',JSON.stringify(data));}catch{}
+        try{
+          const currentKey = '${STORAGE_KEYS.PDF_TOGGLES}';
+          const legacyKey = '${LEGACY_STORAGE_KEYS.PDF_TOGGLES}';
+          let data = JSON.parse(localStorage.getItem(currentKey) || localStorage.getItem(legacyKey) || '{}'); 
+          data[key]=e.target.checked; 
+          localStorage.setItem(currentKey,JSON.stringify(data));
+        }catch{}
         if(window.gerarPreOrcamento) { window.gerarPreOrcamento(); }
       }});
     })();</script>`;
@@ -1405,7 +1531,7 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
   const methodSelectScript = `
     <script>(function(){
       const radios = document.querySelectorAll('input[name="pdfMethodSelect"]');
-      radios.forEach(r=>{r.addEventListener('change',e=>{ try{ localStorage.setItem('selectedMethodPdf', e.target.value); }catch{} });});
+      radios.forEach(r=>{r.addEventListener('change',e=>{ try{ localStorage.setItem('${STORAGE_KEYS.PDF_METHOD}', e.target.value); }catch{} });});
     })();</script>`;
 
   return `<h3>Pré-Orçamento</h3>${container}${script}${methodSelectScript}`;
@@ -1549,12 +1675,11 @@ if (typeof document !== 'undefined') {
           return;
         }
         tarifaInput.value = String(Number(v.toFixed(2)));
-        // Persistir por aeronave - usando localStorage diretamente
+        // Persistir por aeronave - usando sistema de storage padronizado
         try {
-          const LKEY = 'cotacao:tarifas';
-          const store = JSON.parse(localStorage.getItem(LKEY) || '{}');
+          const store = JSON.parse(safeStorageGet(STORAGE_KEYS.TARIFFS) || safeStorageGet(LEGACY_STORAGE_KEYS.TARIFFS) || '{}');
           if (aeronaveSel.value) store[aeronaveSel.value] = tarifaInput.value;
-          localStorage.setItem(LKEY, JSON.stringify(store));
+          safeStorageSet(STORAGE_KEYS.TARIFFS, JSON.stringify(store));
         } catch {}
         applyTarifaPreview();
         modal.classList.remove('show');
@@ -2733,13 +2858,13 @@ function getSelectedPdfMethod() {
   // Priorizar escolha explícita do usuário
   try {
     if (typeof localStorage !== 'undefined') {
-      const explicit = localStorage.getItem('selectedMethodPdf');
+      const explicit = safeStorageGet(STORAGE_KEYS.PDF_METHOD) || safeStorageGet(LEGACY_STORAGE_KEYS.PDF_METHOD);
       if (explicit === 'method1' || explicit === 'method2') return explicit;
     }
   } catch {}
   // Fallback para lógica de toggles
   try {
-    const sel = typeof localStorage !== 'undefined' ? JSON.parse(localStorage.getItem('pdfInlineToggles')||'{}') : {};
+    const sel = typeof localStorage !== 'undefined' ? JSON.parse(safeStorageGet(STORAGE_KEYS.PDF_TOGGLES) || safeStorageGet(LEGACY_STORAGE_KEYS.PDF_TOGGLES) || '{}') : {};
     const hasAnyKey = Object.keys(sel).length > 0;
     if (!hasAnyKey) return 'method1';
     const m1 = sel.method1 !== false; // default true
@@ -2776,7 +2901,7 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
   };
   try {
     if (typeof localStorage !== 'undefined') {
-      const sel = JSON.parse(localStorage.getItem('pdfInlineToggles') || '{}');
+      const sel = JSON.parse(safeStorageGet(STORAGE_KEYS.PDF_TOGGLES) || safeStorageGet(LEGACY_STORAGE_KEYS.PDF_TOGGLES) || '{}');
       pdfOptions.includeMap = sel.mapa !== false;
       pdfOptions.includeCommission = sel.comissoes !== false;
       pdfOptions.includeObservations = sel.observacoes !== false;
@@ -2828,7 +2953,9 @@ function limparCampos() {
   document.getElementById('resultado').innerHTML = '';
   // Limpar localStorage dos toggles inline
   try {
-    localStorage.removeItem('pdfInlineToggles');
+    safeStorageRemove(STORAGE_KEYS.PDF_TOGGLES);
+    // Also remove legacy key if it exists
+    safeStorageRemove(LEGACY_STORAGE_KEYS.PDF_TOGGLES);
   } catch (e) { /* ignore */ }
   if (routeLayer && routeLayer.remove) routeLayer.remove();
   const comissoesDiv = document.getElementById('comissoes');
