@@ -1,0 +1,183 @@
+/* Cotação de Voo Executivo - Main Stylesheet */
+
+/* Modal simples para edição de tarifa */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.modal {
+  background: var(--surface);
+  color: var(--text);
+  padding: 18px;
+  border-radius: 8px;
+  width: 320px;
+  max-width: calc(100% - 32px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+.modal h3 {
+  margin: 0 0 10px 0;
+  font-size: 1.05rem;
+}
+
+.modal .actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.modal button.secondary {
+  background: #6c757d;
+}
+
+.modal-backdrop.show {
+  display: flex;
+}
+
+/* CSS Variables */
+:root {
+  --primary: #0d6efd;
+  --primary-hover: #0b5ed7;
+  --bg: #f8f9fa;
+  --surface: #ffffff;
+  --text: #212529;
+  --border: #ced4da;
+}
+
+/* Reset and Base Styles */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', Tahoma, sans-serif;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+  margin-bottom: 1.5rem;
+}
+
+/* Form Elements */
+label {
+  font-weight: bold;
+  display: block;
+  margin-top: 15px;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 8px;
+  margin-top: 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+input.icao {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* Layout */
+.linha {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.linha > div {
+  flex: 1 1 200px;
+}
+
+.botoes {
+  margin-top: 30px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Buttons */
+button {
+  padding: 12px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  border: none;
+  border-radius: 4px;
+  background: var(--primary);
+  color: #fff;
+  transition: background 0.2s;
+}
+
+button:hover {
+  background: var(--primary-hover);
+}
+
+/* Results and UI Components */
+#resultado {
+  margin-top: 30px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+#pdfFilters {
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+#pdfFilters label {
+  font-weight: normal;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 0;
+}
+
+/* Map */
+#map {
+  height: 400px;
+  margin-top: 20px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Responsive Design */
+@media (max-width: 600px) {
+  .botoes button {
+    flex: 1 1 100%;
+  }
+}

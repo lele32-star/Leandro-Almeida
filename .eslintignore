@@ -1,0 +1,16 @@
+# Ignore files for ESLint
+node_modules/
+vendor/
+libs/
+*.min.js
+*.min.css
+
+# Test artifacts
+test-*.html
+debug-*.html
+verificar-*.html
+teste-*.html
+
+# Build outputs
+dist/
+build/

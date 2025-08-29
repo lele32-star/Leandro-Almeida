@@ -21,6 +21,57 @@ Requisitos desta entrega:
 ===============================================================
 */
 
+// ================= VALIDATION HELPERS =================
+
+/**
+ * Validates ICAO airport code format
+ * @param {string} code - Airport code to validate
+ * @returns {boolean} True if valid ICAO format
+ */
+function isValidICAO(code) {
+  return typeof code === 'string' && /^[A-Z]{4}$/.test(code.trim().toUpperCase());
+}
+
+/**
+ * Validates numeric input and returns safe number
+ * @param {any} value - Value to validate
+ * @param {number} min - Minimum allowed value
+ * @param {number} max - Maximum allowed value
+ * @returns {number|null} Valid number or null
+ */
+function validateNumericInput(value, min = 0, max = Infinity) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < min || num > max) {
+    return null;
+  }
+  return num;
+}
+
+/**
+ * Shows user-friendly error message
+ * @param {string} message - Error message to display
+ * @param {string} elementId - Optional element ID to highlight
+ */
+function showValidationError(message, elementId = null) {
+  showToast && showToast(message, 5000, 'error');
+  
+  if (elementId && typeof document !== 'undefined') {
+    const element = document.getElementById(elementId);
+    if (element) {
+      element.style.borderColor = '#dc3545';
+      element.focus();
+      // Remove error styling after user interacts
+      const removeError = () => {
+        element.style.borderColor = '';
+        element.removeEventListener('input', removeError);
+        element.removeEventListener('change', removeError);
+      };
+      element.addEventListener('input', removeError);
+      element.addEventListener('change', removeError);
+    }
+  }
+}
+
 // ================= SNAPSHOT / PRE-QUOTE API =================
 let __frozenQuote = null; // { version, selectedMethod: 'distance'|'time', snapshot: {...}, ts }
 const FROZEN_KEY = 'quote:last';
@@ -347,23 +398,6 @@ function fallbackCopy(text){
     showToast && showToast('Erro ao copiar. Use Ctrl+C manualmente.');
   }
   document.body.removeChild(textArea);
-}
-
-// Função utilitária para buscar dados da aeronave selecionada
-function getSelectedAircraftData(selectValue) {
-  if (!selectValue || !Array.isArray(window.aircraftCatalog)) return null;
-  // Buscar por diferentes campos do catálogo
-  const entry = window.aircraftCatalog.find(a => 
-    a.id === selectValue || 
-    a.nome === selectValue || 
-    a.modelo === selectValue
-  );
-  if (!entry) return null;
-  return {
-    hourlyRate: entry.hourly_rate_brl_default || entry.hourlyRate || null,
-    cruiseKtas: entry.cruise_speed_kt_default || entry.cruiseKtas || null,
-    tarifaKm: entry.tarifa_km_brl_default || entry.tarifaKm || null
-  };
 }
 
 // Formatação BRL (reutiliza padrão do app se existir)
@@ -735,7 +769,7 @@ function adjustLegTime(baseHours, options) {
 
 // Accessible toast helper: shows short messages in an ARIA live region
 function showToast(message, timeout = 4000, type = 'info') {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return;
   let container = document.getElementById('toastContainer');
   if (!container) {
     container = document.createElement('div');
@@ -748,22 +782,54 @@ function showToast(message, timeout = 4000, type = 'info') {
     container.style.zIndex = 99999;
     document.body.appendChild(container);
   }
+  
   // create toast
   const t = document.createElement('div');
   t.className = 'toast-message';
-  t.style.background = '#ffffff';
-  t.style.color = '#111';
-  t.style.border = '1px solid #e0e0e0';
   t.style.padding = '10px 12px';
   t.style.marginTop = '8px';
   t.style.borderRadius = '6px';
   t.style.boxShadow = '0 2px 6px rgba(0,0,0,0.08)';
+  t.style.opacity = '0';
+  t.style.transition = 'opacity 0.3s ease';
+  
+  // Set colors based on type
+  switch (type) {
+    case 'error':
+      t.style.background = '#f8d7da';
+      t.style.color = '#721c24';
+      t.style.border = '1px solid #f5c6cb';
+      break;
+    case 'warning':
+      t.style.background = '#fff3cd';
+      t.style.color = '#856404';
+      t.style.border = '1px solid #ffeaa7';
+      break;
+    case 'success':
+      t.style.background = '#d1edff';
+      t.style.color = '#0c5460';
+      t.style.border = '1px solid #bee5eb';
+      break;
+    default:
+      t.style.background = '#ffffff';
+      t.style.color = '#111';
+      t.style.border = '1px solid #e0e0e0';
+  }
+  
   t.textContent = message;
   t.tabIndex = -1;
   container.appendChild(t);
+  
+  // Animate in
+  setTimeout(() => { t.style.opacity = '1'; }, 10);
+  
   // focus for screen reader visibility briefly
   try { t.focus(); } catch (e) {}
-  setTimeout(() => { try { t.remove(); } catch (e) {} }, timeout);
+  
+  setTimeout(() => { 
+    t.style.opacity = '0';
+    setTimeout(() => { try { t.remove(); } catch (e) {} }, 300);
+  }, timeout);
 }
 
 // UI: update aircraft params card when aeronave changes
@@ -1109,14 +1175,23 @@ async function captureMapDataUrl() {
 
 async function fetchAirportByCode(code) {
   const icao = String(code || '').toUpperCase();
-  if (!/^[A-Z]{4}$/.test(icao)) return null;
+  if (!isValidICAO(icao)) {
+    console.warn(`Invalid ICAO code format: ${code}`);
+    return null;
+  }
+  
   if (airportCache.has(icao)) return airportCache.get(icao);
+  
   try {
-  // Use API_KEY (env or hardcoded) for AVWX
-  const headers = API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
+    // Use API_KEY (env or hardcoded) for AVWX
+    const headers = API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
     const url = `https://avwx.rest/api/station/${icao}`;
     const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error('fetch failed');
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
     const data = await res.json();
 
     // Robust coordinate extraction: busca recursiva por chaves lat/lon em qualquer nível
@@ -1141,7 +1216,9 @@ async function fetchAirportByCode(code) {
             const r = findLatLon(v, depth + 1);
             if (r) return r;
           }
-        } catch (e) { /* ignore */ }
+        } catch (e) { 
+          console.warn(`Error accessing nested object in airport data:`, e.message);
+        }
       }
       return null;
     }
@@ -1149,7 +1226,8 @@ async function fetchAirportByCode(code) {
     const point = findLatLon(data);
     airportCache.set(icao, point);
     return point;
-  } catch {
+  } catch (error) {
+    console.warn(`Failed to fetch airport data for ${icao}:`, error.message);
     airportCache.set(icao, null);
     return null;
   }
@@ -1874,17 +1952,34 @@ function buildState() {
   const kmField = document.getElementById('km');
   let nm = parseFloat(nmField.value);
   const kmVal = parseFloat(kmField.value);
+  
+  // Validate and convert distance values
   if (!Number.isFinite(nm) && Number.isFinite(kmVal)) {
     nm = kmVal / 1.852;
   }
-  const origem = document.getElementById('origem').value;
-  const destino = document.getElementById('destino').value;
+  
+  // Validate distance is positive
+  if (Number.isFinite(nm) && nm <= 0) {
+    showValidationError('A distância deve ser maior que zero', 'nm');
+    nm = NaN;
+  }
+  
+  const origem = document.getElementById('origem').value.trim().toUpperCase();
+  const destino = document.getElementById('destino').value.trim().toUpperCase();
+  
+  // Validate ICAO codes if provided
+  if (origem && !isValidICAO(origem)) {
+    showValidationError('Código ICAO de origem deve ter 4 letras (ex: SBBR)', 'origem');
+  }
+  if (destino && !isValidICAO(destino)) {
+    showValidationError('Código ICAO de destino deve ter 4 letras (ex: SBSP)', 'destino');
+  }
   const dataIda = document.getElementById('dataIda').value;
   const dataVolta = document.getElementById('dataVolta').value;
   const observacoes = document.getElementById('observacoes').value;
   const pagamentoEl = document.getElementById('pagamento');
   const pagamento = pagamentoEl ? pagamentoEl.value : '';
-  const valorExtra = parseFloat(document.getElementById('valorExtra').value) || 0;
+  const valorExtra = validateNumericInput(document.getElementById('valorExtra').value, 0) || 0;
   const tipoExtra = document.getElementById('tipoExtra').value;
   const tarifaVal = parseFloat(document.getElementById('tarifa').value);
   const entry = aircraftCatalog.find(a => a.nome === aeronave || a.id === aeronave);
@@ -2685,12 +2780,18 @@ async function gerarPreOrcamento() {
   // 2. Validações mínimas (distância & tarifa por km sempre necessárias pois entram em comissão base)
   const distanciaValida = Number.isFinite(state.nm) && state.nm > 0;
   const valorKmValido = Number.isFinite(state.valorKm) && state.valorKm > 0;
+  
   if (!valorKmValido) {
-    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Selecione uma aeronave ou informe a <strong>tarifa por km</strong>.</div>`;
+    const message = 'Selecione uma aeronave ou informe a tarifa por km.';
+    showValidationError(message, 'aeronave');
+    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px"><strong>Erro:</strong> ${message}</div>`;
     return;
   }
+  
   if (!distanciaValida) {
-    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Informe a <strong>distância</strong> (NM ou KM) ou preencha os aeroportos para calcular automaticamente.</div>`;
+    const message = 'Informe a distância (NM ou KM) ou preencha os aeroportos para calcular automaticamente.';
+    showValidationError(message, 'nm');
+    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px"><strong>Erro:</strong> ${message}</div>`;
     return;
   }
 
@@ -2784,7 +2885,7 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
   const frozen = getFrozenQuote();
   if (!frozen) {
     showToast && showToast('Gere o Pré-Orçamento antes de exportar o PDF.');
-    alert && alert('Gere o Pré-Orçamento antes de exportar o PDF.');
+    if (typeof alert !== 'undefined') alert('Gere o Pré-Orçamento antes de exportar o PDF.');
     return;
   }
   const { selectedMethod, snapshot } = frozen;
@@ -2900,6 +3001,247 @@ if (typeof window !== 'undefined') {
   window.appGerarPDF = gerarPDF;
 }
 
+/* =============================================================
+   BLOCO: Parametrização travada de aeronave (catálogo)
+   (Não altera lógica de cálculo / freeze / PDF)
+   ============================================================= */
+if (typeof window !== 'undefined') {
+  (function initLockedAircraftParams(){
+    const STATE_KEY = '__aircraftParamsState';
+    const state = window[STATE_KEY] = {
+      isEditable: false,
+      lastAircraftValue: null
+    };
+
+    // Localizar elementos seguindo ordem de prioridade definida no prompt
+    function findAircraftSelect(){
+      return document.querySelector('#aircraft-select, #aircraftSelect, select[name="aircraft"], #aeronave');
+    }
+    function findHourlyInput(){
+      return document.querySelector('#hourlyRate, #aircraft-hourly-rate, input[name="hourlyRate"]');
+    }
+    function findKtasInput(){
+      // Permitimos também o id existente #cruiseSpeed como fallback adicional
+      return document.querySelector('#ktas, #aircraft-ktas, input[name="ktas"], #cruiseKtas, #cruiseSpeed');
+    }
+    function findContainer(){
+      return document.querySelector('#aircraft-params, #aircraftParams');
+    }
+    function findBadge(){ return document.getElementById('aircraft-params-badge'); }
+  const selectEl = findAircraftSelect();
+  const hourlyEl = findHourlyInput();
+  let ktasEl = findKtasInput();
+  const container = findContainer();
+    let editBtn = document.getElementById('btn-edit-params');
+    let resetBtn = document.getElementById('btn-reset-params');
+    const badge = findBadge();
+
+    // Se elementos mínimos não existem ainda (ex: catálogo assíncrono), aguardar
+    if (!selectEl || !hourlyEl || !container) {
+      setTimeout(initLockedAircraftParams, 400);
+      return;
+    }
+
+    // Garantir input #ktas conforme prioridade (sem remover #cruiseSpeed)
+    if (!document.getElementById('ktas')) {
+      if (ktasEl && ktasEl.id !== 'ktas') {
+        // Criar alias oculto sincronizado
+        const hiddenKtas = document.createElement('input');
+        hiddenKtas.type = 'number';
+        hiddenKtas.id = 'ktas';
+        hiddenKtas.style.position = 'absolute';
+        hiddenKtas.style.left = '-9999px';
+        hiddenKtas.setAttribute('aria-hidden','true');
+        hiddenKtas.tabIndex = -1;
+        ktasEl.parentNode.appendChild(hiddenKtas);
+        const sync = () => { hiddenKtas.value = ktasEl.value; };
+        ktasEl.addEventListener('input', sync);
+        sync();
+      } else if (!ktasEl && document.getElementById('cruiseSpeed')) {
+        // Fallback: criar hidden a partir de cruiseSpeed
+        const src = document.getElementById('cruiseSpeed');
+        const hiddenKtas = document.createElement('input');
+        hiddenKtas.type = 'number';
+        hiddenKtas.id = 'ktas';
+        hiddenKtas.style.position = 'absolute';
+        hiddenKtas.style.left = '-9999px';
+        hiddenKtas.setAttribute('aria-hidden','true');
+        hiddenKtas.tabIndex = -1;
+        src.parentNode.appendChild(hiddenKtas);
+        const sync = () => { hiddenKtas.value = src.value; };
+        src.addEventListener('input', sync);
+        sync();
+        ktasEl = src; // usar cruiseSpeed como principal
+      }
+    }
+    // container aria-live para avisos/badge
+    if (container && !container.getAttribute('aria-live')) {
+      container.setAttribute('aria-live','polite');
+    }
+
+    // Utilitários Catálogo
+    function getCatalogAircraftById(id){
+      if (!id || !Array.isArray(window.aircraftCatalog)) return null;
+      return window.aircraftCatalog.find(a => a.id === id || a.nome === id) || null;
+    }
+    window.getCatalogAircraftById = getCatalogAircraftById;
+
+    function applyAircraftParamsFromCatalog(ac){
+      if (!ac) return;
+      if (hourlyEl) {
+        const v = Number(ac.hourly_rate_brl_default||0);
+        hourlyEl.value = v ? v.toFixed(2) : '';
+      }
+      if (ktasEl) {
+        const v2 = Number(ac.cruise_speed_kt_default||0);
+        ktasEl.value = v2 ? String(v2) : '';
+      }
+      // Disparar eventos para integracão com recálculo existente
+      try { hourlyEl && hourlyEl.dispatchEvent(new Event('input', { bubbles:true })); } catch{}
+      try { ktasEl && ktasEl.dispatchEvent(new Event('input', { bubbles:true })); } catch{}
+    }
+    window.applyAircraftParamsFromCatalog = applyAircraftParamsFromCatalog;
+
+    function setAircraftParamsEditable(isEditable){
+      state.isEditable = !!isEditable;
+      const lock = !state.isEditable;
+      [hourlyEl, ktasEl].forEach(el => {
+        if (!el) return;
+        if (lock) {
+          el.setAttribute('readonly','readonly');
+          el.setAttribute('aria-readonly','true');
+        } else {
+          el.removeAttribute('readonly');
+          el.removeAttribute('aria-readonly');
+        }
+      });
+      if (badge) {
+        badge.textContent = lock ? 'Catálogo' : 'Personalizado';
+        badge.style.background = lock ? '#e9f9ee' : '#fff4e0';
+        badge.style.color = lock ? '#1e7e34' : '#b35c00';
+        badge.style.border = lock ? '1px solid #b7e5c2' : '1px solid #ffcf99';
+      }
+      if (editBtn) editBtn.textContent = state.isEditable ? 'Bloquear parâmetros' : 'Editar parâmetros';
+      if (resetBtn) resetBtn.style.display = state.isEditable ? 'inline-block' : 'inline-block'; // Sempre visível após inicialização
+    }
+    window.setAircraftParamsEditable = setAircraftParamsEditable;
+
+    function paramsDifferFromCatalog(ac){
+      if (!ac) return false;
+      const hrCatalog = Number(ac.hourly_rate_brl_default||0);
+      const ktCatalog = Number(ac.cruise_speed_kt_default||0);
+      const hrVal = Number(String(hourlyEl.value).replace(/\./g,'').replace(',','.')) || 0;
+      const ktVal = Number(ktasEl.value)||0;
+      return (hrCatalog !== hrVal) || (ktCatalog !== ktVal);
+    }
+    window.paramsDifferFromCatalog = paramsDifferFromCatalog;
+
+    function resetAircraftParamsToCatalog(){
+      const currentVal = selectEl.value;
+      const ac = getCatalogAircraftById(currentVal);
+      applyAircraftParamsFromCatalog(ac);
+      setAircraftParamsEditable(false);
+      // Recalcular
+      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+    }
+    window.resetAircraftParamsToCatalog = resetAircraftParamsToCatalog;
+
+    // Criar botões caso não existam
+    if (!editBtn) {
+      editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.id = 'btn-edit-params';
+      editBtn.textContent = 'Editar parâmetros';
+      editBtn.style.padding = '6px 12px';
+      editBtn.style.fontSize = '14px';
+      container.appendChild(editBtn);
+    }
+    if (!resetBtn) {
+      resetBtn = document.createElement('button');
+      resetBtn.type = 'button';
+      resetBtn.id = 'btn-reset-params';
+      resetBtn.textContent = 'Resetar para Catálogo';
+      resetBtn.style.padding = '6px 12px';
+      resetBtn.style.fontSize = '14px';
+      container.appendChild(resetBtn);
+    }
+    if (!badge) {
+      const b = document.createElement('span');
+      b.id = 'aircraft-params-badge';
+      b.style.fontWeight = 'bold';
+      b.style.fontSize = '.8rem';
+      b.style.padding = '4px 8px';
+      b.style.borderRadius = '4px';
+      container.insertBefore(b, container.firstChild);
+    }
+
+    // Handlers
+    editBtn.addEventListener('click', () => {
+      setAircraftParamsEditable(!state.isEditable);
+      // Foco primeiro campo ao liberar edição
+      if (state.isEditable) {
+        setTimeout(() => { hourlyEl && hourlyEl.focus(); }, 40);
+      } else {
+        // Ao bloquear, normalizar valores (2 casas) e disparar recálculo
+        if (hourlyEl && hourlyEl.value) {
+          const num = Number(hourlyEl.value.replace(',','.'))||0;
+          hourlyEl.value = num ? num.toFixed(2) : '';
+        }
+        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+      }
+    });
+    resetBtn.addEventListener('click', () => {
+      resetAircraftParamsToCatalog();
+      showToast && showToast('Parâmetros restaurados do catálogo.');
+    });
+
+    // Change aeronave com proteção de descarte
+    selectEl.addEventListener('change', (e) => {
+      const newVal = selectEl.value;
+      const previous = state.lastAircraftValue;
+      const prevCatalog = getCatalogAircraftById(previous);
+      if (state.isEditable && prevCatalog && paramsDifferFromCatalog(prevCatalog)) {
+        const ok = confirm('Você tem alterações personalizadas. Deseja descartá-las e carregar os parâmetros do catálogo da nova aeronave?');
+        if (!ok) {
+          // Reverter seleção
+            if (previous !== null) {
+              selectEl.value = previous;
+            }
+            return;
+        }
+      }
+      const ac = getCatalogAircraftById(newVal);
+      applyAircraftParamsFromCatalog(ac);
+      setAircraftParamsEditable(false); // volta bloqueado
+      state.lastAircraftValue = newVal;
+      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+    });
+
+    function initialApply(){
+      // Se já existe seleção, aplicar
+      if (selectEl.value) {
+        const ac = getCatalogAircraftById(selectEl.value);
+        if (ac) {
+          applyAircraftParamsFromCatalog(ac);
+          setAircraftParamsEditable(false);
+          state.lastAircraftValue = selectEl.value;
+        }
+      }
+    }
+
+    // Aguardar catálogo se ainda não carregado
+    function waitForCatalog(){
+      if (!Array.isArray(window.aircraftCatalog) || window.aircraftCatalog.length === 0) {
+        setTimeout(waitForCatalog, 300);
+        return;
+      }
+      initialApply();
+    }
+    waitForCatalog();
+
+  })();
+}
+
 // Função de teste rápido para validação
 function runQuickTests() {
   console.log('=== CHECKLIST RÁPIDO DE TESTES ===');
@@ -2963,5 +3305,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft, adjustLegTime, getSelectedPdfMethod };
+  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft, adjustLegTime, getSelectedPdfMethod, computeByDistance, freezePreQuote };
  }

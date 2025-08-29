@@ -1,0 +1,14 @@
+# Ignore files for Prettier
+node_modules/
+vendor/
+libs/
+*.min.js
+*.min.css
+
+# Test artifacts
+test-*.html
+debug-*.html
+
+# Build outputs
+dist/
+build/
