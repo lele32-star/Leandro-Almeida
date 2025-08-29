@@ -2333,7 +2333,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
                   fillColor: idx % 2 === 0 ? '#F8F9FA' : null
                 }, 
                 { 
-                  text: (l.showCustom === false ? (l.distNm ? calcTempo(l.distNm, state.cruiseSpeed || 0).hhmm : '—') : (l.time ? l.time.hhmm : '—')), 
+                  text: (l.showCustom === false ? (l.distNm ? calcTempo(l.distNm, state.cruiseSpeed || 0).hhmm : '—') : (l.time ? l.time.hhmm : '—')) + (l.custom_time ? ' (tempo customizado)' : ''), 
                   alignment: 'center',
                   margin: [8,6,8,6],
                   fillColor: idx % 2 === 0 ? '#F8F9FA' : null
