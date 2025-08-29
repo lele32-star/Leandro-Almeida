@@ -2900,6 +2900,247 @@ if (typeof window !== 'undefined') {
   window.appGerarPDF = gerarPDF;
 }
 
+/* =============================================================
+   BLOCO: Parametrização travada de aeronave (catálogo)
+   (Não altera lógica de cálculo / freeze / PDF)
+   ============================================================= */
+if (typeof window !== 'undefined') {
+  (function initLockedAircraftParams(){
+    const STATE_KEY = '__aircraftParamsState';
+    const state = window[STATE_KEY] = {
+      isEditable: false,
+      lastAircraftValue: null
+    };
+
+    // Localizar elementos seguindo ordem de prioridade definida no prompt
+    function findAircraftSelect(){
+      return document.querySelector('#aircraft-select, #aircraftSelect, select[name="aircraft"], #aeronave');
+    }
+    function findHourlyInput(){
+      return document.querySelector('#hourlyRate, #aircraft-hourly-rate, input[name="hourlyRate"]');
+    }
+    function findKtasInput(){
+      // Permitimos também o id existente #cruiseSpeed como fallback adicional
+      return document.querySelector('#ktas, #aircraft-ktas, input[name="ktas"], #cruiseKtas, #cruiseSpeed');
+    }
+    function findContainer(){
+      return document.querySelector('#aircraft-params, #aircraftParams');
+    }
+    function findBadge(){ return document.getElementById('aircraft-params-badge'); }
+  const selectEl = findAircraftSelect();
+  const hourlyEl = findHourlyInput();
+  let ktasEl = findKtasInput();
+  const container = findContainer();
+    let editBtn = document.getElementById('btn-edit-params');
+    let resetBtn = document.getElementById('btn-reset-params');
+    const badge = findBadge();
+
+    // Se elementos mínimos não existem ainda (ex: catálogo assíncrono), aguardar
+    if (!selectEl || !hourlyEl || !container) {
+      setTimeout(initLockedAircraftParams, 400);
+      return;
+    }
+
+    // Garantir input #ktas conforme prioridade (sem remover #cruiseSpeed)
+    if (!document.getElementById('ktas')) {
+      if (ktasEl && ktasEl.id !== 'ktas') {
+        // Criar alias oculto sincronizado
+        const hiddenKtas = document.createElement('input');
+        hiddenKtas.type = 'number';
+        hiddenKtas.id = 'ktas';
+        hiddenKtas.style.position = 'absolute';
+        hiddenKtas.style.left = '-9999px';
+        hiddenKtas.setAttribute('aria-hidden','true');
+        hiddenKtas.tabIndex = -1;
+        ktasEl.parentNode.appendChild(hiddenKtas);
+        const sync = () => { hiddenKtas.value = ktasEl.value; };
+        ktasEl.addEventListener('input', sync);
+        sync();
+      } else if (!ktasEl && document.getElementById('cruiseSpeed')) {
+        // Fallback: criar hidden a partir de cruiseSpeed
+        const src = document.getElementById('cruiseSpeed');
+        const hiddenKtas = document.createElement('input');
+        hiddenKtas.type = 'number';
+        hiddenKtas.id = 'ktas';
+        hiddenKtas.style.position = 'absolute';
+        hiddenKtas.style.left = '-9999px';
+        hiddenKtas.setAttribute('aria-hidden','true');
+        hiddenKtas.tabIndex = -1;
+        src.parentNode.appendChild(hiddenKtas);
+        const sync = () => { hiddenKtas.value = src.value; };
+        src.addEventListener('input', sync);
+        sync();
+        ktasEl = src; // usar cruiseSpeed como principal
+      }
+    }
+    // container aria-live para avisos/badge
+    if (container && !container.getAttribute('aria-live')) {
+      container.setAttribute('aria-live','polite');
+    }
+
+    // Utilitários Catálogo
+    function getCatalogAircraftById(id){
+      if (!id || !Array.isArray(window.aircraftCatalog)) return null;
+      return window.aircraftCatalog.find(a => a.id === id || a.nome === id) || null;
+    }
+    window.getCatalogAircraftById = getCatalogAircraftById;
+
+    function applyAircraftParamsFromCatalog(ac){
+      if (!ac) return;
+      if (hourlyEl) {
+        const v = Number(ac.hourly_rate_brl_default||0);
+        hourlyEl.value = v ? v.toFixed(2) : '';
+      }
+      if (ktasEl) {
+        const v2 = Number(ac.cruise_speed_kt_default||0);
+        ktasEl.value = v2 ? String(v2) : '';
+      }
+      // Disparar eventos para integracão com recálculo existente
+      try { hourlyEl && hourlyEl.dispatchEvent(new Event('input', { bubbles:true })); } catch{}
+      try { ktasEl && ktasEl.dispatchEvent(new Event('input', { bubbles:true })); } catch{}
+    }
+    window.applyAircraftParamsFromCatalog = applyAircraftParamsFromCatalog;
+
+    function setAircraftParamsEditable(isEditable){
+      state.isEditable = !!isEditable;
+      const lock = !state.isEditable;
+      [hourlyEl, ktasEl].forEach(el => {
+        if (!el) return;
+        if (lock) {
+          el.setAttribute('readonly','readonly');
+          el.setAttribute('aria-readonly','true');
+        } else {
+          el.removeAttribute('readonly');
+          el.removeAttribute('aria-readonly');
+        }
+      });
+      if (badge) {
+        badge.textContent = lock ? 'Catálogo' : 'Personalizado';
+        badge.style.background = lock ? '#e9f9ee' : '#fff4e0';
+        badge.style.color = lock ? '#1e7e34' : '#b35c00';
+        badge.style.border = lock ? '1px solid #b7e5c2' : '1px solid #ffcf99';
+      }
+      if (editBtn) editBtn.textContent = state.isEditable ? 'Bloquear parâmetros' : 'Editar parâmetros';
+      if (resetBtn) resetBtn.style.display = state.isEditable ? 'inline-block' : 'inline-block'; // Sempre visível após inicialização
+    }
+    window.setAircraftParamsEditable = setAircraftParamsEditable;
+
+    function paramsDifferFromCatalog(ac){
+      if (!ac) return false;
+      const hrCatalog = Number(ac.hourly_rate_brl_default||0);
+      const ktCatalog = Number(ac.cruise_speed_kt_default||0);
+      const hrVal = Number(String(hourlyEl.value).replace(/\./g,'').replace(',','.')) || 0;
+      const ktVal = Number(ktasEl.value)||0;
+      return (hrCatalog !== hrVal) || (ktCatalog !== ktVal);
+    }
+    window.paramsDifferFromCatalog = paramsDifferFromCatalog;
+
+    function resetAircraftParamsToCatalog(){
+      const currentVal = selectEl.value;
+      const ac = getCatalogAircraftById(currentVal);
+      applyAircraftParamsFromCatalog(ac);
+      setAircraftParamsEditable(false);
+      // Recalcular
+      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+    }
+    window.resetAircraftParamsToCatalog = resetAircraftParamsToCatalog;
+
+    // Criar botões caso não existam
+    if (!editBtn) {
+      editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.id = 'btn-edit-params';
+      editBtn.textContent = 'Editar parâmetros';
+      editBtn.style.padding = '6px 12px';
+      editBtn.style.fontSize = '14px';
+      container.appendChild(editBtn);
+    }
+    if (!resetBtn) {
+      resetBtn = document.createElement('button');
+      resetBtn.type = 'button';
+      resetBtn.id = 'btn-reset-params';
+      resetBtn.textContent = 'Resetar para Catálogo';
+      resetBtn.style.padding = '6px 12px';
+      resetBtn.style.fontSize = '14px';
+      container.appendChild(resetBtn);
+    }
+    if (!badge) {
+      const b = document.createElement('span');
+      b.id = 'aircraft-params-badge';
+      b.style.fontWeight = 'bold';
+      b.style.fontSize = '.8rem';
+      b.style.padding = '4px 8px';
+      b.style.borderRadius = '4px';
+      container.insertBefore(b, container.firstChild);
+    }
+
+    // Handlers
+    editBtn.addEventListener('click', () => {
+      setAircraftParamsEditable(!state.isEditable);
+      // Foco primeiro campo ao liberar edição
+      if (state.isEditable) {
+        setTimeout(() => { hourlyEl && hourlyEl.focus(); }, 40);
+      } else {
+        // Ao bloquear, normalizar valores (2 casas) e disparar recálculo
+        if (hourlyEl && hourlyEl.value) {
+          const num = Number(hourlyEl.value.replace(',','.'))||0;
+          hourlyEl.value = num ? num.toFixed(2) : '';
+        }
+        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+      }
+    });
+    resetBtn.addEventListener('click', () => {
+      resetAircraftParamsToCatalog();
+      showToast && showToast('Parâmetros restaurados do catálogo.');
+    });
+
+    // Change aeronave com proteção de descarte
+    selectEl.addEventListener('change', (e) => {
+      const newVal = selectEl.value;
+      const previous = state.lastAircraftValue;
+      const prevCatalog = getCatalogAircraftById(previous);
+      if (state.isEditable && prevCatalog && paramsDifferFromCatalog(prevCatalog)) {
+        const ok = confirm('Você tem alterações personalizadas. Deseja descartá-las e carregar os parâmetros do catálogo da nova aeronave?');
+        if (!ok) {
+          // Reverter seleção
+            if (previous !== null) {
+              selectEl.value = previous;
+            }
+            return;
+        }
+      }
+      const ac = getCatalogAircraftById(newVal);
+      applyAircraftParamsFromCatalog(ac);
+      setAircraftParamsEditable(false); // volta bloqueado
+      state.lastAircraftValue = newVal;
+      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+    });
+
+    function initialApply(){
+      // Se já existe seleção, aplicar
+      if (selectEl.value) {
+        const ac = getCatalogAircraftById(selectEl.value);
+        if (ac) {
+          applyAircraftParamsFromCatalog(ac);
+          setAircraftParamsEditable(false);
+          state.lastAircraftValue = selectEl.value;
+        }
+      }
+    }
+
+    // Aguardar catálogo se ainda não carregado
+    function waitForCatalog(){
+      if (!Array.isArray(window.aircraftCatalog) || window.aircraftCatalog.length === 0) {
+        setTimeout(waitForCatalog, 300);
+        return;
+      }
+      initialApply();
+    }
+    waitForCatalog();
+
+  })();
+}
+
 // Função de teste rápido para validação
 function runQuickTests() {
   console.log('=== CHECKLIST RÁPIDO DE TESTES ===');
