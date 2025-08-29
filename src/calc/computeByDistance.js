@@ -31,3 +31,24 @@ export function computeByDistancePure({ nm=0, valorKm=0, valorExtra=0, tipoExtra
 }
 
 // ES module export above
+
+// Window export for tests - wrapper that matches expected signature
+if (typeof window !== 'undefined') {
+  window.App = window.App || {};
+  window.App.calc = window.App.calc || {};
+  
+  // Wrapper function that matches the test specification
+  window.App.calc.computeByDistance = function({ distanceKm, pricePerKm, fixedAdditions, commissionPct }) {
+    const nm = distanceKm / 1.852;
+    const base = distanceKm * pricePerKm;
+    const withAdd = base + (fixedAdditions || 0);
+    const commission = withAdd * (commissionPct || 0) / 100;
+    const total = withAdd + commission;
+    
+    return {
+      base,
+      withAdd,
+      total
+    };
+  };
+}
