@@ -49,9 +49,9 @@
     };
 
     const resumoLeft = [];
-    const showAircraft = pdfOptions.hasOwnProperty('includeAircraft') ? pdfOptions.includeAircraft : true;
-    const showDates = pdfOptions.hasOwnProperty('includeDates') ? pdfOptions.includeDates : true;
-    const showRoute = pdfOptions.hasOwnProperty('includeRoute') ? pdfOptions.includeRoute : true;
+    const showAircraft = Object.prototype.hasOwnProperty.call(pdfOptions, 'includeAircraft') ? pdfOptions.includeAircraft : true;
+    const showDates = Object.prototype.hasOwnProperty.call(pdfOptions, 'includeDates') ? pdfOptions.includeDates : true;
+    const showRoute = Object.prototype.hasOwnProperty.call(pdfOptions, 'includeRoute') ? pdfOptions.includeRoute : true;
     if (showRoute) {
       const codes = [state.origem, state.destino, ...(state.stops || [])].filter(Boolean).join(' → ');
       resumoLeft.push({ text: `Rota: ${codes}`, style: 'row' });
@@ -89,9 +89,9 @@
     }
 
     const resumoRight = [];
-    const includeDistance = pdfOptions.hasOwnProperty('includeDistance') ? pdfOptions.includeDistance : state.showDistancia;
-    const includeTariff = pdfOptions.hasOwnProperty('includeTariff') ? pdfOptions.includeTariff : state.showTarifa;
-    const includeHourly = pdfOptions.hasOwnProperty('includeMethod2') ? pdfOptions.includeMethod2 : ((methodSelection === 'method2' || methodSelection === 'both') && !!method2Data);
+    const includeDistance = Object.prototype.hasOwnProperty.call(pdfOptions, 'includeDistance') ? pdfOptions.includeDistance : state.showDistancia;
+    const includeTariff = Object.prototype.hasOwnProperty.call(pdfOptions, 'includeTariff') ? pdfOptions.includeTariff : state.showTarifa;
+    const includeHourly = Object.prototype.hasOwnProperty.call(pdfOptions, 'includeMethod2') ? pdfOptions.includeMethod2 : ((methodSelection === 'method2' || methodSelection === 'both') && !!method2Data);
     if (includeDistance) resumoRight.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)`, style:'row' });
     if (includeTariff) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, style:'row' });
     if (includeHourly && method2Data) {
