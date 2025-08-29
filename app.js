@@ -349,22 +349,7 @@ function fallbackCopy(text){
   document.body.removeChild(textArea);
 }
 
-// Função utilitária para buscar dados da aeronave selecionada
-function getSelectedAircraftData(selectValue) {
-  if (!selectValue || !Array.isArray(window.aircraftCatalog)) return null;
-  // Buscar por diferentes campos do catálogo
-  const entry = window.aircraftCatalog.find(a => 
-    a.id === selectValue || 
-    a.nome === selectValue || 
-    a.modelo === selectValue
-  );
-  if (!entry) return null;
-  return {
-    hourlyRate: entry.hourly_rate_brl_default || entry.hourlyRate || null,
-    cruiseKtas: entry.cruise_speed_kt_default || entry.cruiseKtas || null,
-    tarifaKm: entry.tarifa_km_brl_default || entry.tarifaKm || null
-  };
-}
+// REMOVED: Duplicate function - will be consolidated in src/domain/aircraft.js
 
 // Formatação BRL (reutiliza padrão do app se existir)
 function formatNumberBR(n) {
