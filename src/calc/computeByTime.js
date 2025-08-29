@@ -67,3 +67,29 @@ export function computeByTimePure({ nm=0, valorKm=0, valorExtra=0, tipoExtra='so
 }
 
 // ES module export above
+
+// Window export for tests - wrapper that matches expected signature
+if (typeof window !== 'undefined') {
+  window.App = window.App || {};
+  window.App.calc = window.App.calc || {};
+  
+  // Wrapper function that matches the test specification
+  window.App.calc.computeByTime = function({ legs, defaults, hourlyRate, commissionPct }) {
+    const totalHours = legs.reduce((sum, leg) => {
+      const legHours = leg.distanceNm / leg.cruiseKt;
+      const taxiHours = (defaults.taxiMin || 0) / 60;
+      const bufferHours = (defaults.bufferMin || 0) / 60;
+      return sum + legHours + taxiHours + bufferHours;
+    }, 0);
+    
+    const base = totalHours * hourlyRate;
+    const commission = base * (commissionPct || 0) / 100;
+    const total = base + commission;
+    
+    return {
+      hours: totalHours,
+      base,
+      total
+    };
+  };
+}
