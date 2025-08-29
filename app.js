@@ -22,6 +22,7 @@ Requisitos desta entrega:
 */
 
 import { haversine } from './src/geo/haversine.js';
+import { logger } from './src/utils/logger.js';
 
 // ================= SNAPSHOT / PRE-QUOTE API =================
 let __frozenQuote = null; // { version, selectedMethod: 'distance'|'time', snapshot: {...}, ts }
@@ -73,10 +74,10 @@ function freezePreQuote(method, snapshot){
           // Atualizar localStorage com mapa
           try { localStorage.setItem(FROZEN_KEY, JSON.stringify(__frozenQuote)); } catch {}
         }).catch(err => {
-          console.warn('Falha ao capturar mapa para congelamento:', err);
+          logger.warn('Falha ao capturar mapa para congelamento:', err);
         });
       } catch (e) {
-        console.warn('Erro ao tentar capturar mapa:', e);
+        logger.warn('Erro ao tentar capturar mapa:', e);
       }
     }
   }
@@ -369,11 +370,11 @@ function setupAircraftAutofillConsolidated() {
   const tarifaInput = document.getElementById('tarifa');
   
   if (!select) {
-    console.error('Select #aeronave não encontrado');
+    logger.error('Select #aeronave não encontrado');
     return;
   }
 
-  console.log('Configurando autofill consolidado para aeronave');
+  logger.debug('Configurando autofill consolidado para aeronave');
 
   // Utilitários para localStorage de tarifas
   const LKEY = 'cotacao:tarifas';
@@ -404,10 +405,10 @@ function setupAircraftAutofillConsolidated() {
     const val = select.value;
   const aircraft = (window.AircraftDomain && window.AircraftDomain.getSelectedAircraftData(val)) || null;
     
-    console.log('Aeronave selecionada:', val, 'Dados encontrados:', data);
+    logger.debug('Aeronave selecionada:', val, 'Dados encontrados:', data);
     
   if (!aircraft) {
-      console.warn('Aeronave não encontrada no catálogo:', val);
+      logger.warn('Aeronave não encontrada no catálogo:', val);
       return;
     }
 
@@ -418,10 +419,10 @@ function setupAircraftAutofillConsolidated() {
       
       if (saved !== undefined && saved !== null) {
         tarifaInput.value = saved;
-        console.log('Tarifa carregada do localStorage:', saved);
+        logger.debug('Tarifa carregada do localStorage:', saved);
       } else if (!tarifaInput.value || tarifaInput.value === '') {
         tarifaInput.value = aircraft.tarifa_km_brl_default || aircraft.tarifaKm || aircraft.tarifa_km_brl_default || 0;
-        console.log('Tarifa preenchida do catálogo:', tarifaInput.value);
+        logger.debug('Tarifa preenchida do catálogo:', tarifaInput.value);
       }
       
       // Atualizar preview se existir
@@ -437,7 +438,7 @@ function setupAircraftAutofillConsolidated() {
       hourlyInput.value = aircraft.hourly_rate_brl_default;
       hourlyInput.placeholder = `R$ ${Number(aircraft.hourly_rate_brl_default).toLocaleString('pt-BR')}/h`;
       hourlyInput.dispatchEvent(new Event('input', { bubbles: true }));
-      console.log('Hourly rate preenchido:', hourlyInput.value);
+      logger.debug('Hourly rate preenchido:', hourlyInput.value);
     }
     
     // 3. Autofill cruise speed se campo existir e estiver vazio
@@ -445,17 +446,17 @@ function setupAircraftAutofillConsolidated() {
       cruiseInput.value = aircraft.cruise_speed_kt_default;
       cruiseInput.placeholder = `${aircraft.cruise_speed_kt_default} KTAS`;
       cruiseInput.dispatchEvent(new Event('input', { bubbles: true }));
-      console.log('Cruise speed preenchido:', cruiseInput.value);
+      logger.debug('Cruise speed preenchido:', cruiseInput.value);
     }
 
     // 4. Disparar recálculo
     try { 
       if (typeof gerarPreOrcamento === 'function') {
   if (typeof scheduleRecalc === 'function') scheduleRecalc(gerarPreOrcamento);
-        console.log('Recálculo disparado');
+        logger.debug('Recálculo disparado');
       }
     } catch (e) { 
-      console.warn('Erro ao disparar recálculo:', e); 
+      logger.warn('Erro ao disparar recálculo:', e); 
     }
   }
 
@@ -466,7 +467,7 @@ function setupAircraftAutofillConsolidated() {
   const aircraft = (window.AircraftDomain && window.AircraftDomain.getSelectedAircraftData(select.value)) || null;
   if (!aircraft) return;
 
-    console.log('Aplicando valores iniciais para:', select.value);
+    logger.debug('Aplicando valores iniciais para:', select.value);
 
     // Aplicar tarifa salva ou padrão
     if (tarifaInput) {
@@ -513,7 +514,7 @@ function setupAircraftAutofillConsolidated() {
     setTimeout(handleAircraftChange, 200);
   }
 
-  console.log('Autofill consolidado configurado com sucesso');
+  logger.debug('Autofill consolidado configurado com sucesso');
 }
 
 // Inicializar apenas uma vez quando DOM estiver carregado
@@ -523,14 +524,14 @@ function initAutofillWhenReady() {
   
   // Verificar se catálogo já foi carregado
   if (!window.aircraftCatalog || !Array.isArray(window.aircraftCatalog) || window.aircraftCatalog.length === 0) {
-    console.log('⏳ Aguardando carregamento do catálogo...');
+    logger.debug('⏳ Aguardando carregamento do catálogo...');
     // Tentar novamente em 500ms
     setTimeout(initAutofillWhenReady, 500);
     return;
   }
   
   autofillConsolidatedInitialized = true;
-  console.log('🚀 Inicializando autofill com catálogo carregado (' + window.aircraftCatalog.length + ' aeronaves)');
+  logger.debug('🚀 Inicializando autofill com catálogo carregado (' + window.aircraftCatalog.length + ' aeronaves)');
   setupAircraftAutofillConsolidated();
 }
 
@@ -1056,7 +1057,7 @@ async function captureMapDataUrl() {
     // If nothing works, return null
     return null;
   } catch (error) {
-    console.warn('Failed to capture map dataURL:', error);
+    logger.warn('Failed to capture map dataURL:', error);
     return null;
   }
 }
@@ -2780,7 +2781,7 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
   const docDefinition = buildDocDefinition(snapshot, selectedMethod === 'time' ? 'method2' : 'method1', pdfOptions);
   try {
     if (!docDefinition || !docDefinition.content || !docDefinition.content.length) {
-      console.warn('[PDF] docDefinition vazio, aplicando fallback simples.');
+      logger.warn('[PDF] docDefinition vazio, aplicando fallback simples.');
       const fallback = { content: [{ text: 'Pré-Orçamento', fontSize: 16, bold: true }, { text: JSON.stringify(pdfOptions), fontSize: 8 }] };
       if (typeof pdfMake !== 'undefined') pdfMake.createPdf(fallback).open();
       return fallback;
@@ -2789,10 +2790,10 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
     if (typeof pdfMake !== 'undefined') {
       pdfMake.createPdf(docDefinition).open();
     } else {
-      console.error('[PDF] pdfMake indisponível.');
+      logger.error('[PDF] pdfMake indisponível.');
     }
   } catch (err) {
-    console.error('[PDF] Erro ao gerar PDF:', err);
+    logger.error('[PDF] Erro ao gerar PDF:', err);
     const fallback = { content: [{ text: 'Erro ao gerar PDF', color: 'red' }, { text: String(err), fontSize: 8 }] };
     if (typeof pdfMake !== 'undefined') pdfMake.createPdf(fallback).open();
     return fallback;
