@@ -449,7 +449,7 @@ function setupAircraftAutofillConsolidated() {
     // 4. Disparar recálculo
     try { 
       if (typeof gerarPreOrcamento === 'function') {
-  if (typeof scheduleRecalc === 'function') scheduleRecalc(gerarPreOrcamento);
+        if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento);
         console.log('Recálculo disparado');
       }
     } catch (e) { 
@@ -771,7 +771,7 @@ function bindAircraftParamsUI() {
     } catch(e) {}
     
     // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
-    try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+    try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) {}
   }
 
   if (select) select.addEventListener('change', (e) => applyFor(e.target.value));
@@ -789,14 +789,14 @@ function bindAircraftParamsUI() {
       try {
         const cruisePreview = document.getElementById('cruisePreview');
         if (cruisePreview) cruisePreview.textContent = cruiseEl.value ? `${cruiseEl.value} KTAS` : '';
-        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento();
+        if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento);
       } catch (e) {}
     });
     if (hourlyEl) hourlyEl.addEventListener('input', () => {
       try {
         const hourlyPreview = document.getElementById('hourlyPreview');
         if (hourlyPreview) hourlyPreview.textContent = hourlyEl.value ? `R$ ${Number(hourlyEl.value).toLocaleString('pt-BR')}/h` : '';
-        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento();
+        if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento);
       } catch (e) {}
     });
   } catch (e) { /* ignore */ }
@@ -877,7 +877,7 @@ function loadDraft(){
         if (panel) panel.style.display = ap.enabled ? 'block' : 'none';
       }
     } catch {}
-    try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch {}
+    try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch {}
     return payload;
   } catch(e){ return null; }
 }
@@ -974,7 +974,7 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
         }
         span.style.display = '';
         input.remove(); saveBtn.remove(); cancelBtn.remove(); btnElem.style.display = '';
-        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+        try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) {}
       });
 
       cancelBtn.addEventListener('click', () => {
@@ -1001,7 +1001,7 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
         const calc2 = legsData[idx].distNm ? calcTempo(legsData[idx].distNm, speed) : { hoursDecimal: 0, hhmm: '—' };
         span.textContent = `${calc2.hoursDecimal} h (${calc2.hhmm})`;
       }
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+      try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) {}
     });
   });
 }
@@ -1386,7 +1386,7 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
       root.addEventListener('change',e=>{ if(e.target && e.target.matches('input[data-inline-pdf-toggle]')){ 
         const key=e.target.getAttribute('data-inline-pdf-toggle');
         try{const data=JSON.parse(localStorage.getItem('pdfInlineToggles')||'{}'); data[key]=e.target.checked; localStorage.setItem('pdfInlineToggles',JSON.stringify(data));}catch{}
-        if(window.gerarPreOrcamento) { window.gerarPreOrcamento(); }
+        if(window.App && window.App.ui && window.App.ui.scheduleRecalc) { window.App.ui.scheduleRecalc(window.gerarPreOrcamento); }
       }});
     })();</script>`;
 
@@ -1423,7 +1423,7 @@ if (typeof document !== 'undefined') {
       const wind = document.getElementById('windBuffer');
       const taxi = document.getElementById('taxiMinutes');
       const minB = document.getElementById('minBillable');
-      const trigger = debounce(() => { try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {} }, 250);
+      const trigger = () => { try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) {} };
 
       if (toggle && panel) {
         // initialize visibility
@@ -1476,20 +1476,20 @@ if (typeof document !== 'undefined') {
     tarifaInput.addEventListener('input', () => {
       if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
       // Atualiza pré-orçamento ao editar tarifa manualmente
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
+      try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) { /* ignore */ }
     });
 
     // Atualizar pré-orçamento ao editar velocidade manualmente
     if (cruiseInput) {
       cruiseInput.addEventListener('input', () => {
-        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
+        try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) { /* ignore */ }
       });
     }
 
     // Atualizar pré-orçamento ao editar valor-hora manualmente
     if (hourlyInput) {
       hourlyInput.addEventListener('input', () => {
-        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
+        try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) { /* ignore */ }
       });
     }
 
@@ -1503,10 +1503,10 @@ if (typeof document !== 'undefined') {
     // Persistência de tarifas - definição movida para setupAircraftAutofillConsolidated
     // (funcionalidade já integrada na função consolidada)
 
-    // Atualiza preview e persiste se necessário (debounced)
-    const saveAndRefresh = debounce(() => {
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
-    }, 200);
+    // Atualiza preview e persiste se necessário (using scheduleRecalc)
+    const saveAndRefresh = () => {
+      try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) {}
+    };
 
     const applyTarifaPreview = () => {
       if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
@@ -3001,7 +3001,7 @@ if (typeof window !== 'undefined') {
       applyAircraftParamsFromCatalog(ac);
       setAircraftParamsEditable(false);
       // Recalcular
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+      try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch{}
     }
     window.resetAircraftParamsToCatalog = resetAircraftParamsToCatalog;
 
@@ -3046,7 +3046,7 @@ if (typeof window !== 'undefined') {
           const num = Number(hourlyEl.value.replace(',','.'))||0;
           hourlyEl.value = num ? num.toFixed(2) : '';
         }
-        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+        try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch{}
       }
     });
     resetBtn.addEventListener('click', () => {
@@ -3073,7 +3073,7 @@ if (typeof window !== 'undefined') {
       applyAircraftParamsFromCatalog(ac);
       setAircraftParamsEditable(false); // volta bloqueado
       state.lastAircraftValue = newVal;
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+      try { if (window.App && window.App.ui && window.App.ui.scheduleRecalc) window.App.ui.scheduleRecalc(gerarPreOrcamento); } catch{}
     });
 
     function initialApply(){
