@@ -1051,7 +1051,6 @@ async function fetchAirportByCode(code) {
   const icao = String(code || '').toUpperCase();
   if (!/^[A-Z]{4}$/.test(icao)) return null;
   if (airportCache.has(icao)) return airportCache.get(icao);
-  // UI status elements
   let statusEl = typeof document !== 'undefined' ? document.getElementById('airportStatus') : null;
   if (!statusEl && typeof document !== 'undefined') {
     statusEl = document.createElement('div');
@@ -1062,9 +1061,7 @@ async function fetchAirportByCode(code) {
     const mapEl = document.getElementById('map');
     if (mapEl && mapEl.parentNode) mapEl.parentNode.insertBefore(statusEl, mapEl);
   }
-  const setStatus = (msg, tone='info') => {
-    if (!statusEl) return; statusEl.textContent = msg; statusEl.dataset.tone = tone; statusEl.style.color = tone==='error' ? '#b00020' : (tone==='warn' ? '#aa6c00' : '#555');
-  };
+  const setStatus = (msg, tone='info') => { if (!statusEl) return; statusEl.textContent = msg; statusEl.dataset.tone = tone; statusEl.style.color = tone==='error' ? '#b00020' : (tone==='warn' ? '#aa6c00' : '#555'); };
   setStatus('Consultando aeroporto '+icao+'…');
   try {
     const token = (typeof AVWX_TOKEN !== 'undefined' && AVWX_TOKEN) ? AVWX_TOKEN : (typeof process !== 'undefined' && process.env && process.env.AVWX_TOKEN ? process.env.AVWX_TOKEN : null);
@@ -1073,28 +1070,37 @@ async function fetchAirportByCode(code) {
       airportCache.set(icao, null);
       return null;
     }
-    if (typeof AVWXService === 'undefined' || !AVWXService.fetchAirport) {
+    if (!(window.App && window.App.services && window.App.services.avwx && typeof window.App.services.avwx.fetchAirport === 'function')) {
       setStatus('Serviço AVWX indisponível.', 'error');
       airportCache.set(icao, null);
       return null;
     }
-    const point = await AVWXService.fetchAirport(icao, { token });
-    if (point && !point.error) {
-      airportCache.set(icao, point);
-      setStatus('Aeroporto '+icao+' carregado.');
-      return point;
+    const resp = await window.App.services.avwx.fetchAirport(icao, { token, ttlMs: 300000 });
+    if (resp.ok && resp.data) {
+      const point = { lat: resp.data.latitude && resp.data.latitude.decimal, lng: resp.data.longitude && resp.data.longitude.decimal };
+      if (Number.isFinite(point.lat) && Number.isFinite(point.lng)) {
+        airportCache.set(icao, point);
+        setStatus('Aeroporto '+icao+' carregado.');
+        return point;
+      } else {
+        setStatus('Coordenadas indisponíveis para '+icao+'.', 'warn');
+        airportCache.set(icao, null);
+        return null;
+      }
     }
-    if (point && point.error === 'offline') {
-      setStatus('Offline ou sem conexão para AVWX.', 'warn');
-    } else if (point && point.error) {
-      setStatus('Erro AVWX ('+point.error+').', 'error');
+    if (resp.reason === 'token-missing') {
+      setStatus('Token AVWX ausente.', 'warn');
+    } else if (resp.reason === 'network') {
+      setStatus('Falha de rede AVWX.', 'warn');
+    } else if (resp.status) {
+      setStatus('Erro AVWX HTTP '+resp.status+'.', 'error');
     } else {
-      setStatus('Coordenadas não encontradas para '+icao+'.', 'warn');
+      setStatus('Falha ao obter '+icao+'.', 'error');
     }
     airportCache.set(icao, null);
     return null;
-  } catch (e) {
-    setStatus('Falha ao obter '+icao+'.', 'error');
+  } catch(e){
+    setStatus('Erro inesperado AVWX.', 'error');
     airportCache.set(icao, null);
     return null;
   }
