@@ -351,7 +351,7 @@ function fallbackCopy(text){
 }
 
 // Função utilitária para buscar dados da aeronave selecionada
-// Substituído por AircraftDomain.getSelectedAircraftData
+// Substituído por App.domain.aircraft.getSelectedAircraftData
 
 // Formatação BRL (reutiliza padrão do app se existir)
 function formatNumberBR(n) {
@@ -400,9 +400,9 @@ function setupAircraftAutofillConsolidated() {
 
   function handleAircraftChange() {
     const val = select.value;
-  const aircraft = (window.AircraftDomain && window.AircraftDomain.getSelectedAircraftData(val)) || null;
+  const aircraft = (window.App && window.App.domain && window.App.domain.aircraft && window.App.domain.aircraft.getSelectedAircraftData(val)) || null;
     
-    console.log('Aeronave selecionada:', val, 'Dados encontrados:', data);
+    console.log('Aeronave selecionada:', val, 'Dados encontrados:', aircraft);
     
   if (!aircraft) {
       console.warn('Aeronave não encontrada no catálogo:', val);
@@ -461,7 +461,7 @@ function setupAircraftAutofillConsolidated() {
   function applyInitialValues() {
     if (!select.value) return;
     
-  const aircraft = (window.AircraftDomain && window.AircraftDomain.getSelectedAircraftData(select.value)) || null;
+  const aircraft = (window.App && window.App.domain && window.App.domain.aircraft && window.App.domain.aircraft.getSelectedAircraftData(select.value)) || null;
   if (!aircraft) return;
 
     console.log('Aplicando valores iniciais para:', select.value);
@@ -538,8 +538,23 @@ if (typeof document !== 'undefined') {
     setTimeout(initAutofillWhenReady, 300);
   });
 }
+// Helper function to get aircraft data using domain
+function getAircraftData(aircraftName) {
+  if (window.App && window.App.domain && window.App.domain.aircraft) {
+    return window.App.domain.aircraft.getSelectedAircraftData(aircraftName);
+  }
+  // Fallback for compatibility
+  if (!aircraftCatalog || !Array.isArray(aircraftCatalog)) return null;
+  return aircraftCatalog.find(a => a.nome === aircraftName || a.id === aircraftName) || null;
+}
+
 // Função de compatibilidade para obter tarifa por km de aeronave selecionada
 function getTarifaKmFromAircraft(aircraftName) {
+  if (window.App && window.App.domain && window.App.domain.aircraft) {
+    const aircraft = window.App.domain.aircraft.getSelectedAircraftData(aircraftName);
+    return aircraft ? aircraft.tarifa_km_brl_default : null;
+  }
+  // Fallback for compatibility
   if (!aircraftCatalog || !Array.isArray(aircraftCatalog)) return null;
 
   // Primeiro tenta encontrar por nome exato
@@ -572,7 +587,7 @@ const valoresKm = {
  * @param {string} selectValue - Valor selecionado no dropdown de aeronaves
  * @returns {Object|null} Objeto com hourlyRate e cruiseKtas ou null se não encontrado
  */
-// Substituído por AircraftDomain.getSelectedAircraftData
+// Substituído por App.domain.aircraft.getSelectedAircraftData
 
 let valorParcialFn = (distanciaKm, valorKm) => distanciaKm * valorKm;
 let valorTotalFn = (distanciaKm, valorKm, valorExtra = 0) =>
@@ -617,6 +632,10 @@ function loadAircraftCatalog() {
             aircraftCatalog = j;
             // Expor globalmente para compatibilidade
             window.aircraftCatalog = aircraftCatalog;
+            // Load into domain module
+            if (window.App && window.App.domain && window.App.domain.aircraft) {
+              window.App.domain.aircraft.loadCatalog(aircraftCatalog);
+            }
             // Augmentar com aeronaves legadas que possuem tarifa mas não estão no catálogo oficial
             const legacyAugment = [
               { nome: 'Hawker 400', cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
@@ -631,6 +650,10 @@ function loadAircraftCatalog() {
                 aircraftCatalog.push({ id, categoria: 'legacy', ...l });
               }
             });
+            // Load the final catalog into domain module
+            if (window.App && window.App.domain && window.App.domain.aircraft) {
+              window.App.domain.aircraft.loadCatalog(aircraftCatalog);
+            }
             // Popular o <select> se existir e ainda não estiver populado dinamicamente
             const sel = document.getElementById('aeronave');
             if (sel) {
@@ -744,7 +767,7 @@ function bindAircraftParamsUI() {
 
   function applyFor(name) {
     // find catalog entry by name (fallback)
-    const entry = aircraftCatalog.find(a => a.nome === name || a.id === name);
+    const entry = getAircraftData(name);
     let cruise = entry ? entry.cruise_speed_kt_default : 0;
     let hourly = entry ? entry.hourly_rate_brl_default : 0;
     
@@ -771,7 +794,8 @@ function bindAircraftParamsUI() {
     } catch(e) {}
     
     // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
-    try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+    // REMOVED: gerarPreOrcamento call - unified with parametrization handler to avoid double recalculation
+    // try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
   }
 
   if (select) select.addEventListener('change', (e) => applyFor(e.target.value));
@@ -1257,7 +1281,7 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
     const m2 = (typeof window !== 'undefined' && window.__method2Summary) ? window.__method2Summary : method2Summary;
     if (m2) {
       hasMethod2Data = true;
-      const entry = aircraftCatalog.find(a => a.nome === state.aeronave || a.id === state.aeronave);
+      const entry = getAircraftData(state.aeronave);
       const hourlyRate = entry ? entry.hourly_rate_brl_default : 0;
       
       dadosMetodo2 = {
@@ -1517,7 +1541,7 @@ if (typeof document !== 'undefined') {
     // substituir comportamento do botão para abrir modal
     if (btnShowTarifa && modal && modalInput && modalSave && modalCancel) {
       btnShowTarifa.addEventListener('click', () => {
-        const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value || a.id === aeronaveSel.value);
+        const entry = getAircraftData(aeronaveSel.value);
         const defaultVal = entry ? entry.tarifa_km_brl_default : valoresKm[aeronaveSel.value];
         const cur = tarifaInput.value || defaultVal || '';
         modalInput.value = cur;
@@ -1844,7 +1868,7 @@ function buildState() {
   const valorExtra = parseFloat(document.getElementById('valorExtra').value) || 0;
   const tipoExtra = document.getElementById('tipoExtra').value;
   const tarifaVal = parseFloat(document.getElementById('tarifa').value);
-  const entry = aircraftCatalog.find(a => a.nome === aeronave || a.id === aeronave);
+  const entry = getAircraftData(aeronave);
   const defaultTarifa = entry ? entry.tarifa_km_brl_default : valoresKm[aeronave];
   const valorKm = Number.isFinite(tarifaVal) ? tarifaVal : defaultTarifa;
   const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => i.value).filter(Boolean);
@@ -1967,7 +1991,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
     if (methodType === 'method1') {
       investBody.push([{ text: `Total parcial (km×tarifa): R$ ${subtotalUsed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
     } else {
-      const entry = aircraftCatalog.find(a => a.nome === state.aeronave || a.id === state.aeronave);
+      const entry = getAircraftData(state.aeronave);
       const hourlyRate = entry ? entry.hourly_rate_brl_default : 0;
       investBody.push([{ text: `Valor hora: R$ ${hourlyRate.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/h`, alignment: 'right' }]);
       investBody.push([{ text: `Tempo total: ${methodData.totalHhmm} (${methodData.totalHours.toFixed(2)}h)`, alignment: 'right' }]);
@@ -2016,7 +2040,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
   if (includeDistance) resumoRight.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)`, style: 'row' });
   if (includeTariff) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'row' });
   if (includeHourly && method2Data) {
-    const entry = aircraftCatalog.find(a => a.nome === state.aeronave || a.id === state.aeronave);
+    const entry = getAircraftData(state.aeronave);
     const hourlyRate = entry ? entry.hourly_rate_brl_default : 0;
     resumoRight.push({ text: `Valor por hora: R$ ${hourlyRate.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/h`, style: 'row' });
   }
