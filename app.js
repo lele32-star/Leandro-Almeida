@@ -2809,21 +2809,56 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
 
 function limparCampos() {
   if (typeof document === 'undefined') return;
-  document.querySelectorAll('input, textarea').forEach(el => {
-    if (el.type === 'checkbox') el.checked = false;
-    else el.value = '';
+  
+  // Preserve aircraft/catalog data - DO NOT CLEAR: aeronave, tarifa, cruiseSpeed, hourlyRate
+  const fieldsToPreserve = ['aeronave', 'tarifa', 'cruiseSpeed', 'hourlyRate'];
+  
+  // Clear only client/item/leg data - specific field IDs
+  const fieldsToClear = [
+    'nm', 'km', 'origem', 'destino', 'dataIda', 'dataVolta', 
+    'observacoes', 'valorExtra', 'tipoExtra', 'pagamento',
+    'taxiTime', 'minTime'  // Additional fields that may exist
+  ];
+  
+  // Clear specific fields only
+  fieldsToClear.forEach(fieldId => {
+    const el = document.getElementById(fieldId);
+    if (el) el.value = '';
   });
-  document.getElementById('tarifa').value = '';
+  
+  // Clear any dynamically added stop inputs (pernas/legs)
+  document.querySelectorAll('.stop-input').forEach(el => {
+    if (el) el.value = '';
+  });
+  
+  // Reset PDF checkboxes to default checked state (preserve settings, don't clear)
+  const pdfCheckboxes = [
+    'showRota', 'showAeronave', 'showTarifa', 'showDistancia', 
+    'showDatas', 'showAjuste', 'showObservacoes', 'showPagamento', 'showMapa'
+  ];
+  pdfCheckboxes.forEach(id => {
+    const checkbox = document.getElementById(id);
+    if (checkbox) checkbox.checked = true;
+  });
+  
+  // Clear results and UI areas
   document.getElementById('resultado').innerHTML = '';
+  
   // Limpar localStorage dos toggles inline
   try {
     localStorage.removeItem('pdfInlineToggles');
   } catch (e) { /* ignore */ }
+  
+  // Clear route layer from map
   if (routeLayer && routeLayer.remove) routeLayer.remove();
+  
+  // Clear commission-related areas
   const comissoesDiv = document.getElementById('comissoes');
   if (comissoesDiv) comissoesDiv.innerHTML = '';
   const comissaoConfig = document.getElementById('comissaoConfig');
   if (comissaoConfig) comissaoConfig.style.display = 'none';
+  
+  // Reset commission component
   const commissionComp = document.getElementById('commission-component');
   if (commissionComp) {
     const btnAdd = commissionComp.querySelector('#btnAddCommission');
@@ -2840,6 +2875,8 @@ function limparCampos() {
     if (preview) preview.textContent = 'Comissão: R$ 0,00';
     if (amountHidden) amountHidden.value = '0';
   }
+  
+  // Reset PDF commission toggle (preserve PDF settings)
   const pdfCommission = document.getElementById('pdfCommissionToggle');
   if (pdfCommission) {
     pdfCommission.checked = true;
