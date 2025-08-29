@@ -27,29 +27,19 @@ const FROZEN_KEY = 'quote:last';
 const CURRENT_VERSION = '1.0';
 
 function getFrozenQuote(){
-  if (window.SnapshotStore) {
-    const f = window.SnapshotStore.getFrozenQuote();
-    if (f) {
-      __frozenQuote = { version: f.version, selectedMethod: f.method || f.selectedMethod, snapshot: f.snapshot, ts: f.ts };
-      return __frozenQuote;
-    }
+  if (App.state && App.state.getFrozenQuote) {
+    const snap = App.state.getFrozenQuote();
+    if (snap) return { version: CURRENT_VERSION, selectedMethod: snap.method || snap.selectedMethod, snapshot: snap.snapshot || snap, ts: snap.ts || Date.now() };
   }
   if (__frozenQuote) return __frozenQuote;
-  try {
-    const raw = localStorage.getItem(FROZEN_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.version === CURRENT_VERSION) { __frozenQuote = parsed; return __frozenQuote; }
-      localStorage.removeItem(FROZEN_KEY);
-    }
-  } catch{}
+  try { const raw = localStorage.getItem(FROZEN_KEY); if (raw){ const parsed = JSON.parse(raw); if (parsed.version===CURRENT_VERSION) { __frozenQuote=parsed; return __frozenQuote; } localStorage.removeItem(FROZEN_KEY);} } catch {}
   return null;
 }
 
 function freezePreQuote(method, snapshot){
-  if (window.SnapshotStore) {
-    const f = window.SnapshotStore.freezeQuote(method, snapshot);
-    __frozenQuote = { version: f.version, selectedMethod: method, snapshot: f.snapshot, ts: f.ts };
+  if (App.state && App.state.freezeQuote) {
+    const frozen = App.state.freezeQuote({ method, snapshot, ts: Date.now() });
+    __frozenQuote = { version: CURRENT_VERSION, selectedMethod: method, snapshot: frozen.snapshot || frozen, ts: frozen.ts || Date.now() };
   } else {
     __frozenQuote = { version: CURRENT_VERSION, selectedMethod: method, snapshot, ts: Date.now() };
   }
@@ -2626,8 +2616,8 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
 
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
 async function gerarPreOrcamento() {
-  if (window.SnapshotStore) {
-    try { window.SnapshotStore.assertMutableOrThrow(); } catch(e){ if (e && e.message==='QuoteFrozen'){ showToast && showToast('Pré-orçamento congelado. Clique em "Novo Pré-Orçamento" para recalcular.'); return; } }
+  if (App.state && App.state.assertMutableOrThrow) {
+    try { App.state.assertMutableOrThrow(); } catch(e){ showToast && showToast(e.message); return; }
   }
   // 1. Captura e (se necessário) atualiza estado bruto
   const saida = document.getElementById('resultado');
