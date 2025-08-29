@@ -1407,6 +1407,11 @@ if (typeof document !== 'undefined') {
 // Optional save/load buttons wiring
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
+    // Run migration check on first load
+    if (window.StoragePersist && window.StoragePersist.migrateIfNeeded) {
+      window.StoragePersist.migrateIfNeeded();
+    }
+    
     const btnSaveDraft = document.getElementById('btnSaveDraft');
     const btnLoadDraft = document.getElementById('btnLoadDraft');
     if (btnSaveDraft) btnSaveDraft.addEventListener('click', () => { const ok = saveDraft(); showToast(ok ? 'Rascunho salvo localmente.' : 'Falha ao salvar rascunho.'); });
