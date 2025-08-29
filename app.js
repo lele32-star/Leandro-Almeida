@@ -405,7 +405,7 @@ function setupAircraftAutofillConsolidated() {
     const val = select.value;
   const aircraft = (window.AircraftDomain && window.AircraftDomain.getSelectedAircraftData(val)) || null;
     
-    logger.debug('Aeronave selecionada:', val, 'Dados encontrados:', data);
+    logger.debug('Aeronave selecionada:', val, 'Dados encontrados:', aircraft);
     
   if (!aircraft) {
       logger.warn('Aeronave não encontrada no catálogo:', val);
@@ -522,12 +522,29 @@ let autofillConsolidatedInitialized = false;
 function initAutofillWhenReady() {
   if (autofillConsolidatedInitialized) return;
   
-  // Verificar se catálogo já foi carregado
+  // Initialize with basic aircraft data if catalog isn't available
   if (!window.aircraftCatalog || !Array.isArray(window.aircraftCatalog) || window.aircraftCatalog.length === 0) {
-    logger.debug('⏳ Aguardando carregamento do catálogo...');
-    // Tentar novamente em 500ms
-    setTimeout(initAutofillWhenReady, 500);
-    return;
+    // Initialize with basic catalog to prevent infinite loop
+    if (!window.__catalogTries) window.__catalogTries = 0;
+    window.__catalogTries++;
+    
+    if (window.__catalogTries > 10) {
+      // Fallback: Initialize with basic aircraft data
+      window.aircraftCatalog = [
+        { nome: 'Hawker 400', cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000, tarifa_km_brl_default: 36 },
+        { nome: 'Phenom 100', cruise_speed_kt_default: 390, hourly_rate_brl_default: 16500, tarifa_km_brl_default: 36 },
+        { nome: 'Citation II', cruise_speed_kt_default: 375, hourly_rate_brl_default: 15000, tarifa_km_brl_default: 36 },
+        { nome: 'King Air C90', cruise_speed_kt_default: 217, hourly_rate_brl_default: 8700, tarifa_km_brl_default: 30 },
+        { nome: 'Sêneca IV', cruise_speed_kt_default: 190, hourly_rate_brl_default: 6500, tarifa_km_brl_default: 22 },
+        { nome: 'Cirrus SR22', cruise_speed_kt_default: 180, hourly_rate_brl_default: 3300, tarifa_km_brl_default: 15 }
+      ];
+      logger.debug('✅ Catálogo inicializado com dados básicos (fallback)');
+    } else {
+      logger.debug('⏳ Aguardando carregamento do catálogo...');
+      // Tentar novamente em 500ms
+      setTimeout(initAutofillWhenReady, 500);
+      return;
+    }
   }
   
   autofillConsolidatedInitialized = true;
@@ -2865,6 +2882,9 @@ if (typeof window !== 'undefined') {
   window.limparCampos = limparCampos;
   window.saveDraft = saveDraft;
   window.loadDraft = loadDraft;
+  window.copiarJSON = copiarJSON;
+  window.copiarLink = copiarLink;
+  window.reabrirUltimoOrcamento = reabrirUltimoOrcamento;
   // Aliases para garantir que os botões chamem SEMPRE a versão do app.js
   window.appGerarPreOrcamento = gerarPreOrcamento;
   window.appGerarPDF = gerarPDF;
