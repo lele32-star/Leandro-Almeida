@@ -804,76 +804,67 @@ function bindAircraftParamsUI() {
 
 // Legs data (keeps per-leg computed values)
 let legsData = [];
-const DRAFT_KEY = 'cotacao:currentDraft';
-
-function saveDraft(name) {
-  let payload = null;
-  try {
-    const state = buildState();
-    const advEnabledEl = typeof document !== 'undefined' ? document.getElementById('enableAdvancedPlanning') : null;
-    // assign to outer variable (no shadow) so fallback can see it
-    payload = {
-      state,
-      legsData: (legsData || []).map(l => ({ ...l })),
-  overrides: {},
-      advancedPlanning: advEnabledEl ? {
-        enabled: !!advEnabledEl.checked,
-        windPercent: Number((document.getElementById('windBuffer')||{}).value)||0,
-        taxiMinutes: Number((document.getElementById('taxiMinutes')||{}).value)||0,
-        minBillableMinutes: Number((document.getElementById('minBillable')||{}).value)||0
-      } : null,
-      timestamp: new Date().toISOString()
-    };
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
-      return true;
-    }
-  } catch (e) { /* ignore */ }
-  // fallback: attach to window for tests (Node env)
-  try {
-    if (typeof window !== 'undefined' && payload) { window.__lastDraft = payload; return true; }
-  } catch (e) {}
-  return false;
+// === Persistência versionada (delegando para StoragePersist) ===
+function buildDraftPayload() {
+  const advEnabledEl = typeof document !== 'undefined' ? document.getElementById('enableAdvancedPlanning') : null;
+  return {
+    state: buildState(),
+    legsData: (legsData || []).map(l => ({ ...l })),
+    advancedPlanning: advEnabledEl ? {
+      enabled: !!advEnabledEl.checked,
+      windPercent: Number((document.getElementById('windBuffer')||{}).value)||0,
+      taxiMinutes: Number((document.getElementById('taxiMinutes')||{}).value)||0,
+      minBillableMinutes: Number((document.getElementById('minBillable')||{}).value)||0
+    } : null,
+    timestamp: new Date().toISOString()
+  };
 }
-
-function loadDraft() {
+function saveDraft(name){
   try {
-    let raw = null;
-    if (typeof localStorage !== 'undefined') raw = localStorage.getItem(DRAFT_KEY);
-    if (!raw && typeof window !== 'undefined' && window.__lastDraft) raw = JSON.stringify(window.__lastDraft);
-    if (!raw) return null;
-  const payload = JSON.parse(raw);
-    // apply overrides first
-  // overrides removidos
-    // apply state to DOM
-    try {
-      const s = payload.state || {};
-      if (typeof document !== 'undefined') {
-        const set = (id, val) => { const el = document.getElementById(id); if (!el) return; if (el.type === 'checkbox') el.checked = !!val; else el.value = val === undefined || val === null ? '' : val; };
-        set('aeronave', s.aeronave);
-        set('nm', s.nm);
-        set('km', s.nm ? (s.nm * 1.852).toFixed(1) : s.km);
-        set('origem', s.origem);
-        set('destino', s.destino);
-        // stops
-        const stops = s.stops || [];
-        const stopsContainer = document.getElementById('stops');
-        if (stopsContainer) {
-          stopsContainer.innerHTML = '';
-          stops.forEach(code => { const div = document.createElement('div'); const input = document.createElement('input'); input.type = 'text'; input.className = 'stop-input icao'; input.value = code; div.appendChild(input); stopsContainer.appendChild(div); });
-        }
-        set('dataIda', s.dataIda);
-        set('dataVolta', s.dataVolta);
-        set('observacoes', s.observacoes);
-        set('pagamento', s.pagamento);
-        set('tarifa', s.valorKm);
-        set('cruiseSpeed', (s.cruiseSpeed || ''));
-        set('hourlyRate', (s.hourlyRate || ''));
+    const payload = buildDraftPayload();
+    if (window.StoragePersist && window.StoragePersist.saveDraft) {
+      return window.StoragePersist.saveDraft(payload);
+    }
+    // fallback legado
+    if (typeof window !== 'undefined') { window.__lastDraft = payload; }
+    return true;
+  } catch(e){ return false; }
+}
+function loadDraft(){
+  try {
+    let wrapped = null;
+    if (window.StoragePersist && window.StoragePersist.loadDraft) {
+      wrapped = window.StoragePersist.loadDraft();
+    }
+    if (!wrapped) { // fallback legacy
+      wrapped = { data: (typeof window !== 'undefined' && window.__lastDraft) ? window.__lastDraft : null };
+    }
+    if (!wrapped || !wrapped.data) return null;
+    const payload = wrapped.data;
+    const s = payload.state || {};
+    if (typeof document !== 'undefined') {
+      const set = (id, val) => { const el = document.getElementById(id); if (!el) return; if (el.type === 'checkbox') el.checked = !!val; else el.value = val == null ? '' : val; };
+      set('aeronave', s.aeronave);
+      set('nm', s.nm);
+      set('km', s.nm ? (s.nm * 1.852).toFixed(1) : s.km);
+      set('origem', s.origem);
+      set('destino', s.destino);
+      // stops
+      const stops = s.stops || [];
+      const stopsContainer = document.getElementById('stops');
+      if (stopsContainer) {
+        stopsContainer.innerHTML = '';
+        stops.forEach(code => { const div = document.createElement('div'); const input = document.createElement('input'); input.type = 'text'; input.className = 'stop-input icao'; input.value = code; div.appendChild(input); stopsContainer.appendChild(div); });
       }
-    } catch (e) { /* ignore DOM errors */ }
-    // restore legsData
-    try { legsData = (payload.legsData || []).map(l => ({ ...l })); } catch (e) { legsData = []; }
-    // restore advanced planning params
+      set('dataIda', s.dataIda);
+      set('dataVolta', s.dataVolta);
+      set('observacoes', s.observacoes);
+      set('pagamento', s.pagamento);
+      set('tarifa', s.valorKm);
+      set('cruiseSpeed', (s.cruiseSpeed || ''));
+      set('hourlyRate', (s.hourlyRate || ''));
+    }
+    try { legsData = (payload.legsData || []).map(l => ({ ...l })); } catch { legsData = []; }
     try {
       if (payload.advancedPlanning && typeof document !== 'undefined') {
         const ap = payload.advancedPlanning;
@@ -885,17 +876,10 @@ function loadDraft() {
         const panel = document.getElementById('advancedPlanningFields');
         if (panel) panel.style.display = ap.enabled ? 'block' : 'none';
       }
-    } catch (e) { /* ignore */ }
-    // trigger recalculation only if resultado element exists (prevents errors in test/Node env)
-    try {
-      if (typeof gerarPreOrcamento === 'function') {
-        if (typeof document === 'undefined' || (document.getElementById && document.getElementById('resultado'))) {
-          gerarPreOrcamento();
-        }
-      }
-    } catch (e) {}
+    } catch {}
+    try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch {}
     return payload;
-  } catch (e) { return null; }
+  } catch(e){ return null; }
 }
 function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
   // codes: array of ICAOs in order; waypoints: array of points matching codes (may be partial)
