@@ -593,11 +593,9 @@ if (typeof window !== 'undefined') {
   if (typeof window.valorTotal === 'function') valorTotalFn = window.valorTotal;
 }
 
-// AVWX token: prefer environment variable `AVWX_TOKEN`, otherwise use the provided hardcoded token.
-// NOTE: embedding tokens in source is insecure for public repos; this was requested explicitly.
-const API_KEY = (typeof process !== 'undefined' && process.env && process.env.AVWX_TOKEN)
-  ? process.env.AVWX_TOKEN
-  : 'W51ZqbNnGvjTOz2IRloz4ev8mLIR3HCATEMK9wrO1L0';
+// Import AVWX service for secure token handling
+// Note: Hardcoded tokens have been removed for security
+const API_KEY = null; // Deprecated: Use getAVWXToken() from avwx service instead
 
 // --- [ADD/REPLACE] Utilitários do mapa e cache ---
 let map;
@@ -1062,47 +1060,21 @@ async function captureMapDataUrl() {
 async function fetchAirportByCode(code) {
   const icao = String(code || '').toUpperCase();
   if (!/^[A-Z]{4}$/.test(icao)) return null;
+  
+  // Check local cache first (maintained for compatibility)
   if (airportCache.has(icao)) return airportCache.get(icao);
+  
   try {
-  // Use API_KEY (env or hardcoded) for AVWX
-  const headers = API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
-    const url = `https://avwx.rest/api/station/${icao}`;
-    const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error('fetch failed');
-    const data = await res.json();
-
-    // Robust coordinate extraction: busca recursiva por chaves lat/lon em qualquer nível
-    function findLatLon(obj, depth = 0) {
-      if (!obj || typeof obj !== 'object' || depth > 6) return null;
-      const keys = Object.keys(obj || {});
-      let latVal, lonVal;
-      for (const k of keys) {
-        const lk = k.toLowerCase();
-        if (lk.includes('lat')) latVal = obj[k];
-        if (lk.includes('lon') || lk.includes('lng') || lk.includes('long')) lonVal = obj[k];
-      }
-      if (latVal !== undefined && lonVal !== undefined) {
-        const latN = Number(String(latVal).replace(',', '.'));
-        const lonN = Number(String(lonVal).replace(',', '.'));
-        if (Number.isFinite(latN) && Number.isFinite(lonN)) return { lat: latN, lng: lonN };
-      }
-      for (const k of keys) {
-        try {
-          const v = obj[k];
-          if (v && typeof v === 'object') {
-            const r = findLatLon(v, depth + 1);
-            if (r) return r;
-          }
-        } catch (e) { /* ignore */ }
-      }
-      return null;
-    }
-
-    const point = findLatLon(data);
+    const token = window.AVWXService ? window.AVWXService.getAVWXToken() : null;
+    const point = await window.AVWXService.fetchAirport(icao, { token });
+    
+    // Update local cache for compatibility
     airportCache.set(icao, point);
     return point;
-  } catch {
+  } catch (error) {
+    // Cache null result for failed requests
     airportCache.set(icao, null);
+    console.warn('AVWX fetch error:', error.message);
     return null;
   }
 }
@@ -1599,8 +1571,8 @@ if (typeof document !== 'undefined') {
       return;
     }
 
-  // detecta se existe token (env ou hardcoded)
-  const tokenAvailable = !!API_KEY;
+  // detecta se existe token configurado
+  const tokenAvailable = !!(window.AVWXService && window.AVWXService.getAVWXToken());
 
     const coords = await Promise.all(valid.map(fetchAirportByCode));
     const waypoints = coords.filter(Boolean);
@@ -1613,7 +1585,7 @@ if (typeof document !== 'undefined') {
       if (unresolved.length > 0 && avisoEl) {
           const prev = avisoEl.dataset.avwxWarn || '';
           let msg = `Atenção: não foi possível localizar coordenadas para: ${unresolved.join(', ')}.`;
-          if (!tokenAvailable) msg += ' (AVWX token não configurado — insira em AVWX Token no formulário)';
+          if (!tokenAvailable) msg += ' (Configure sua chave AVWX nas variáveis de ambiente/URL param/localStorage)';
           else msg += ' Verifique token AVWX, limite de requisições ou a validade dos ICAOs.';
           avisoEl.innerHTML = `<div style="padding:10px;border-radius:6px;background:#fff3cd;border:1px solid #ffecb5">${msg}</div>`;
           avisoEl.dataset.avwxWarn = msg;
@@ -1777,16 +1749,14 @@ function obterComissao(km, tarifa) {
 // === AVWX METAR support ===
 async function fetchMETARFor(icao) {
   if (!icao || String(icao).trim() === '') return null;
-  const code = String(icao).toUpperCase();
-  // Primeiro, tentar AVWX se token presente
-  const headers = API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
+  
   try {
-    if (API_KEY) {
-      const res = await fetch(`https://avwx.rest/api/metar/${code}`, { headers });
-      if (res && res.ok) return await res.json();
-    }
-  } catch (e) { /* ignore */ }
-  return null;
+    const token = window.AVWXService ? window.AVWXService.getAVWXToken() : null;
+    return await window.AVWXService.fetchMETAR(icao, { token });
+  } catch (error) {
+    console.warn('AVWX METAR fetch error:', error.message);
+    return null;
+  }
 }
 
 // ligar botão no DOM
@@ -1801,20 +1771,39 @@ if (typeof document !== 'undefined') {
         if (out) { out.style.display = 'block'; out.textContent = 'Informe um ICAO na Origem para buscar METAR.'; }
         return;
       }
-      if (!API_KEY) {
-        if (out) { out.style.display = 'block'; out.textContent = 'AVWX token não configurado no sistema.'; }
+      
+      const token = window.AVWXService ? window.AVWXService.getAVWXToken() : null;
+      if (!token) {
+        if (out) { 
+          out.style.display = 'block'; 
+          out.textContent = 'Configure sua chave AVWX nas variáveis de ambiente, URL param (avwx_token) ou localStorage.'; 
+        }
         return;
       }
+      
       if (out) { out.style.display = 'block'; out.textContent = 'Buscando METAR...'; }
+      
       try {
         const data = await fetchMETARFor(icao);
         if (!data) {
-          if (out) out.textContent = 'Nenhum METAR via AVWX.';
+          if (out) out.textContent = 'Nenhum METAR encontrado para este ICAO.';
           return;
         }
         if (out) out.textContent = JSON.stringify(data, null, 2);
       } catch (err) {
-        if (out) out.textContent = 'Erro ao buscar METAR: ' + String(err.message || err);
+        let errorMsg = 'Erro ao buscar METAR: ';
+        if (err.message === 'UNAUTHORIZED') {
+          errorMsg += 'Token AVWX inválido ou expirado.';
+        } else if (err.message === 'FORBIDDEN') {
+          errorMsg += 'Acesso negado - verifique as permissões do token.';
+        } else if (err.message === 'NOT_FOUND') {
+          errorMsg += 'ICAO não encontrado.';
+        } else if (!navigator.onLine) {
+          errorMsg += 'Sem conexão com a internet.';
+        } else {
+          errorMsg += 'Serviço temporariamente indisponível.';
+        }
+        if (out) out.textContent = errorMsg;
       }
     });
   });
