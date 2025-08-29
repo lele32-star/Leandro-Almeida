@@ -351,7 +351,7 @@ function fallbackCopy(text){
 }
 
 // Função utilitária para buscar dados da aeronave selecionada
-// Substituído por AircraftDomain.getSelectedAircraftData
+// uso centralizado via App.domain.aircraft.getSelectedAircraftData
 
 // Formatação BRL (reutiliza padrão do app se existir)
 function formatNumberBR(n) { return App.format.formatNumber(Number(n),2); }
@@ -397,7 +397,7 @@ function setupAircraftAutofillConsolidated() {
 
   function handleAircraftChange() {
     const val = select.value;
-  const aircraft = (window.AircraftDomain && window.AircraftDomain.getSelectedAircraftData(val)) || null;
+  const aircraft = (App.domain && App.domain.aircraft && App.domain.aircraft.getSelectedAircraftData({ aircraftId: val })) || null;
     
     console.log('Aeronave selecionada:', val, 'Dados encontrados:', data);
     
@@ -458,7 +458,7 @@ function setupAircraftAutofillConsolidated() {
   function applyInitialValues() {
     if (!select.value) return;
     
-  const aircraft = (window.AircraftDomain && window.AircraftDomain.getSelectedAircraftData(select.value)) || null;
+  const aircraft = (App.domain && App.domain.aircraft && App.domain.aircraft.getSelectedAircraftData({ aircraftId: select.value })) || null;
   if (!aircraft) return;
 
     console.log('Aplicando valores iniciais para:', select.value);
@@ -569,7 +569,7 @@ const valoresKm = {
  * @param {string} selectValue - Valor selecionado no dropdown de aeronaves
  * @returns {Object|null} Objeto com hourlyRate e cruiseKtas ou null se não encontrado
  */
-// Substituído por AircraftDomain.getSelectedAircraftData
+// uso centralizado via App.domain.aircraft.getSelectedAircraftData
 
 let valorParcialFn = (distanciaKm, valorKm) => distanciaKm * valorKm;
 let valorTotalFn = (distanciaKm, valorKm, valorExtra = 0) =>
