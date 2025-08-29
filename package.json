@@ -1,7 +1,12 @@
 {
   "name": "leandro-almeida",
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
-    "test": "node test.js"
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^1.6.0",
+    "jsdom": "^24.0.0"
   }
 }
