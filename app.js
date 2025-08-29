@@ -931,7 +931,7 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
         <div style="min-width:220px">Tempo: <span class="leg-time" data-idx="${defaultIdx}">${timeDisplay}</span></div>
         <div style="display:flex;align-items:center;gap:8px">
           <label style="font-size:0.85rem;display:flex;align-items:center;gap:6px"><input type="checkbox" class="leg-show-custom" data-idx="${defaultIdx}" ${showCustomDefault ? 'checked' : ''} /> Mostrar tempo custom</label>
-          <button class="edit-leg" data-idx="${defaultIdx}" aria-label="Editar tempo da perna">✏️</button>
+          <button class="edit-leg" data-idx="${defaultIdx}" aria-label="Editar tempo da perna" title="Editar tempo manual desta perna">✏️</button>
         </div>
       </div>
     `;

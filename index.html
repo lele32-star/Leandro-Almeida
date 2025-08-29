@@ -50,6 +50,17 @@
       background: var(--primary); color: #fff; transition: background 0.2s;
     }
     button:hover { background: var(--primary-hover); }
+    /* A11y: foco visível consistente */
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .focus-ring:focus-visible {
+      outline: 3px solid #111; /* alto contraste (quase preto sobre fundo claro) */
+      outline-offset: 2px;
+    }
+    /* Utilitário para elementos que recebem focus programaticamente */
+    .focus-ring { border-radius:4px; }
+    /* Badge de status de parâmetros aeronave: reforçar contraste */
+    #aircraft-params-badge.badge-locked { background:#0d6efd; color:#fff; }
+    #aircraft-params-badge.badge-custom { background:#6c757d; color:#fff; }
+    #aircraft-params-badge.badge-unset { background:#adb5bd; color:#212529; }
     #resultado {
       margin-top: 30px; padding: 20px; background: var(--surface);
       border: 1px solid var(--border); border-radius: 6px;
@@ -68,6 +79,7 @@
   </style>
 </head>
 <body>
+  <a href="#resultado" class="focus-ring" style="position:absolute;left:-999px;top:-999px;background:#111;color:#fff;padding:8px 12px;z-index:1000" onfocus="this.style.left='8px';this.style.top='8px'" onblur="this.style.left='-999px';this.style.top='-999px'">Pular para resultado</a>
   <main class="container">
     <h1>Cotação de Voo Executivo</h1>
 
@@ -104,8 +116,8 @@
       </div>
       <div id="aircraft-params-controls" style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;display:flex;align-items:center;gap:12px;">
         <span id="aircraft-params-badge" style="font-weight:bold;font-size:.8rem;padding:4px 8px;border-radius:4px;"></span>
-        <button type="button" id="btn-edit-params" style="padding:6px 12px;font-size:14px;">Editar parâmetros</button>
-        <button type="button" id="btn-reset-params" style="padding:6px 12px;font-size:14px;display:none;">Resetar para Catálogo</button>
+  <button type="button" id="btn-edit-params" style="padding:6px 12px;font-size:14px;" aria-label="Editar parâmetros da aeronave" title="Editar parâmetros da aeronave (tarifa, velocidade, valor-hora)">Editar parâmetros</button>
+  <button type="button" id="btn-reset-params" style="padding:6px 12px;font-size:14px;display:none;" aria-label="Restaurar parâmetros de catálogo" title="Restaurar parâmetros originais do catálogo">Resetar para Catálogo</button>
       </div>
       <div style="margin-top:12px;border-top:1px dashed var(--border);padding-top:10px">
         <label style="font-weight:600">Parâmetros avançados de planejamento</label>
@@ -161,7 +173,7 @@
   <!-- AVWX token agora embutido no código (removido do formulário) -->
 
     <div id="stops"></div>
-    <button id="addStop" type="button">Adicionar Aeroporto</button>
+  <button id="addStop" type="button" aria-label="Adicionar aeroporto intermediário" title="Adicionar aeroporto intermediário">Adicionar Aeroporto</button>
 
     <div class="linha">
       <div>
@@ -291,13 +303,14 @@ Conta: 25691815-5</textarea>
     <textarea id="observacoes" rows="4"></textarea>
 
 
+    <div id="formErrors" aria-live="polite" aria-atomic="true" style="margin-top:10px;font-size:.9rem;color:#b00020"></div>
     <div class="botoes">
-      <button onclick="appGerarPreOrcamento()">Gerar Pré-Orçamento</button>
-      <button onclick="appGerarPDF()" aria-label="Gerar PDF do pré-orçamento congelado">Gerar PDF</button>
-      <button onclick="reabrirUltimoOrcamento()">Reabrir Último Orçamento</button>
-      <button onclick="copiarJSON()">Copiar JSON</button>
-      <button onclick="copiarLink()">Copiar Link</button>
-      <button onclick="limparCampos()">Limpar</button>
+  <button onclick="handleGerarPreOrcamento()" aria-label="Gerar pré-orçamento" title="Gerar pré-orçamento (calcular e congelar)">Gerar Pré-Orçamento</button>
+  <button onclick="appGerarPDF()" aria-label="Gerar PDF do pré-orçamento congelado" title="Gerar PDF usando dados congelados">Gerar PDF</button>
+  <button onclick="reabrirUltimoOrcamento()" aria-label="Reabrir último pré-orçamento" title="Reabrir último pré-orçamento salvo">Reabrir Último Orçamento</button>
+  <button onclick="copiarJSON()" aria-label="Copiar dados em JSON" title="Copiar dados em JSON para a área de transferência">Copiar JSON</button>
+  <button onclick="copiarLink()" aria-label="Copiar link de compartilhamento" title="Copiar link de compartilhamento">Copiar Link</button>
+  <button onclick="limparCampos()" aria-label="Limpar formulário" title="Limpar todos os campos e estado">Limpar</button>
     </div>
 
   <!-- Painéis de filtros removidos: agora as opções aparecem dentro do Pré-Orçamento -->
@@ -311,7 +324,7 @@ Conta: 25691815-5</textarea>
           <strong>Pré-orçamento congelado</strong><br>
           <span id="freezeTimestamp"></span>
         </div>
-        <button id="newPreOrcamentoBtn" style="padding:8px 16px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer">
+  <button id="newPreOrcamentoBtn" style="padding:8px 16px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer" aria-label="Criar novo pré-orçamento" title="Limpa o congelamento atual para gerar um novo pré-orçamento">
           Novo Pré-Orçamento
         </button>
       </div>
@@ -336,6 +349,58 @@ Conta: 25691815-5</textarea>
   <script src="src/state/snapshotStore.js"></script>
   <script src="src/pdf/buildDocDefinition.js"></script>
     <script src="app.js"></script>
+    <script>
+      // Validação leve e acessível (não altera lógica interna de cálculo)
+      function validarFormularioBasico(){
+        const errors = [];
+        const get = id => document.getElementById(id);
+        const aeronave = get('aeronave');
+        const origem = get('origem');
+        const destino = get('destino');
+        const dataIda = get('dataIda');
+        // Limpar estados anteriores
+        [aeronave, origem, destino, dataIda].forEach(el=>{ if(!el) return; el.removeAttribute('aria-invalid'); const next=el.nextElementSibling; if(next && next.classList && next.classList.contains('error-msg')) next.remove(); });
+        function flag(el,msg){ if(!el) return; el.setAttribute('aria-invalid','true'); const small=document.createElement('div'); small.className='error-msg'; small.style.color='#b00020'; small.style.fontSize='.75rem'; small.style.marginTop='4px'; small.textContent=msg; el.insertAdjacentElement('afterend',small); errors.push(msg); }
+        if (aeronave && !aeronave.value) flag(aeronave,'Selecione uma aeronave.');
+        const icaoRe = /^[A-Za-z]{4}$/;
+        if (origem && origem.value && !icaoRe.test(origem.value)) flag(origem,'Origem inválida (ICAO 4 letras).');
+        if (destino && destino.value && !icaoRe.test(destino.value)) flag(destino,'Destino inválido (ICAO 4 letras).');
+        if (origem && destino && origem.value && destino.value && origem.value === destino.value) flag(destino,'Origem e destino devem ser diferentes.');
+        if (dataIda && !dataIda.value) flag(dataIda,'Informe a data de ida.');
+        const errorsBox = document.getElementById('formErrors');
+        if (errors.length){
+          errorsBox.textContent = 'Corrija: ' + errors.join(' ');
+          errorsBox.focus && errorsBox.focus();
+          return false;
+        } else {
+          errorsBox.textContent='';
+          return true;
+        }
+      }
+      function handleGerarPreOrcamento(){
+        if (!validarFormularioBasico()) return;
+        if (typeof appGerarPreOrcamento === 'function') appGerarPreOrcamento();
+      }
+    </script>
+    <script>
+      // A11y: assegurar contraste adequado do badge (aplica classes semanticamente)
+      document.addEventListener('DOMContentLoaded', () => {
+        const badge = document.getElementById('aircraft-params-badge');
+        if (badge && !badge.dataset.a11yBound) {
+          badge.dataset.a11yBound = 'true';
+          const applyBadgeClass = () => {
+            const txt = (badge.textContent||'').toLowerCase();
+            badge.classList.remove('badge-locked','badge-custom','badge-unset');
+              if (txt.includes('travado') || txt.includes('catalogo')) badge.classList.add('badge-locked');
+              else if (txt.includes('custom') || txt.includes('editado')) badge.classList.add('badge-custom');
+              else badge.classList.add('badge-unset');
+          };
+          const obs = new MutationObserver(applyBadgeClass);
+          obs.observe(badge, { childList:true, characterData:true, subtree:true });
+          applyBadgeClass();
+        }
+      });
+    </script>
   
   <!-- Elementos de compatibilidade para IDs específicos dos requisitos -->
   <script>
