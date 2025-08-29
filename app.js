@@ -21,6 +21,57 @@ Requisitos desta entrega:
 ===============================================================
 */
 
+// ================= VALIDATION HELPERS =================
+
+/**
+ * Validates ICAO airport code format
+ * @param {string} code - Airport code to validate
+ * @returns {boolean} True if valid ICAO format
+ */
+function isValidICAO(code) {
+  return typeof code === 'string' && /^[A-Z]{4}$/.test(code.trim().toUpperCase());
+}
+
+/**
+ * Validates numeric input and returns safe number
+ * @param {any} value - Value to validate
+ * @param {number} min - Minimum allowed value
+ * @param {number} max - Maximum allowed value
+ * @returns {number|null} Valid number or null
+ */
+function validateNumericInput(value, min = 0, max = Infinity) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num < min || num > max) {
+    return null;
+  }
+  return num;
+}
+
+/**
+ * Shows user-friendly error message
+ * @param {string} message - Error message to display
+ * @param {string} elementId - Optional element ID to highlight
+ */
+function showValidationError(message, elementId = null) {
+  showToast && showToast(message, 5000, 'error');
+  
+  if (elementId && typeof document !== 'undefined') {
+    const element = document.getElementById(elementId);
+    if (element) {
+      element.style.borderColor = '#dc3545';
+      element.focus();
+      // Remove error styling after user interacts
+      const removeError = () => {
+        element.style.borderColor = '';
+        element.removeEventListener('input', removeError);
+        element.removeEventListener('change', removeError);
+      };
+      element.addEventListener('input', removeError);
+      element.addEventListener('change', removeError);
+    }
+  }
+}
+
 // ================= SNAPSHOT / PRE-QUOTE API =================
 let __frozenQuote = null; // { version, selectedMethod: 'distance'|'time', snapshot: {...}, ts }
 const FROZEN_KEY = 'quote:last';
@@ -731,22 +782,54 @@ function showToast(message, timeout = 4000, type = 'info') {
     container.style.zIndex = 99999;
     document.body.appendChild(container);
   }
+  
   // create toast
   const t = document.createElement('div');
   t.className = 'toast-message';
-  t.style.background = '#ffffff';
-  t.style.color = '#111';
-  t.style.border = '1px solid #e0e0e0';
   t.style.padding = '10px 12px';
   t.style.marginTop = '8px';
   t.style.borderRadius = '6px';
   t.style.boxShadow = '0 2px 6px rgba(0,0,0,0.08)';
+  t.style.opacity = '0';
+  t.style.transition = 'opacity 0.3s ease';
+  
+  // Set colors based on type
+  switch (type) {
+    case 'error':
+      t.style.background = '#f8d7da';
+      t.style.color = '#721c24';
+      t.style.border = '1px solid #f5c6cb';
+      break;
+    case 'warning':
+      t.style.background = '#fff3cd';
+      t.style.color = '#856404';
+      t.style.border = '1px solid #ffeaa7';
+      break;
+    case 'success':
+      t.style.background = '#d1edff';
+      t.style.color = '#0c5460';
+      t.style.border = '1px solid #bee5eb';
+      break;
+    default:
+      t.style.background = '#ffffff';
+      t.style.color = '#111';
+      t.style.border = '1px solid #e0e0e0';
+  }
+  
   t.textContent = message;
   t.tabIndex = -1;
   container.appendChild(t);
+  
+  // Animate in
+  setTimeout(() => { t.style.opacity = '1'; }, 10);
+  
   // focus for screen reader visibility briefly
   try { t.focus(); } catch (e) {}
-  setTimeout(() => { try { t.remove(); } catch (e) {} }, timeout);
+  
+  setTimeout(() => { 
+    t.style.opacity = '0';
+    setTimeout(() => { try { t.remove(); } catch (e) {} }, 300);
+  }, timeout);
 }
 
 // UI: update aircraft params card when aeronave changes
@@ -1092,14 +1175,23 @@ async function captureMapDataUrl() {
 
 async function fetchAirportByCode(code) {
   const icao = String(code || '').toUpperCase();
-  if (!/^[A-Z]{4}$/.test(icao)) return null;
+  if (!isValidICAO(icao)) {
+    console.warn(`Invalid ICAO code format: ${code}`);
+    return null;
+  }
+  
   if (airportCache.has(icao)) return airportCache.get(icao);
+  
   try {
-  // Use API_KEY (env or hardcoded) for AVWX
-  const headers = API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
+    // Use API_KEY (env or hardcoded) for AVWX
+    const headers = API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
     const url = `https://avwx.rest/api/station/${icao}`;
     const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error('fetch failed');
+    
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    
     const data = await res.json();
 
     // Robust coordinate extraction: busca recursiva por chaves lat/lon em qualquer nível
@@ -1124,7 +1216,9 @@ async function fetchAirportByCode(code) {
             const r = findLatLon(v, depth + 1);
             if (r) return r;
           }
-        } catch (e) { /* ignore */ }
+        } catch (e) { 
+          console.warn(`Error accessing nested object in airport data:`, e.message);
+        }
       }
       return null;
     }
@@ -1132,7 +1226,8 @@ async function fetchAirportByCode(code) {
     const point = findLatLon(data);
     airportCache.set(icao, point);
     return point;
-  } catch {
+  } catch (error) {
+    console.warn(`Failed to fetch airport data for ${icao}:`, error.message);
     airportCache.set(icao, null);
     return null;
   }
@@ -1857,17 +1952,34 @@ function buildState() {
   const kmField = document.getElementById('km');
   let nm = parseFloat(nmField.value);
   const kmVal = parseFloat(kmField.value);
+  
+  // Validate and convert distance values
   if (!Number.isFinite(nm) && Number.isFinite(kmVal)) {
     nm = kmVal / 1.852;
   }
-  const origem = document.getElementById('origem').value;
-  const destino = document.getElementById('destino').value;
+  
+  // Validate distance is positive
+  if (Number.isFinite(nm) && nm <= 0) {
+    showValidationError('A distância deve ser maior que zero', 'nm');
+    nm = NaN;
+  }
+  
+  const origem = document.getElementById('origem').value.trim().toUpperCase();
+  const destino = document.getElementById('destino').value.trim().toUpperCase();
+  
+  // Validate ICAO codes if provided
+  if (origem && !isValidICAO(origem)) {
+    showValidationError('Código ICAO de origem deve ter 4 letras (ex: SBBR)', 'origem');
+  }
+  if (destino && !isValidICAO(destino)) {
+    showValidationError('Código ICAO de destino deve ter 4 letras (ex: SBSP)', 'destino');
+  }
   const dataIda = document.getElementById('dataIda').value;
   const dataVolta = document.getElementById('dataVolta').value;
   const observacoes = document.getElementById('observacoes').value;
   const pagamentoEl = document.getElementById('pagamento');
   const pagamento = pagamentoEl ? pagamentoEl.value : '';
-  const valorExtra = parseFloat(document.getElementById('valorExtra').value) || 0;
+  const valorExtra = validateNumericInput(document.getElementById('valorExtra').value, 0) || 0;
   const tipoExtra = document.getElementById('tipoExtra').value;
   const tarifaVal = parseFloat(document.getElementById('tarifa').value);
   const entry = aircraftCatalog.find(a => a.nome === aeronave || a.id === aeronave);
@@ -2668,12 +2780,18 @@ async function gerarPreOrcamento() {
   // 2. Validações mínimas (distância & tarifa por km sempre necessárias pois entram em comissão base)
   const distanciaValida = Number.isFinite(state.nm) && state.nm > 0;
   const valorKmValido = Number.isFinite(state.valorKm) && state.valorKm > 0;
+  
   if (!valorKmValido) {
-    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Selecione uma aeronave ou informe a <strong>tarifa por km</strong>.</div>`;
+    const message = 'Selecione uma aeronave ou informe a tarifa por km.';
+    showValidationError(message, 'aeronave');
+    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px"><strong>Erro:</strong> ${message}</div>`;
     return;
   }
+  
   if (!distanciaValida) {
-    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px">Informe a <strong>distância</strong> (NM ou KM) ou preencha os aeroportos para calcular automaticamente.</div>`;
+    const message = 'Informe a distância (NM ou KM) ou preencha os aeroportos para calcular automaticamente.';
+    showValidationError(message, 'nm');
+    if (saida) saida.innerHTML = `<div style="padding:12px;border:1px solid #f1c40f;background:#fffbe6;border-radius:6px"><strong>Erro:</strong> ${message}</div>`;
     return;
   }
 
