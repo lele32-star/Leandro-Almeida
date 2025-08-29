@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { buildState, buildDocDefinition, gerarPDF, calcularComissao, computeByDistance, freezePreQuote } = require('./app.js');
+const { buildState, buildDocDefinition, gerarPDF, calcularComissao, freezePreQuote } = require('./app.js');
 
 function extractText(docDef) {
   return docDef.content
@@ -177,7 +177,6 @@ console.log('Route ordering test passed.');
   };
   
   // Create a frozen quote for the test
-  const result = computeByDistance(testState);
   freezePreQuote('distance', testState);
   
   await gerarPDF(testState);
@@ -241,7 +240,6 @@ console.log('calcTempo tests passed.');
 
 // === Fase 8: Testes para parâmetros avançados de planejamento ===
 (() => {
-  const app = require('./app.js');
   // prepare a draft payload with two legs of 1.0 h each and advanced planning params
   const mod = require('./app.js');
   global.window = global.window || {};
@@ -257,7 +255,7 @@ console.log('calcTempo tests passed.');
   elements.taxiMinutes = { value: '10' }; // 10 minutes per leg
   elements.minBillable = { value: '0' };
   // call loadDraft which will restore legsData and trigger calculation when possible
-  const payload = mod.loadDraft ? mod.loadDraft() : null;
+  mod.loadDraft && mod.loadDraft();
   // method2 summary should now be on global.window.__method2Summary after load
   const m2 = global.window.__method2Summary || null;
   if (m2) {

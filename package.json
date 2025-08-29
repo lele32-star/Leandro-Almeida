@@ -1,7 +1,29 @@
 {
   "name": "leandro-almeida",
   "version": "1.0.0",
+  "description": "Aplicação web para cotação de voo executivo com suporte a mapas e geração de PDF",
+  "main": "app.js",
   "scripts": {
-    "test": "node test.js"
-  }
+    "test": "node test.js",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
+    "format": "prettier --write \"**/*.{js,html,css,md}\"",
+    "format:check": "prettier --check \"**/*.{js,html,css,md}\"",
+    "dev": "npx http-server . -p 8080",
+    "validate": "npm run lint && npm run format:check && npm test"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "prettier": "^3.6.2"
+  },
+  "keywords": [
+    "flight",
+    "quotation",
+    "aviation",
+    "pdf",
+    "maps"
+  ],
+  "author": "Leandro Almeida",
+  "license": "UNLICENSED",
+  "private": true
 }
