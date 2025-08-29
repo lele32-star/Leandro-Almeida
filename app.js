@@ -2802,11 +2802,27 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
 
 function limparCampos() {
   if (typeof document === 'undefined') return;
+  
+  // Elements to preserve (aircraft selection and catalog)
+  const preserveIds = new Set(['aeronave', 'tarifa', 'cruiseSpeed', 'hourlyRate']);
+  
+  // Clear specific client/items/legs fields instead of all inputs
   document.querySelectorAll('input, textarea').forEach(el => {
+    // Skip preserved elements
+    if (preserveIds.has(el.id)) return;
+    
     if (el.type === 'checkbox') el.checked = false;
     else el.value = '';
   });
-  document.getElementById('tarifa').value = '';
+  
+  // Clear specific selects that are not aircraft selection
+  const selectsToClear = document.querySelectorAll('select:not(#aeronave)');
+  selectsToClear.forEach(select => {
+    if (select.options.length > 0) {
+      select.selectedIndex = 0; // Reset to first option
+    }
+  });
+  
   document.getElementById('resultado').innerHTML = '';
   // Limpar localStorage dos toggles inline
   try {
