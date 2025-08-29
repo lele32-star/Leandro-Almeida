@@ -21,40 +21,25 @@ Requisitos desta entrega:
 ===============================================================
 */
 
+// ================= IMPORTS =================
+import { 
+  freezeQuote, 
+  unfreezeQuote, 
+  getFrozenQuote, 
+  isFrozen, 
+  assertMutableOrThrow 
+} from './src/state/snapshotStore.js';
+
+import { buildDocDefinition as buildPureDocDefinition } from './src/pdf/buildDocDefinition.js';
+
 // ================= SNAPSHOT / PRE-QUOTE API =================
-let __frozenQuote = null; // { version, selectedMethod: 'distance'|'time', snapshot: {...}, ts }
-const FROZEN_KEY = 'quote:last';
-const CURRENT_VERSION = '1.0';
-
-function getFrozenQuote(){
-  if (__frozenQuote) return __frozenQuote;
-  try {
-    const raw = localStorage.getItem(FROZEN_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      // Verificar versão
-      if (parsed.version === CURRENT_VERSION) {
-        __frozenQuote = parsed;
-        return __frozenQuote;
-      } else {
-        console.warn('Versão do snapshot incompatível, ignorando:', parsed.version);
-        localStorage.removeItem(FROZEN_KEY);
-        return null;
-      }
-    }
-  } catch{}
-  return null;
-}
-
+// Use the imported snapshot functions but keep a local freezePreQuote wrapper
+// that adds map capture functionality
 function freezePreQuote(method, snapshot){
-  __frozenQuote = {
-    version: CURRENT_VERSION,
-    selectedMethod: method,
-    snapshot,
-    ts: Date.now()
-  };
+  // First freeze using the pure store
+  const frozenQuote = freezeQuote({ ...snapshot, selectedMethod: method });
 
-  // Capturar mapa se disponível (usando html2canvas no container do mapa)
+  // Capture map if available (using html2canvas on map container)
   if (typeof html2canvas !== 'undefined' && typeof document !== 'undefined') {
     const mapEl = document.getElementById('map');
     if (mapEl) {
@@ -67,19 +52,22 @@ function freezePreQuote(method, snapshot){
           height: mapEl.offsetHeight
         }).then(canvas => {
           const dataUrl = canvas.toDataURL('image/png');
-          __frozenQuote.snapshot.mapDataUrl = dataUrl;
-          // Atualizar localStorage com mapa
-          try { localStorage.setItem(FROZEN_KEY, JSON.stringify(__frozenQuote)); } catch {}
+          // Update the frozen quote with map data
+          const currentFrozen = getFrozenQuote();
+          if (currentFrozen) {
+            currentFrozen.snapshot.mapDataUrl = dataUrl;
+            freezeQuote(currentFrozen.snapshot);
+          }
         }).catch(err => {
-          console.warn('Falha ao capturar mapa para congelamento:', err);
+          console.warn('Failed to capture map for freezing:', err);
         });
       } catch (e) {
-        console.warn('Erro ao tentar capturar mapa:', e);
+        console.warn('Error trying to capture map:', e);
       }
     }
   }
 
-  try { localStorage.setItem(FROZEN_KEY, JSON.stringify(__frozenQuote)); } catch{}
+  return frozenQuote;
 }
 function baseQuoteResult(){
   return { method:null, distanciaKm:0, distanciaNm:0, valorKm:0, subtotal:0, ajusteAplicado:0, comissao:0, comissaoDetalhes:[], commissionAmountExtra:0, total:0, metodo2:null, aeronave:null, inputs:{}, legs:[], raw:{} };
@@ -1891,6 +1879,24 @@ function buildState() {
 }
 
 // IMPORTANTE: quando gerarPDF é chamado após congelamento, 'state' aqui é o snapshot congelado.
+// New function that uses snapshot store and pure PDF module
+function buildDocDefinitionFromSnapshot(methodSelection = 'method1', pdfOptions = {}) {
+  const frozenQuote = getFrozenQuote();
+  if (!frozenQuote) {
+    throw new Error('No frozen quote available. Please generate a pre-quote first.');
+  }
+  
+  // Get aircraft catalog for pure function (make it available globally for backward compatibility)
+  const catalog = (typeof window !== 'undefined' && window.aircraftCatalog) ? window.aircraftCatalog : aircraftCatalog;
+  
+  return buildPureDocDefinition(
+    frozenQuote.snapshot, 
+    methodSelection, 
+    pdfOptions, 
+    catalog
+  );
+}
+
 function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {}) {
   const km = state.nm * 1.852;
   const subtotal = valorParcialFn(km, state.valorKm);
@@ -2639,6 +2645,20 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
 
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
 async function gerarPreOrcamento() {
+  // Validate that quote is not frozen before recomputation
+  try {
+    assertMutableOrThrow();
+  } catch (error) {
+    const saida = document.getElementById('resultado');
+    if (saida) {
+      saida.innerHTML = `<div style="padding:12px;border:1px solid #e74c3c;background:#ffebee;border-radius:6px;color:#c62828">
+        <strong>Cotação Congelada:</strong> ${error.message}<br>
+        <small>Use "Descongelar" para permitir alterações ou "Gerar PDF" para usar a cotação atual.</small>
+      </div>`;
+    }
+    return;
+  }
+
   // 1. Captura e (se necessário) atualiza estado bruto
   const saida = document.getElementById('resultado');
   let state = buildState();
@@ -2790,8 +2810,8 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
   
   // Não recalcula rota / mapa aqui. Usa somente dados congelados.
   
-  // Usa snapshot diretamente para montar docDefinition (sem recalcular)
-  const docDefinition = buildDocDefinition(snapshot, selectedMethod === 'time' ? 'method2' : 'method1', pdfOptions);
+  // Use snapshot directly to build docDefinition (without recalculating)
+  const docDefinition = buildDocDefinitionFromSnapshot(selectedMethod === 'time' ? 'method2' : 'method1', pdfOptions);
   try {
     if (!docDefinition || !docDefinition.content || !docDefinition.content.length) {
       console.warn('[PDF] docDefinition vazio, aplicando fallback simples.');
@@ -2816,6 +2836,10 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
 
 function limparCampos() {
   if (typeof document === 'undefined') return;
+  
+  // Unfreeze the quote when clearing fields
+  unfreezeQuote();
+  
   document.querySelectorAll('input, textarea').forEach(el => {
     if (el.type === 'checkbox') el.checked = false;
     else el.value = '';
@@ -3171,5 +3195,42 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft, adjustLegTime, getSelectedPdfMethod };
- }
+  module.exports = { 
+    buildState, 
+    buildDocDefinition, 
+    buildDocDefinitionFromSnapshot,
+    gerarPDF, 
+    calcularComissao, 
+    calcTempo, 
+    saveDraft, 
+    loadDraft, 
+    adjustLegTime, 
+    getSelectedPdfMethod,
+    // Snapshot functions
+    freezePreQuote,
+    getFrozenQuote,
+    unfreezeQuote,
+    isFrozen,
+    assertMutableOrThrow
+  };
+}
+
+// ES Module exports
+export { 
+  buildState, 
+  buildDocDefinition, 
+  buildDocDefinitionFromSnapshot,
+  gerarPDF, 
+  calcularComissao, 
+  calcTempo, 
+  saveDraft, 
+  loadDraft, 
+  adjustLegTime, 
+  getSelectedPdfMethod,
+  // Snapshot functions
+  freezePreQuote,
+  getFrozenQuote,
+  unfreezeQuote,
+  isFrozen,
+  assertMutableOrThrow
+};
