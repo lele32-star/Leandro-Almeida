@@ -14,6 +14,6 @@
   };
   root.safeExport = root.safeExport || fn;
   if (typeof root.safeExport === 'function' && typeof globalThis.safeExport === 'undefined') {
-    try { globalThis.safeExport = root.safeExport; } catch(e) {}
+    try { globalThis.safeExport = root.safeExport; } catch(e) { /* ignore attach error */ }
   }
 })();

@@ -2,7 +2,7 @@
 (function(){
   const CACHE_KEY = 'app:quote:avwx-cache';
   function readCache(){ try{ return JSON.parse(localStorage.getItem(CACHE_KEY))||{} } catch { return {} } }
-  function writeCache(obj){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(obj)); } catch {} }
+  function writeCache(obj){ try { localStorage.setItem(CACHE_KEY, JSON.stringify(obj)); } catch(e) { /* ignore cache write */ } }
 
   async function fetchAirport(code, { token, ttlMs = 300000 } = {}) {
     if (!token) return { ok:false, reason:'token-missing' };
