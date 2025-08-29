@@ -2804,17 +2804,30 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
 
 function limparCampos() {
   if (typeof document === 'undefined') return;
+  // Preservar aeronave e parâmetros de catálogo (tarifa, cruiseSpeed, hourlyRate)
+  const preserveIds = new Set(['aeronave','tarifa','cruiseSpeed','hourlyRate']);
   document.querySelectorAll('input, textarea').forEach(el => {
-    if (el.type === 'checkbox') el.checked = false;
-    else el.value = '';
+    const id = el.id;
+    if (preserveIds.has(id)) return; // não limpar
+    if (el.classList && el.classList.contains('stop-input')) { // limpar perna
+      el.value = '';
+      return;
+    }
+    if (el.type === 'checkbox') {
+      // Não tocar em toggles de PDF (não alterar PDF)
+      if (id && id.startsWith('pdf')) return;
+      el.checked = false;
+    } else {
+      el.value = '';
+    }
   });
-  document.getElementById('tarifa').value = '';
-  document.getElementById('resultado').innerHTML = '';
-  // Limpar localStorage dos toggles inline
-  try {
-    localStorage.removeItem('pdfInlineToggles');
-  } catch (e) { /* ignore */ }
+  // Limpar resultado e pernas
+  const resultado = document.getElementById('resultado');
+  if (resultado) resultado.innerHTML = '';
+  const stopsContainer = document.getElementById('stops');
+  if (stopsContainer) stopsContainer.querySelectorAll('.stop-input').forEach(i=>{ i.parentElement && i.parentElement.remove(); });
   if (routeLayer && routeLayer.remove) routeLayer.remove();
+  // Limpar comissões (considerado parte dos itens do orçamento)
   const comissoesDiv = document.getElementById('comissoes');
   if (comissoesDiv) comissoesDiv.innerHTML = '';
   const comissaoConfig = document.getElementById('comissaoConfig');
@@ -2827,19 +2840,12 @@ function limparCampos() {
     const preview = commissionComp.querySelector('#commissionPreview');
     const amountHidden = commissionComp.querySelector('#commissionAmount');
     panel.hidden = true;
-    if (btnAdd) {
-      btnAdd.setAttribute('aria-pressed', 'false');
-      btnAdd.textContent = 'Adicionar comissão';
-    }
+    if (btnAdd) { btnAdd.setAttribute('aria-pressed','false'); btnAdd.textContent = 'Adicionar comissão'; }
     if (percent) percent.value = '5';
     if (preview) preview.textContent = 'Comissão: R$ 0,00';
     if (amountHidden) amountHidden.value = '0';
   }
-  const pdfCommission = document.getElementById('pdfCommissionToggle');
-  if (pdfCommission) {
-    pdfCommission.checked = true;
-    pdfCommission.dispatchEvent(new Event('change'));
-  }
+  // Não tocar em configurações de PDF ou cache AVWX / freeze
 }
 
 if (typeof window !== 'undefined') {
