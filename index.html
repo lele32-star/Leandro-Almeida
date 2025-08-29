@@ -42,12 +42,18 @@
     }
     input.icao { text-transform: uppercase; letter-spacing: .04em; }
     input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); outline-offset: 2px; }
+    /* Focus styles for buttons and interactive elements */
+    button:focus, .btn-focus:focus {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.2);
+    }
     .linha { display: flex; flex-wrap: wrap; gap: 15px; }
     .linha > div { flex: 1 1 200px; }
     .botoes { margin-top: 30px; display: flex; flex-wrap: wrap; gap: 10px; }
     button {
       padding: 12px 20px; font-size: 16px; cursor: pointer; border: none; border-radius: 4px;
-      background: var(--primary); color: #fff; transition: background 0.2s;
+      background: var(--primary); color: #fff; transition: background 0.2s, box-shadow 0.2s;
     }
     button:hover { background: var(--primary-hover); }
     #resultado {
@@ -161,7 +167,11 @@
   <!-- AVWX token agora embutido no código (removido do formulário) -->
 
     <div id="stops"></div>
-    <button id="addStop" type="button">Adicionar Aeroporto</button>
+    <button id="addStop" type="button" 
+            aria-label="Adicionar novo aeroporto de parada"
+            title="Incluir um aeroporto adicional na rota de voo">
+      Adicionar Aeroporto
+    </button>
 
     <div class="linha">
       <div>
@@ -204,6 +214,8 @@
       <h3 id="commissionTitle" style="position:absolute;left:-9999px;top:-9999px;">Comissão</h3>
       <button type="button" id="btnAddCommission"
               aria-pressed="false"
+              aria-label="Adicionar comissão ao orçamento"
+              title="Ativar configuração de comissão percentual sobre o valor base"
               style="padding:.6rem .9rem;border:1px solid var(--primary);border-radius:.75rem;background:var(--primary);color:#fff;cursor:pointer">
         Adicionar comissão
       </button>
@@ -292,12 +304,36 @@ Conta: 25691815-5</textarea>
 
 
     <div class="botoes">
-      <button onclick="appGerarPreOrcamento()">Gerar Pré-Orçamento</button>
-      <button onclick="appGerarPDF()" aria-label="Gerar PDF do pré-orçamento congelado">Gerar PDF</button>
-      <button onclick="reabrirUltimoOrcamento()">Reabrir Último Orçamento</button>
-      <button onclick="copiarJSON()">Copiar JSON</button>
-      <button onclick="copiarLink()">Copiar Link</button>
-      <button onclick="limparCampos()">Limpar</button>
+      <button onclick="appGerarPreOrcamento()" 
+              aria-label="Gerar pré-orçamento com base nos dados informados"
+              title="Calcular e exibir pré-orçamento com base nos parâmetros preenchidos">
+        Gerar Pré-Orçamento
+      </button>
+      <button onclick="appGerarPDF()" 
+              aria-label="Gerar PDF do pré-orçamento congelado"
+              title="Baixar o pré-orçamento atual em formato PDF">
+        Gerar PDF
+      </button>
+      <button onclick="reabrirUltimoOrcamento()" 
+              aria-label="Reabrir último orçamento salvo"
+              title="Carregar os dados do último orçamento gerado">
+        Reabrir Último Orçamento
+      </button>
+      <button onclick="copiarJSON()" 
+              aria-label="Copiar dados do orçamento em formato JSON"
+              title="Copiar os dados atuais em formato JSON para a área de transferência">
+        Copiar JSON
+      </button>
+      <button onclick="copiarLink()" 
+              aria-label="Copiar link com dados preenchidos"
+              title="Gerar e copiar link com os dados atuais para compartilhamento">
+        Copiar Link
+      </button>
+      <button onclick="limparCampos()" 
+              aria-label="Limpar todos os campos do formulário"
+              title="Apagar todos os dados preenchidos e resetar o formulário">
+        Limpar
+      </button>
     </div>
 
   <!-- Painéis de filtros removidos: agora as opções aparecem dentro do Pré-Orçamento -->
@@ -311,7 +347,10 @@ Conta: 25691815-5</textarea>
           <strong>Pré-orçamento congelado</strong><br>
           <span id="freezeTimestamp"></span>
         </div>
-        <button id="newPreOrcamentoBtn" style="padding:8px 16px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer">
+        <button id="newPreOrcamentoBtn" 
+                aria-label="Criar novo pré-orçamento"
+                title="Descongelar e criar um novo pré-orçamento com os dados atuais"
+                style="padding:8px 16px;background:#28a745;color:#fff;border:none;border-radius:4px;cursor:pointer">
           Novo Pré-Orçamento
         </button>
       </div>

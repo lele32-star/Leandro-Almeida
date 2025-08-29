@@ -955,9 +955,13 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
       input.value = (legsData[idx] && legsData[idx].time && legsData[idx].time.hoursDecimal) ? legsData[idx].time.hoursDecimal : '';
       const saveBtn = document.createElement('button');
       saveBtn.textContent = 'Salvar';
+      saveBtn.setAttribute('aria-label', 'Salvar tempo editado para esta perna');
+      saveBtn.setAttribute('title', 'Confirmar e salvar o tempo de voo editado');
       saveBtn.style.marginLeft = '8px';
       const cancelBtn = document.createElement('button');
       cancelBtn.textContent = 'Cancelar';
+      cancelBtn.setAttribute('aria-label', 'Cancelar edição do tempo');
+      cancelBtn.setAttribute('title', 'Cancelar edição e voltar ao tempo calculado');
       cancelBtn.style.marginLeft = '6px';
 
       // hide small controls area and append editor next to span
@@ -2987,11 +2991,23 @@ if (typeof window !== 'undefined') {
       });
       if (badge) {
         badge.textContent = lock ? 'Catálogo' : 'Personalizado';
-        badge.style.background = lock ? '#e9f9ee' : '#fff4e0';
-        badge.style.color = lock ? '#1e7e34' : '#b35c00';
-        badge.style.border = lock ? '1px solid #b7e5c2' : '1px solid #ffcf99';
+        // Improved colors for better contrast (≥ 4.5:1 ratio)
+        badge.style.background = lock ? '#d1e7dd' : '#fff3cd';
+        badge.style.color = lock ? '#0a3622' : '#664d00';
+        badge.style.border = lock ? '1px solid #a3cfbb' : '1px solid #ffda6a';
       }
-      if (editBtn) editBtn.textContent = state.isEditable ? 'Bloquear parâmetros' : 'Editar parâmetros';
+      if (editBtn) {
+        const buttonText = state.isEditable ? 'Bloquear parâmetros' : 'Editar parâmetros';
+        editBtn.textContent = buttonText;
+        editBtn.setAttribute('aria-label', state.isEditable ? 
+          'Bloquear edição dos parâmetros da aeronave' : 
+          'Editar parâmetros da aeronave'
+        );
+        editBtn.setAttribute('title', state.isEditable ? 
+          'Bloquear campos e voltar para valores do catálogo' : 
+          'Permitir edição manual dos parâmetros da aeronave'
+        );
+      }
       if (resetBtn) resetBtn.style.display = state.isEditable ? 'inline-block' : 'inline-block'; // Sempre visível após inicialização
     }
     window.setAircraftParamsEditable = setAircraftParamsEditable;
@@ -3022,6 +3038,8 @@ if (typeof window !== 'undefined') {
       editBtn.type = 'button';
       editBtn.id = 'btn-edit-params';
       editBtn.textContent = 'Editar parâmetros';
+      editBtn.setAttribute('aria-label', 'Editar parâmetros da aeronave');
+      editBtn.setAttribute('title', 'Permitir edição manual dos parâmetros da aeronave');
       editBtn.style.padding = '6px 12px';
       editBtn.style.fontSize = '14px';
       container.appendChild(editBtn);
@@ -3031,6 +3049,8 @@ if (typeof window !== 'undefined') {
       resetBtn.type = 'button';
       resetBtn.id = 'btn-reset-params';
       resetBtn.textContent = 'Resetar para Catálogo';
+      resetBtn.setAttribute('aria-label', 'Resetar parâmetros para valores do catálogo');
+      resetBtn.setAttribute('title', 'Restaurar os parâmetros originais da aeronave do catálogo');
       resetBtn.style.padding = '6px 12px';
       resetBtn.style.fontSize = '14px';
       container.appendChild(resetBtn);
