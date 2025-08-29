@@ -2771,7 +2771,7 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
   // Não recalcula rota / mapa aqui. Usa somente dados congelados.
   
   // Usa snapshot diretamente para montar docDefinition (sem recalcular)
-  const docDefinition = buildDocDefinition(snapshot, selectedMethod === 'time' ? 'method2' : 'method1', pdfOptions);
+  const docDefinition = App.pdf && App.pdf.buildDocDefinition ? App.pdf.buildDocDefinition(snapshot) : null;
   try {
     if (!docDefinition || !docDefinition.content || !docDefinition.content.length) {
       console.warn('[PDF] docDefinition vazio, aplicando fallback simples.');
