@@ -12,17 +12,17 @@
       if (!raw) return null;
       const data = JSON.parse(raw);
       if (data && data.version === VERSION) { frozen = data; return frozen; }
-    } catch{}
+    } catch{ /* JSON parse error */ }
     return frozen;
   }
   function freezeQuote(method, snapshot){
     frozen = { version: VERSION, ts: Date.now(), method, snapshot: JSON.parse(JSON.stringify(snapshot)) };
-    try { localStorage.setItem(KEY, JSON.stringify(frozen)); } catch{}
+    try { localStorage.setItem(KEY, JSON.stringify(frozen)); } catch{ /* localStorage error */ }
     return frozen;
   }
   function unfreezeQuote(){
     frozen = null;
-    try { localStorage.removeItem(KEY); } catch{}
+    try { localStorage.removeItem(KEY); } catch{ /* localStorage error */ }
   }
   function assertMutableOrThrow(){
     if (isFrozen()) throw new Error('QuoteFrozen');

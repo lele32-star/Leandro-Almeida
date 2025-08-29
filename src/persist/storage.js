@@ -10,7 +10,7 @@
   const CURRENT_VERSION = 1;
   const LEGACY_KEY = 'cotacao:currentDraft';
 
-  function getLS(){ try { if (typeof localStorage !== 'undefined') return localStorage; } catch(e){} return null; }
+  function getLS(){ try { if (typeof localStorage !== 'undefined') return localStorage; } catch(e){ /* localStorage not available */ } return null; }
 
   function migrateIfNeeded(){
     const ls = getLS(); if(!ls) return null;
@@ -18,12 +18,12 @@
     try {
       const existing = ls.getItem(KEY_DRAFT);
       if (existing) return JSON.parse(existing);
-    } catch(e) {}
+    } catch(e) { /* JSON parse error */ }
     // Procurar legacy
     let legacyRaw = null;
-    try { legacyRaw = ls.getItem(LEGACY_KEY); } catch(e) {}
+    try { legacyRaw = ls.getItem(LEGACY_KEY); } catch(e) { /* localStorage error */ }
     if (!legacyRaw && typeof root !== 'undefined' && root.__lastDraft) {
-      try { legacyRaw = JSON.stringify(root.__lastDraft); } catch(e) {}
+      try { legacyRaw = JSON.stringify(root.__lastDraft); } catch(e) { /* JSON stringify error */ }
     }
     if (!legacyRaw) return null;
     let legacyObj = null;
@@ -33,7 +33,7 @@
     try {
       ls.setItem(KEY_DRAFT, JSON.stringify(wrapped));
       ls.setItem(KEY_VERSION, String(CURRENT_VERSION));
-    } catch(e) {}
+    } catch(e) { /* localStorage error */ }
     return wrapped;
   }
 
@@ -52,7 +52,7 @@
       } catch(e) { /* ignore */ }
     }
     // fallback ambiente de teste
-    try { root.__lastDraftVersioned = payload; } catch(e) {}
+    try { root.__lastDraftVersioned = payload; } catch(e) { /* root assignment error */ }
     return false;
   }
 
@@ -60,10 +60,10 @@
     const ls = getLS();
     let raw = null;
     if (ls) {
-      try { raw = ls.getItem(KEY_DRAFT); } catch(e){}
+      try { raw = ls.getItem(KEY_DRAFT); } catch(e){ /* localStorage error */ }
     }
     if (!raw && typeof root !== 'undefined' && root.__lastDraftVersioned) {
-      try { raw = JSON.stringify(root.__lastDraftVersioned); } catch(e) {}
+      try { raw = JSON.stringify(root.__lastDraftVersioned); } catch(e) { /* JSON stringify error */ }
     }
     if (!raw) {
       // tentar migrar on-demand

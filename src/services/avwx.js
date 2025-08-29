@@ -7,7 +7,7 @@
   const DEFAULT_TTL = 5 * 60 * 1000; // 5 minutos
 
   function now(){ return Date.now(); }
-  function getLS(){ try { if (typeof localStorage !== 'undefined') return localStorage; } catch(e){} return null; }
+  function getLS(){ try { if (typeof localStorage !== 'undefined') return localStorage; } catch(e){ /* localStorage not available */ } return null; }
   function cacheKey(code){ return PREFIX + code; }
 
   function readCache(code){
@@ -16,7 +16,7 @@
   }
   function writeCache(code, value, ttlMs){
     const ls = getLS(); if(!ls) return;
-    try { ls.setItem(cacheKey(code), JSON.stringify({ value, expiresAt: now() + (ttlMs||DEFAULT_TTL) })); } catch(e){}
+    try { ls.setItem(cacheKey(code), JSON.stringify({ value, expiresAt: now() + (ttlMs||DEFAULT_TTL) })); } catch(e){ /* cache write error */ }
   }
 
   async function fetchAirport(code, opts){
