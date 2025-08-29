@@ -27,32 +27,32 @@ const FROZEN_KEY = 'quote:last';
 const CURRENT_VERSION = '1.0';
 
 function getFrozenQuote(){
+  if (window.SnapshotStore) {
+    const f = window.SnapshotStore.getFrozenQuote();
+    if (f) {
+      __frozenQuote = { version: f.version, selectedMethod: f.method || f.selectedMethod, snapshot: f.snapshot, ts: f.ts };
+      return __frozenQuote;
+    }
+  }
   if (__frozenQuote) return __frozenQuote;
   try {
     const raw = localStorage.getItem(FROZEN_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Verificar versão
-      if (parsed.version === CURRENT_VERSION) {
-        __frozenQuote = parsed;
-        return __frozenQuote;
-      } else {
-        console.warn('Versão do snapshot incompatível, ignorando:', parsed.version);
-        localStorage.removeItem(FROZEN_KEY);
-        return null;
-      }
+      if (parsed.version === CURRENT_VERSION) { __frozenQuote = parsed; return __frozenQuote; }
+      localStorage.removeItem(FROZEN_KEY);
     }
   } catch{}
   return null;
 }
 
 function freezePreQuote(method, snapshot){
-  __frozenQuote = {
-    version: CURRENT_VERSION,
-    selectedMethod: method,
-    snapshot,
-    ts: Date.now()
-  };
+  if (window.SnapshotStore) {
+    const f = window.SnapshotStore.freezeQuote(method, snapshot);
+    __frozenQuote = { version: f.version, selectedMethod: method, snapshot: f.snapshot, ts: f.ts };
+  } else {
+    __frozenQuote = { version: CURRENT_VERSION, selectedMethod: method, snapshot, ts: Date.now() };
+  }
 
   // Capturar mapa se disponível (usando html2canvas no container do mapa)
   if (typeof html2canvas !== 'undefined' && typeof document !== 'undefined') {
@@ -252,6 +252,7 @@ function newPreOrcamento(){
   // Limpar estado congelado
   __frozenQuote = null;
   try { localStorage.removeItem(FROZEN_KEY); } catch {}
+  if (window.SnapshotStore) window.SnapshotStore.unfreezeQuote();
 
   // Esconder banner
   hideFreezeBanner();
@@ -2639,6 +2640,9 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
 
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
 async function gerarPreOrcamento() {
+  if (window.SnapshotStore) {
+    try { window.SnapshotStore.assertMutableOrThrow(); } catch(e){ if (e && e.message==='QuoteFrozen'){ showToast && showToast('Pré-orçamento congelado. Clique em "Novo Pré-Orçamento" para recalcular.'); return; } }
+  }
   // 1. Captura e (se necessário) atualiza estado bruto
   const saida = document.getElementById('resultado');
   let state = buildState();
