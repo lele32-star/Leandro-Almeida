@@ -762,5 +762,5 @@
     };
   }
 
-  safeExport('pdf', Object.assign(window.App.pdf || {}, { buildDocDefinition }));
+  safeExport('pdf', { buildDocDefinition });
 })();
