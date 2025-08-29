@@ -1,33 +1,34 @@
-/* Snapshot Store (freeze) isolado e imutável */
-(function(root){
-  const KEY = 'quote:last';
-  const VERSION = '1.0';
-  let frozen = null; // {version, ts, method, snapshot}
+(function(){
+  let _frozen = null;
 
-  function isFrozen(){ return !!frozen; }
-  function getFrozenQuote(){
-    if (frozen) return frozen;
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (!raw) return null;
-      const data = JSON.parse(raw);
-      if (data && data.version === VERSION) { frozen = data; return frozen; }
-    } catch{}
-    return frozen;
+  function freezeQuote(snapshot) { 
+    const snapshotWithTimestamp = { ...snapshot, ts: Date.now() };
+    _frozen = JSON.parse(JSON.stringify(snapshotWithTimestamp)); 
+    return _frozen; 
   }
-  function freezeQuote(method, snapshot){
-    frozen = { version: VERSION, ts: Date.now(), method, snapshot: JSON.parse(JSON.stringify(snapshot)) };
-    try { localStorage.setItem(KEY, JSON.stringify(frozen)); } catch{}
-    return frozen;
+  function unfreezeQuote() { _frozen = null; }
+  function getFrozenQuote() { return _frozen ? JSON.parse(JSON.stringify(_frozen)) : null; }
+  function isFrozen() { return !!_frozen; }
+  function assertMutableOrThrow() { if (_frozen) throw new Error('Cotação congelada. Clique em "Novo Pré-Orçamento" para editar.'); }
+
+  // Initialize App namespace if it doesn't exist
+  if (typeof window !== 'undefined') {
+    window.App = window.App || {};
+    window.App.state = Object.assign(window.App.state || {}, { 
+      freezeQuote, 
+      unfreezeQuote, 
+      getFrozenQuote, 
+      isFrozen, 
+      assertMutableOrThrow 
+    });
+    
+    // Also maintain compatibility with existing SnapshotStore usage
+    window.SnapshotStore = { 
+      freezeQuote, 
+      unfreezeQuote, 
+      getFrozenQuote, 
+      isFrozen, 
+      assertMutableOrThrow 
+    };
   }
-  function unfreezeQuote(){
-    frozen = null;
-    try { localStorage.removeItem(KEY); } catch{}
-  }
-  function assertMutableOrThrow(){
-    if (isFrozen()) throw new Error('QuoteFrozen');
-  }
-  const api = { isFrozen, getFrozenQuote, freezeQuote, unfreezeQuote, assertMutableOrThrow };
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  root.SnapshotStore = api;
-})(typeof window !== 'undefined' ? window : globalThis);
+})();
