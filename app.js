@@ -27,32 +27,19 @@ const FROZEN_KEY = 'quote:last';
 const CURRENT_VERSION = '1.0';
 
 function getFrozenQuote(){
-  if (window.SnapshotStore) {
-    const f = window.SnapshotStore.getFrozenQuote();
-    if (f) {
-      __frozenQuote = { version: f.version, selectedMethod: f.method || f.selectedMethod, snapshot: f.snapshot, ts: f.ts };
-      return __frozenQuote;
-    }
+  if (window.App && window.App.state) {
+    return window.App.state.getFrozenQuote();
   }
-  if (__frozenQuote) return __frozenQuote;
-  try {
-    const raw = localStorage.getItem(FROZEN_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.version === CURRENT_VERSION) { __frozenQuote = parsed; return __frozenQuote; }
-      localStorage.removeItem(FROZEN_KEY);
-    }
-  } catch{}
   return null;
 }
 
 function freezePreQuote(method, snapshot){
-  if (window.SnapshotStore) {
-    const f = window.SnapshotStore.freezeQuote(method, snapshot);
-    __frozenQuote = { version: f.version, selectedMethod: method, snapshot: f.snapshot, ts: f.ts };
-  } else {
-    __frozenQuote = { version: CURRENT_VERSION, selectedMethod: method, snapshot, ts: Date.now() };
+  if (window.App && window.App.state) {
+    // Include the method in the snapshot according to the system's requirements
+    const fullSnapshot = { selectedMethod: method, ...snapshot };
+    return window.App.state.freezeQuote(fullSnapshot);
   }
+  return null;
 
   // Capturar mapa se disponível (usando html2canvas no container do mapa)
   if (typeof html2canvas !== 'undefined' && typeof document !== 'undefined') {
@@ -150,8 +137,8 @@ function getUiSelectedMethod(){
   return 'distance';
 }
 function renderFrozenPreview(container, frozen){
-  if(!container) return;
-  const { selectedMethod, snapshot } = frozen;
+  if(!container || !frozen) return;
+  const { selectedMethod, ...snapshot } = frozen;
   const linhas=[];
   linhas.push(`<div><strong>Método:</strong> ${selectedMethod==='distance'?'Distância':'Tempo de voo'}</div>`);
   linhas.push(`<div><strong>Distância:</strong> ${snapshot.distanciaNm?.toFixed(1)} NM (${snapshot.distanciaKm?.toFixed(1)} km)</div>`);
@@ -249,10 +236,10 @@ function hideFreezeBanner(){
 }
 
 function newPreOrcamento(){
-  // Limpar estado congelado
-  __frozenQuote = null;
-  try { localStorage.removeItem(FROZEN_KEY); } catch {}
-  if (window.SnapshotStore) window.SnapshotStore.unfreezeQuote();
+  // Limpar estado congelado usando a nova API
+  if (window.App && window.App.state) {
+    window.App.state.unfreezeQuote();
+  }
 
   // Esconder banner
   hideFreezeBanner();
@@ -771,7 +758,10 @@ function bindAircraftParamsUI() {
     } catch(e) {}
     
     // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
-    try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+    try { 
+      if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+      if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+    } catch (e) {}
   }
 
   if (select) select.addEventListener('change', (e) => applyFor(e.target.value));
@@ -789,6 +779,7 @@ function bindAircraftParamsUI() {
       try {
         const cruisePreview = document.getElementById('cruisePreview');
         if (cruisePreview) cruisePreview.textContent = cruiseEl.value ? `${cruiseEl.value} KTAS` : '';
+        if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
         if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento();
       } catch (e) {}
     });
@@ -796,6 +787,7 @@ function bindAircraftParamsUI() {
       try {
         const hourlyPreview = document.getElementById('hourlyPreview');
         if (hourlyPreview) hourlyPreview.textContent = hourlyEl.value ? `R$ ${Number(hourlyEl.value).toLocaleString('pt-BR')}/h` : '';
+        if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
         if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento();
       } catch (e) {}
     });
@@ -877,7 +869,10 @@ function loadDraft(){
         if (panel) panel.style.display = ap.enabled ? 'block' : 'none';
       }
     } catch {}
-    try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch {}
+    try { 
+      if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+      if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+    } catch {}
     return payload;
   } catch(e){ return null; }
 }
@@ -974,7 +969,10 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
         }
         span.style.display = '';
         input.remove(); saveBtn.remove(); cancelBtn.remove(); btnElem.style.display = '';
-        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+        try { 
+          if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+          if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+        } catch (e) {}
       });
 
       cancelBtn.addEventListener('click', () => {
@@ -1001,7 +999,10 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
         const calc2 = legsData[idx].distNm ? calcTempo(legsData[idx].distNm, speed) : { hoursDecimal: 0, hhmm: '—' };
         span.textContent = `${calc2.hoursDecimal} h (${calc2.hhmm})`;
       }
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+      try { 
+        if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+      } catch (e) {}
     });
   });
 }
@@ -1386,6 +1387,9 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
       root.addEventListener('change',e=>{ if(e.target && e.target.matches('input[data-inline-pdf-toggle]')){ 
         const key=e.target.getAttribute('data-inline-pdf-toggle');
         try{const data=JSON.parse(localStorage.getItem('pdfInlineToggles')||'{}'); data[key]=e.target.checked; localStorage.setItem('pdfInlineToggles',JSON.stringify(data));}catch{}
+        if(window.App && window.App.state) {
+          try { window.App.state.assertMutableOrThrow(); } catch(e) { return; }
+        }
         if(window.gerarPreOrcamento) { window.gerarPreOrcamento(); }
       }});
     })();</script>`;
@@ -1423,7 +1427,12 @@ if (typeof document !== 'undefined') {
       const wind = document.getElementById('windBuffer');
       const taxi = document.getElementById('taxiMinutes');
       const minB = document.getElementById('minBillable');
-      const trigger = debounce(() => { try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {} }, 250);
+      const trigger = debounce(() => { 
+        try { 
+          if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+          if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+        } catch (e) {} 
+      }, 250);
 
       if (toggle && panel) {
         // initialize visibility
@@ -1476,20 +1485,29 @@ if (typeof document !== 'undefined') {
     tarifaInput.addEventListener('input', () => {
       if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
       // Atualiza pré-orçamento ao editar tarifa manualmente
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
+      try { 
+        if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+      } catch (e) { /* ignore */ }
     });
 
     // Atualizar pré-orçamento ao editar velocidade manualmente
     if (cruiseInput) {
       cruiseInput.addEventListener('input', () => {
-        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
+        try { 
+          if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+          if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+        } catch (e) { /* ignore */ }
       });
     }
 
     // Atualizar pré-orçamento ao editar valor-hora manualmente
     if (hourlyInput) {
       hourlyInput.addEventListener('input', () => {
-        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
+        try { 
+          if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+          if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+        } catch (e) { /* ignore */ }
       });
     }
 
@@ -1505,7 +1523,10 @@ if (typeof document !== 'undefined') {
 
     // Atualiza preview e persiste se necessário (debounced)
     const saveAndRefresh = debounce(() => {
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+      try { 
+        if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+      } catch (e) {}
     }, 200);
 
     const applyTarifaPreview = () => {
@@ -2629,8 +2650,15 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
 
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
 async function gerarPreOrcamento() {
-  if (window.SnapshotStore) {
-    try { window.SnapshotStore.assertMutableOrThrow(); } catch(e){ if (e && e.message==='QuoteFrozen'){ showToast && showToast('Pré-orçamento congelado. Clique em "Novo Pré-Orçamento" para recalcular.'); return; } }
+  if (window.App && window.App.state) {
+    try { 
+      window.App.state.assertMutableOrThrow(); 
+    } catch(e){ 
+      if (e && e.message && e.message.includes('congelada')) { 
+        showToast && showToast('Pré-orçamento congelado. Clique em "Novo Pré-Orçamento" para recalcular.'); 
+        return; 
+      } 
+    }
   }
   // 1. Captura e (se necessário) atualiza estado bruto
   const saida = document.getElementById('resultado');
@@ -2741,13 +2769,13 @@ function getSelectedPdfMethod() {
 
 async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
   // (Requisito 3) NÃO recalcula nada: usa snapshot congelado
-  const frozen = getFrozenQuote();
+  const frozen = window.App && window.App.state ? window.App.state.getFrozenQuote() : null;
   if (!frozen) {
     showToast && showToast('Gere o Pré-Orçamento antes de exportar o PDF.');
     alert && alert('Gere o Pré-Orçamento antes de exportar o PDF.');
     return;
   }
-  const { selectedMethod, snapshot } = frozen;
+  const { selectedMethod, ...snapshot } = frozen;
 
   // Opções (mantém compatibilidade com toggles já existentes)
   const pdfOptions = {
@@ -3001,7 +3029,10 @@ if (typeof window !== 'undefined') {
       applyAircraftParamsFromCatalog(ac);
       setAircraftParamsEditable(false);
       // Recalcular
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+      try { 
+        if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+      } catch{}
     }
     window.resetAircraftParamsToCatalog = resetAircraftParamsToCatalog;
 
@@ -3046,7 +3077,10 @@ if (typeof window !== 'undefined') {
           const num = Number(hourlyEl.value.replace(',','.'))||0;
           hourlyEl.value = num ? num.toFixed(2) : '';
         }
-        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+        try { 
+          if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+          if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+        } catch{}
       }
     });
     resetBtn.addEventListener('click', () => {
@@ -3073,7 +3107,10 @@ if (typeof window !== 'undefined') {
       applyAircraftParamsFromCatalog(ac);
       setAircraftParamsEditable(false); // volta bloqueado
       state.lastAircraftValue = newVal;
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+      try { 
+        if (window.App && window.App.state) window.App.state.assertMutableOrThrow();
+        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); 
+      } catch{}
     });
 
     function initialApply(){
