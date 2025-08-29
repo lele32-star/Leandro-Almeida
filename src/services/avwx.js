@@ -24,5 +24,10 @@
     }
   }
 
-  safeExport('services', Object.assign(window.App.services || {}, { avwx: { fetchAirport } }));
+  // Initialize App namespace and services if not already available
+  if (typeof window !== 'undefined') {
+    window.App = window.App || {};
+    window.App.services = window.App.services || {};
+    window.App.services.avwx = { fetchAirport };
+  }
 })();
