@@ -1063,45 +1063,50 @@ async function fetchAirportByCode(code) {
   const icao = String(code || '').toUpperCase();
   if (!/^[A-Z]{4}$/.test(icao)) return null;
   if (airportCache.has(icao)) return airportCache.get(icao);
+  // UI status elements
+  let statusEl = typeof document !== 'undefined' ? document.getElementById('airportStatus') : null;
+  if (!statusEl && typeof document !== 'undefined') {
+    statusEl = document.createElement('div');
+    statusEl.id = 'airportStatus';
+    statusEl.style.fontSize = '.7rem';
+    statusEl.style.marginTop = '4px';
+    statusEl.style.color = '#555';
+    const mapEl = document.getElementById('map');
+    if (mapEl && mapEl.parentNode) mapEl.parentNode.insertBefore(statusEl, mapEl);
+  }
+  const setStatus = (msg, tone='info') => {
+    if (!statusEl) return; statusEl.textContent = msg; statusEl.dataset.tone = tone; statusEl.style.color = tone==='error' ? '#b00020' : (tone==='warn' ? '#aa6c00' : '#555');
+  };
+  setStatus('Consultando aeroporto '+icao+'…');
   try {
-  // Use API_KEY (env or hardcoded) for AVWX
-  const headers = API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
-    const url = `https://avwx.rest/api/station/${icao}`;
-    const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error('fetch failed');
-    const data = await res.json();
-
-    // Robust coordinate extraction: busca recursiva por chaves lat/lon em qualquer nível
-    function findLatLon(obj, depth = 0) {
-      if (!obj || typeof obj !== 'object' || depth > 6) return null;
-      const keys = Object.keys(obj || {});
-      let latVal, lonVal;
-      for (const k of keys) {
-        const lk = k.toLowerCase();
-        if (lk.includes('lat')) latVal = obj[k];
-        if (lk.includes('lon') || lk.includes('lng') || lk.includes('long')) lonVal = obj[k];
-      }
-      if (latVal !== undefined && lonVal !== undefined) {
-        const latN = Number(String(latVal).replace(',', '.'));
-        const lonN = Number(String(lonVal).replace(',', '.'));
-        if (Number.isFinite(latN) && Number.isFinite(lonN)) return { lat: latN, lng: lonN };
-      }
-      for (const k of keys) {
-        try {
-          const v = obj[k];
-          if (v && typeof v === 'object') {
-            const r = findLatLon(v, depth + 1);
-            if (r) return r;
-          }
-        } catch (e) { /* ignore */ }
-      }
+    const token = (typeof AVWX_TOKEN !== 'undefined' && AVWX_TOKEN) ? AVWX_TOKEN : (typeof process !== 'undefined' && process.env && process.env.AVWX_TOKEN ? process.env.AVWX_TOKEN : null);
+    if (!token) {
+      setStatus('Token AVWX ausente — configure sua chave para ativar busca de aeroportos.', 'warn');
+      airportCache.set(icao, null);
       return null;
     }
-
-    const point = findLatLon(data);
-    airportCache.set(icao, point);
-    return point;
-  } catch {
+    if (typeof AVWXService === 'undefined' || !AVWXService.fetchAirport) {
+      setStatus('Serviço AVWX indisponível.', 'error');
+      airportCache.set(icao, null);
+      return null;
+    }
+    const point = await AVWXService.fetchAirport(icao, { token });
+    if (point && !point.error) {
+      airportCache.set(icao, point);
+      setStatus('Aeroporto '+icao+' carregado.');
+      return point;
+    }
+    if (point && point.error === 'offline') {
+      setStatus('Offline ou sem conexão para AVWX.', 'warn');
+    } else if (point && point.error) {
+      setStatus('Erro AVWX ('+point.error+').', 'error');
+    } else {
+      setStatus('Coordenadas não encontradas para '+icao+'.', 'warn');
+    }
+    airportCache.set(icao, null);
+    return null;
+  } catch (e) {
+    setStatus('Falha ao obter '+icao+'.', 'error');
     airportCache.set(icao, null);
     return null;
   }
