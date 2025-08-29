@@ -15,5 +15,23 @@
       try { fn && fn(); } catch (e) { console.error('[scheduleRecalc]', e); }
     });
   }
-  safeExport('ui', Object.assign(window.App.ui || {}, { scheduleRecalc }));
+  
+  // Export to App.ui.scheduleRecalc
+  window.App = window.App || {};
+  window.App.ui = window.App.ui || {};
+  window.App.ui.scheduleRecalc = scheduleRecalc;
+  
+  // Also provide a global helper function for easier access
+  window.safeScheduleRecalc = function(fn) {
+    try {
+      if (window.App && window.App.ui && window.App.ui.scheduleRecalc) {
+        window.App.ui.scheduleRecalc(fn);
+      } else if (typeof fn === 'function') {
+        // Fallback: call immediately if scheduler not available
+        fn();
+      }
+    } catch (e) {
+      console.warn('[safeScheduleRecalc] Error:', e);
+    }
+  };
 })();
