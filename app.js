@@ -21,6 +21,56 @@ Requisitos desta entrega:
 ===============================================================
 */
 
+// ================= CENTRALIZED FORMATTING =================
+// App.format namespace for centralized number/currency formatting
+const App = {
+  format: {
+    parseBRNumber: function(input) {
+      if (input === null || input === undefined) return 0;
+      if (typeof input === 'number') return Number.isFinite(input) ? input : 0;
+      let s = String(input).trim();
+      if (!s) return 0;
+      // remover espaços e símbolos monetários
+      s = s.replace(/R\$/i, '').replace(/\s+/g, '');
+      const hasComma = s.includes(',');
+      const hasDot = s.includes('.');
+      if (hasComma && hasDot) {
+        // Formato típico 1.234,56 -> remover pontos milhares e trocar vírgula por ponto
+        s = s.replace(/\./g, '').replace(/,/g, '.');
+      } else if (hasComma && !hasDot) {
+        // Apenas vírgula decimal
+        s = s.replace(/,/g, '.');
+      } else if (!hasComma && hasDot) {
+        // Apenas pontos: pode ser milhares (2.500) ou decimal (2.5). Heurística: se depois do último ponto houver exatamente 3 dígitos, tratar como milhares.
+        const lastSeg = s.split('.').pop();
+        if (lastSeg && lastSeg.length === 3) {
+          s = s.replace(/\./g, '');
+        }
+      }
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
+    },
+    
+    formatNumber: function(n, decimals = 2) {
+      const num = Number(n) || 0;
+      return num.toLocaleString('pt-BR', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      });
+    },
+    
+    formatBRL: function(n) {
+      const num = Number(n) || 0;
+      return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+  }
+};
+
+// Make App.format available globally
+if (typeof window !== 'undefined') {
+  window.App = App;
+}
+
 // ================= SNAPSHOT / PRE-QUOTE API =================
 let __frozenQuote = null; // { version, selectedMethod: 'distance'|'time', snapshot: {...}, ts }
 const FROZEN_KEY = 'quote:last';
@@ -156,15 +206,15 @@ function renderFrozenPreview(container, frozen){
   linhas.push(`<div><strong>Método:</strong> ${selectedMethod==='distance'?'Distância':'Tempo de voo'}</div>`);
   linhas.push(`<div><strong>Distância:</strong> ${snapshot.distanciaNm?.toFixed(1)} NM (${snapshot.distanciaKm?.toFixed(1)} km)</div>`);
   if (selectedMethod==='distance') {
-    linhas.push(`<div><strong>Tarifa:</strong> R$ ${Number(snapshot.valorKm).toLocaleString('pt-BR',{minimumFractionDigits:2})}/km</div>`);
+    linhas.push(`<div><strong>Tarifa:</strong> R$ ${App.format.formatNumber(snapshot.valorKm)}/km</div>`);
   } else if (snapshot.metodo2) {
-    linhas.push(`<div><strong>Valor-hora:</strong> R$ ${Number(snapshot.metodo2.hourlyRate).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
+    linhas.push(`<div><strong>Valor-hora:</strong> R$ ${App.format.formatNumber(snapshot.metodo2.hourlyRate)}</div>`);
     linhas.push(`<div><strong>Tempo faturado:</strong> ${snapshot.metodo2.totalHhmm} (${snapshot.metodo2.totalHours.toFixed(2)} h)</div>`);
   }
-  linhas.push(`<div><strong>Subtotal:</strong> R$ ${Number(snapshot.subtotal).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
-  if (snapshot.ajusteAplicado) linhas.push(`<div><strong>Ajuste:</strong> R$ ${Number(snapshot.ajusteAplicado).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
-  if (snapshot.comissao) linhas.push(`<div><strong>Comissões:</strong> R$ ${Number(snapshot.comissao).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
-  linhas.push(`<div style="margin-top:4px"><strong>Total:</strong> R$ ${Number(snapshot.total).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
+  linhas.push(`<div><strong>Subtotal:</strong> R$ ${App.format.formatNumber(snapshot.subtotal)}</div>`);
+  if (snapshot.ajusteAplicado) linhas.push(`<div><strong>Ajuste:</strong> R$ ${App.format.formatNumber(snapshot.ajusteAplicado)}</div>`);
+  if (snapshot.comissao) linhas.push(`<div><strong>Comissões:</strong> R$ ${App.format.formatNumber(snapshot.comissao)}</div>`);
+  linhas.push(`<div style="margin-top:4px"><strong>Total:</strong> R$ ${App.format.formatNumber(snapshot.total)}</div>`);
   container.innerHTML = `<div style="border:1px solid #ccc;padding:8px;border-radius:6px;background:#fafafa;font-size:14px;line-height:1.4">${linhas.join('')}</div>`;
 }
 
@@ -353,10 +403,9 @@ function fallbackCopy(text){
 // Função utilitária para buscar dados da aeronave selecionada
 // Substituído por AircraftDomain.getSelectedAircraftData
 
-// Formatação BRL (reutiliza padrão do app se existir)
+// Formatação BRL (uses centralized App.format)
 function formatNumberBR(n) {
-  if (typeof fmtBRL === 'function') return fmtBRL(n);
-  return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  return App.format.formatNumber(n);
 }
 
 // Função consolidada de autofill para aeronave - gerencia tarifa, velocidade e valor-hora
@@ -426,14 +475,14 @@ function setupAircraftAutofillConsolidated() {
       const tarifaPreview = document.getElementById('tarifaPreview');
       if (tarifaPreview) {
         tarifaPreview.textContent = tarifaInput.value ? 
-          `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+          `R$ ${App.format.formatNumber(tarifaInput.value)}/km` : '';
       }
     }
 
     // 2. Autofill hourly rate se campo existir e estiver vazio
     if (hourlyInput && !userDirtyHourly && aircraft.hourly_rate_brl_default && (!hourlyInput.value || hourlyInput.value === '' || hourlyInput.value == hourlyInput.defaultValue)) {
       hourlyInput.value = aircraft.hourly_rate_brl_default;
-      hourlyInput.placeholder = `R$ ${Number(aircraft.hourly_rate_brl_default).toLocaleString('pt-BR')}/h`;
+      hourlyInput.placeholder = `${App.format.formatBRL(aircraft.hourly_rate_brl_default)}/h`;
       hourlyInput.dispatchEvent(new Event('input', { bubbles: true }));
       console.log('Hourly rate preenchido:', hourlyInput.value);
     }
@@ -480,14 +529,14 @@ function setupAircraftAutofillConsolidated() {
       const tarifaPreview = document.getElementById('tarifaPreview');
       if (tarifaPreview) {
         tarifaPreview.textContent = tarifaInput.value ? 
-          `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+          `R$ ${App.format.formatNumber(tarifaInput.value)}/km` : '';
       }
     }
 
     // Aplicar hourly rate e cruise speed apenas se vazios
     if (hourlyInput && aircraft.hourly_rate_brl_default && (!hourlyInput.value || hourlyInput.value === '')) {
       hourlyInput.value = aircraft.hourly_rate_brl_default;
-      hourlyInput.placeholder = `R$ ${Number(aircraft.hourly_rate_brl_default).toLocaleString('pt-BR')}/h`;
+      hourlyInput.placeholder = `${App.format.formatBRL(aircraft.hourly_rate_brl_default)}/h`;
     }
     
     if (cruiseInput && aircraft.cruise_speed_kt_default && (!cruiseInput.value || cruiseInput.value === '')) {
@@ -642,9 +691,9 @@ function loadAircraftCatalog() {
                 if (placeholder) sel.appendChild(placeholder); else sel.insertAdjacentHTML('beforeend', '<option value="" disabled selected>Escolha uma aeronave</option>');
                 aircraftCatalog.forEach(ac => {
                   const kmRate = ac.tarifa_km_brl_default;
-                  const rateTxt = kmRate ? `R$${Number(kmRate).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+                  const rateTxt = kmRate ? `${App.format.formatBRL(kmRate)}/km` : '';
                   const speedTxt = ac.cruise_speed_kt_default ? `${ac.cruise_speed_kt_default}KT` : '';
-                  const hourTxt = ac.hourly_rate_brl_default ? `R$${Number(ac.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : '';
+                  const hourTxt = ac.hourly_rate_brl_default ? `${App.format.formatBRL(ac.hourly_rate_brl_default)}/h` : '';
                   const info = [rateTxt, speedTxt, hourTxt].filter(Boolean).join(' · ');
                   const opt = document.createElement('option');
                   opt.value = ac.nome;
@@ -764,10 +813,10 @@ function bindAircraftParamsUI() {
         if (baseTarifa !== undefined && baseTarifa !== null) {
           tarifaInput.value = baseTarifa;
         }
-        if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR',{minimumFractionDigits:2})}/km` : '';
+        if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${App.format.formatNumber(tarifaInput.value)}/km` : '';
       }
       if (cruisePreview) cruisePreview.textContent = cruise ? `${cruise} KTAS` : '';
-      if (hourlyPreview) hourlyPreview.textContent = hourly ? `R$ ${Number(hourly).toLocaleString('pt-BR')}/h` : '';
+      if (hourlyPreview) hourlyPreview.textContent = hourly ? `${App.format.formatBRL(hourly)}/h` : '';
     } catch(e) {}
     
     // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
@@ -795,7 +844,7 @@ function bindAircraftParamsUI() {
     if (hourlyEl) hourlyEl.addEventListener('input', () => {
       try {
         const hourlyPreview = document.getElementById('hourlyPreview');
-        if (hourlyPreview) hourlyPreview.textContent = hourlyEl.value ? `R$ ${Number(hourlyEl.value).toLocaleString('pt-BR')}/h` : '';
+        if (hourlyPreview) hourlyPreview.textContent = hourlyEl.value ? `${App.format.formatBRL(hourlyEl.value)}/h` : '';
         if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento();
       } catch (e) {}
     });
@@ -1177,11 +1226,7 @@ function initDateGuards() {
 }
 
 function fmtBRL(n) {
-  try {
-    return Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  } catch {
-    return 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
-  }
+  return App.format.formatBRL(n);
 }
 
 function renderMetodoCard(titulo, dados, metodo) {
@@ -1474,7 +1519,7 @@ if (typeof document !== 'undefined') {
     // REMOVIDO: syncTarifaFromAeronave - funcionalidade agora está em setupAircraftAutofillConsolidated
     
     tarifaInput.addEventListener('input', () => {
-      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${App.format.formatNumber(tarifaInput.value)}/km` : '';
       // Atualiza pré-orçamento ao editar tarifa manualmente
       try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
     });
@@ -1509,7 +1554,7 @@ if (typeof document !== 'undefined') {
     }, 200);
 
     const applyTarifaPreview = () => {
-      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${App.format.formatNumber(tarifaInput.value)}/km` : '';
     };
 
     // REMOVIDO: Listeners duplicados - funcionalidade agora está em setupAircraftAutofillConsolidated
@@ -1532,7 +1577,7 @@ if (typeof document !== 'undefined') {
 
       modalSave.addEventListener('click', () => {
         const raw = modalInput.value;
-        const v = Number(String(raw).replace(',', '.'));
+        const v = App.format.parseBRNumber(raw);
         if (!Number.isFinite(v) || v < 0) {
           alert('Valor inválido');
           return;
@@ -1757,8 +1802,7 @@ function obterComissao(km, tarifa) {
     const btn = document.getElementById('btnAddCommission');
     const enabled = btn && btn.getAttribute('aria-pressed') === 'true';
     const percentEl = document.getElementById('commissionPercent');
-    const percentRaw = percentEl ? String(percentEl.value).replace(',', '.') : '0';
-    const percent = Number(percentRaw);
+    const percent = App.format.parseBRNumber(percentEl ? percentEl.value : '0');
 
     if (!enabled || !Number.isFinite(percent) || percent <= 0) return 0;
 
@@ -1769,7 +1813,7 @@ function obterComissao(km, tarifa) {
     if (hidden) hidden.value = String(Number(amount.toFixed(2)));
     const preview = document.getElementById('commissionPreview');
     if (preview && typeof Intl !== 'undefined') {
-      preview.textContent = 'Comissão: ' + Number(amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      preview.textContent = 'Comissão: ' + App.format.formatBRL(amount);
     }
 
     return amount;
@@ -1965,35 +2009,35 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
     
     // Linha de subtotal específica por método
     if (methodType === 'method1') {
-      investBody.push([{ text: `Total parcial (km×tarifa): R$ ${subtotalUsed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+      investBody.push([{ text: `Total parcial (km×tarifa): R$ ${App.format.formatNumber(subtotalUsed)}`, alignment: 'right' }]);
     } else {
       const entry = aircraftCatalog.find(a => a.nome === state.aeronave || a.id === state.aeronave);
       const hourlyRate = entry ? entry.hourly_rate_brl_default : 0;
-      investBody.push([{ text: `Valor hora: R$ ${hourlyRate.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/h`, alignment: 'right' }]);
+      investBody.push([{ text: `Valor hora: R$ ${App.format.formatNumber(hourlyRate)}/h`, alignment: 'right' }]);
       investBody.push([{ text: `Tempo total: ${methodData.totalHhmm} (${methodData.totalHours.toFixed(2)}h)`, alignment: 'right' }]);
-      investBody.push([{ text: `Total parcial (tempo×hora): R$ ${subtotalUsed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+      investBody.push([{ text: `Total parcial (tempo×hora): R$ ${App.format.formatNumber(subtotalUsed)}`, alignment: 'right' }]);
     }
 
     if (state.showAjuste && state.valorExtra > 0) {
       const label = state.tipoExtra === 'soma' ? 'Outras Despesas' : 'Desconto';
-      investBody.push([{ text: `${label}: R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+      investBody.push([{ text: `${label}: R$ ${App.format.formatNumber(state.valorExtra)}`, alignment: 'right' }]);
     }
 
     // Respeita também a opção específica do painel PDF (quando fornecida)
     const showCommissionInPdf = state.showComissao && (pdfOptions.includeCommission || pdfOptions.includeCommission === undefined);
     if (showCommissionInPdf) {
       (detalhesUsed || []).forEach((c, idx) => {
-        investBody.push([{ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+        investBody.push([{ text: `Comissão ${idx + 1}: R$ ${App.format.formatNumber(c.calculado)}`, alignment: 'right' }]);
       });
       if (commissionAmount > 0) {
-        investBody.push([{ text: `Comissão: R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+        investBody.push([{ text: `Comissão: R$ ${App.format.formatNumber(commissionAmount)}`, alignment: 'right' }]);
       }
     } else if (state.showComissao && pdfOptions && pdfOptions.includeCommission === false) {
       // Mantém linha invisível (zero font) para evitar quebrar testes que procurem palavras-chave
       investBody.push([{ text: 'Comissões ocultadas', fontSize: 0, alignment: 'right' }]);
     }
 
-    investBody.push([{ text: `Total Final: R$ ${totalUsed.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right', bold: true }]);
+    investBody.push([{ text: `Total Final: R$ ${App.format.formatNumber(totalUsed)}`, alignment: 'right', bold: true }]);
 
     return {
       table: { widths: ['*'], body: investBody },
@@ -2014,11 +2058,11 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
   const includeTariff = (pdfOptions && pdfOptions.hasOwnProperty('includeTariff')) ? pdfOptions.includeTariff : state.showTarifa;
   const includeHourly = (pdfOptions && pdfOptions.hasOwnProperty('includeMethod2')) ? pdfOptions.includeMethod2 : ((methodSelection === 'method2' || methodSelection === 'both') && !!method2Data);
   if (includeDistance) resumoRight.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)`, style: 'row' });
-  if (includeTariff) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'row' });
+  if (includeTariff) resumoRight.push({ text: `Tarifa por km: R$ ${App.format.formatNumber(state.valorKm)}`, style: 'row' });
   if (includeHourly && method2Data) {
     const entry = aircraftCatalog.find(a => a.nome === state.aeronave || a.id === state.aeronave);
     const hourlyRate = entry ? entry.hourly_rate_brl_default : 0;
-    resumoRight.push({ text: `Valor por hora: R$ ${hourlyRate.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/h`, style: 'row' });
+    resumoRight.push({ text: `Valor por hora: R$ ${App.format.formatNumber(hourlyRate)}/h`, style: 'row' });
   }
 
   const resumoBlock = {
@@ -2223,10 +2267,10 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
                 body: [
                   [{ text: 'Aeronave', style: 'label' }, { text: state.aeronave || '—', style: 'value' }],
                   [{ text: 'Distância', style: 'label' }, { text: `${state.nm} NM (${km.toFixed(1)} km)`, style: 'value' }],
-                  [{ text: 'Total Parcial (km×tarifa)', style: 'label' }, { text: `R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'value' }],
-                  ...(state.showAjuste && state.valorExtra > 0 ? [[{ text: 'Ajuste', style: 'label' }, { text: `+ R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'value' }]] : []),
-                  ...((state.showComissao && (pdfOptions.includeCommission || pdfOptions.includeCommission === undefined)) ? (detalhesComissao || []).map((c, i) => [{ text: `Comissão ${i+1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, colSpan: 2, style: 'value', fillColor: '#FFF9E6' }, {}]) : []),
-                  [{ text: 'Total Estimado', style: 'labelBold' }, { text: `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'valueBold' }]
+                  [{ text: 'Total Parcial (km×tarifa)', style: 'label' }, { text: `R$ ${App.format.formatNumber(subtotal)}`, style: 'value' }],
+                  ...(state.showAjuste && state.valorExtra > 0 ? [[{ text: 'Ajuste', style: 'label' }, { text: `+ R$ ${App.format.formatNumber(state.valorExtra)}`, style: 'value' }]] : []),
+                  ...((state.showComissao && (pdfOptions.includeCommission || pdfOptions.includeCommission === undefined)) ? (detalhesComissao || []).map((c, i) => [{ text: `Comissão ${i+1}: R$ ${App.format.formatNumber(c.calculado)}`, colSpan: 2, style: 'value', fillColor: '#FFF9E6' }, {}]) : []),
+                  [{ text: 'Total Estimado', style: 'labelBold' }, { text: `R$ ${App.format.formatNumber(total)}`, style: 'valueBold' }]
                 ] 
               }, 
               layout: { 
@@ -2289,7 +2333,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
                 style: 'priceLabel' 
               }, 
               { 
-                text: (method2Active && !method1Active) ? `R$ ${method2Data.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 
+                text: (method2Active && !method1Active) ? `R$ ${App.format.formatNumber(method2Data.total)}` : `R$ ${App.format.formatNumber(total)}`, 
                 style: 'priceValue' 
               } 
             ],
@@ -2346,7 +2390,7 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
                   fillColor: idx % 2 === 0 ? '#F8F9FA' : null
                 },
                 {
-                  text: legSubtotal > 0 ? `R$ ${legSubtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '—',
+                  text: legSubtotal > 0 ? `R$ ${App.format.formatNumber(legSubtotal)}` : '—',
                   alignment: 'center',
                   margin: [8,6,8,6],
                   fillColor: idx % 2 === 0 ? '#F8F9FA' : null
@@ -2445,15 +2489,15 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
   if (state.showComissao && (pdfOptions.includeCommission || pdfOptions.includeCommission === undefined)) {
     if (detalhesComissao && detalhesComissao.length) {
       detalhesComissao.forEach((c, idx) => {
-        invisibleLines.push(`Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+        invisibleLines.push(`Comissão ${idx + 1}: R$ ${App.format.formatNumber(c.calculado)}`);
       });
     }
     if (commissionAmount && commissionAmount > 0) {
-      invisibleLines.push(`Comissão: R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+      invisibleLines.push(`Comissão: R$ ${App.format.formatNumber(commissionAmount)}`);
     }
   }
   invisibleLines.push(`Total parcial`);
-  invisibleLines.push(`Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`);
+  invisibleLines.push(`Total Final: R$ ${App.format.formatNumber(total)}`);
   content.push({ text: invisibleLines.join('\n'), fontSize: 0 });
 
   return {
@@ -2989,7 +3033,7 @@ if (typeof window !== 'undefined') {
       if (!ac) return false;
       const hrCatalog = Number(ac.hourly_rate_brl_default||0);
       const ktCatalog = Number(ac.cruise_speed_kt_default||0);
-      const hrVal = Number(String(hourlyEl.value).replace(/\./g,'').replace(',','.')) || 0;
+      const hrVal = App.format.parseBRNumber(hourlyEl.value);
       const ktVal = Number(ktasEl.value)||0;
       return (hrCatalog !== hrVal) || (ktCatalog !== ktVal);
     }
@@ -3043,7 +3087,7 @@ if (typeof window !== 'undefined') {
       } else {
         // Ao bloquear, normalizar valores (2 casas) e disparar recálculo
         if (hourlyEl && hourlyEl.value) {
-          const num = Number(hourlyEl.value.replace(',','.'))||0;
+          const num = App.format.parseBRNumber(hourlyEl.value);
           hourlyEl.value = num ? num.toFixed(2) : '';
         }
         try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
