@@ -77,16 +77,43 @@ mv jsdom-24.0.0.tgz vendor/
 3. Clique em "Gerar Pré-Orçamento" para calcular
 4. Clique em "Gerar PDF" para exportar
 
+## Desenvolvimento
+
+### Scripts disponíveis
+
+```bash
+npm test          # Executa todos os testes
+npm run lint      # Verifica problemas no código
+npm run lint:fix  # Corrige problemas automaticamente
+npm run format    # Formata código com Prettier
+npm run dev       # Inicia servidor local na porta 8080
+npm run validate  # Executa lint + format + test
+```
+
+### Configuração do ambiente
+
+1. Clone o repositório
+2. Execute `npm install` para instalar dependências de desenvolvimento
+3. Configure o token AVWX (opcional, ver seção AVWX_TOKEN)
+4. Execute `npm run dev` para iniciar o servidor local
+
 ## Estrutura do Projeto
 
 ```
-├── index.html          # Interface principal da aplicação
-├── app.js              # Lógica principal e cálculos
-├── cotacao.js          # Funções de cálculo de cotação
-├── test.js             # Suite de testes
-├── docs/               # Documentação adicional
-├── scripts/            # Scripts utilitários
-└── libs/               # Bibliotecas vendorizadas
+├── index.html              # Interface principal da aplicação
+├── app.js                  # Lógica principal e cálculos
+├── cotacao.js              # Funções de cálculo de cotação
+├── src/
+│   ├── css/
+│   │   └── main.css        # Estilos principais da aplicação
+│   └── js/                 # (reservado para JS modularizado)
+├── tests/                  # Suite de testes e arquivos de teste
+│   ├── test.js             # Testes principais
+│   └── *.html              # Arquivos de teste HTML
+├── docs/                   # Documentação adicional
+├── scripts/                # Scripts utilitários
+├── libs/                   # Bibliotecas vendorizadas
+└── data/                   # Dados e configurações
 ```
 
 ## Tecnologias Utilizadas

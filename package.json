@@ -4,7 +4,7 @@
   "description": "Aplicação web para cotação de voo executivo com suporte a mapas e geração de PDF",
   "main": "app.js",
   "scripts": {
-    "test": "node test.js",
+    "test": "node tests/test.js",
     "lint": "eslint . --ext .js",
     "lint:fix": "eslint . --ext .js --fix",
     "format": "prettier --write \"**/*.{js,html,css,md}\"",

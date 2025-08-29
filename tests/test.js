@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { buildState, buildDocDefinition, gerarPDF, calcularComissao, freezePreQuote } = require('./app.js');
+const { buildState, buildDocDefinition, gerarPDF, calcularComissao, freezePreQuote } = require('../app.js');
 
 function extractText(docDef) {
   return docDef.content
@@ -193,7 +193,7 @@ console.log('Route ordering test passed.');
 })();
 
 // === Novos testes para Fase 0: catálogo + overrides ===
-const acs = require('./data/aircraftCatalog.service.js');
+const acs = require('../data/aircraftCatalog.service.js');
 // catálogo deve existir e conter ao menos 7 entries
 const catalog = acs.getCatalog();
 assert(Array.isArray(catalog) && catalog.length >= 7, 'Catalog should contain at least 7 aircraft');
@@ -219,13 +219,13 @@ acs.clearOverrides();
 
 // pricingMode migration: buildState should default to 'distanceTotal' when not present (migration of old quotes)
 elements.pricingMode = undefined; // simulate older UI where pricingMode is absent
-const bs = require('./app.js').buildState;
+const bs = require('../app.js').buildState;
 const st = bs();
 assert(st.pricingMode === 'distanceTotal', 'Legacy quotes should default to distanceTotal pricingMode');
 console.log('pricingMode migration test passed.');
 
 // === Fase 3: testes para calcTempo ===
-const { calcTempo: calcTempoFn } = require('./app.js');
+const { calcTempo: calcTempoFn } = require('../app.js');
 // happy path: 120 NM at 240 kt -> 0.5 h -> 00:30
 const t1 = calcTempoFn(120, 240);
 assert(Math.abs(t1.hoursDecimal - 0.5) < 1e-6, 'calcTempo should compute decimal hours correctly');
@@ -241,7 +241,7 @@ console.log('calcTempo tests passed.');
 // === Fase 8: Testes para parâmetros avançados de planejamento ===
 (() => {
   // prepare a draft payload with two legs of 1.0 h each and advanced planning params
-  const mod = require('./app.js');
+  const mod = require('../app.js');
   global.window = global.window || {};
   global.window.__lastDraft = {
     state: { aeronave: 'Hawker 400', nm: 200, origem: 'SBBR', destino: 'SBSP', stops: [] , valorKm:36 },
@@ -299,7 +299,7 @@ console.log('calcTempo tests passed.');
     querySelectorAll: sel => (sel === '.stop-input' ? [] : sel === '.commission-percent' ? [] : [])
   };
   // ensure saveDraft exists
-  const app = require('./app.js');
+  const app = require('../app.js');
   if (typeof app.saveDraft === 'function' && typeof app.loadDraft === 'function') {
     // save
     const ok = app.saveDraft();
@@ -322,7 +322,7 @@ console.log('calcTempo tests passed.');
 
 // === adjustLegTime unit tests ===
 (() => {
-  const { adjustLegTime } = require('./app.js');
+  const { adjustLegTime } = require('../app.js');
   let r = adjustLegTime(1, { enabled:false });
   assert(Math.abs(r - 1) < 1e-9, 'Disabled should return base');
   r = adjustLegTime(1, { enabled:true, taxiMinutes:30, windPercent:0, minBillableMinutes:0 });
@@ -345,7 +345,7 @@ console.log('calcTempo tests passed.');
     removeItem: (k) => { delete store[k]; }
   };
   // Não setado ainda -> fallback deve retornar 'method1'
-  const app = require('./app.js');
+  const app = require('../app.js');
   let sel = app.getSelectedPdfMethod ? app.getSelectedPdfMethod() : 'method1';
   assert(sel === 'method1', 'Default selected PDF method should be method1 when nothing stored');
   // Persistir método 2
