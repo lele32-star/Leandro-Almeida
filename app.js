@@ -448,7 +448,7 @@ function setupAircraftAutofillConsolidated() {
     // 4. Disparar recálculo
     try { 
       if (typeof gerarPreOrcamento === 'function') {
-        setTimeout(gerarPreOrcamento, 50);
+  if (typeof scheduleRecalc === 'function') scheduleRecalc(gerarPreOrcamento);
         console.log('Recálculo disparado');
       }
     } catch (e) { 
