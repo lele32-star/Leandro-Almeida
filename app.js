@@ -301,29 +301,28 @@ function copiarJSON(){
   }
 }
 
-function copiarLink(){
+async function copiarLink(){
   const frozen = getFrozenQuote();
   if (!frozen) {
     showToast && showToast('Nenhum orçamento para compartilhar.');
     return;
   }
 
-  const json = JSON.stringify(frozen.snapshot);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(() => {
-      showToast && showToast('Link copiado para a área de transferência!');
-    }).catch(() => {
-      fallbackCopy(url);
-    });
-  } else {
+  try {
+    // Use the new App.share.createShareLink function
+    const url = await window.App.share.createShareLink(frozen.snapshot);
+    showToast && showToast('Link copiado para a área de transferência!');
+    
+    // Limpar URL após uso (opcional, mas boa prática)
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    // Fallback to manual copy if clipboard fails
+    const json = JSON.stringify(frozen.snapshot);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
     fallbackCopy(url);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
-
-  // Limpar URL após uso (opcional, mas boa prática)
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function fallbackCopy(text){
