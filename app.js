@@ -735,7 +735,7 @@ function adjustLegTime(baseHours, options) {
 
 // Accessible toast helper: shows short messages in an ARIA live region
 function showToast(message, timeout = 4000, type = 'info') {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') return;
   let container = document.getElementById('toastContainer');
   if (!container) {
     container = document.createElement('div');
@@ -2784,7 +2784,7 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
   const frozen = getFrozenQuote();
   if (!frozen) {
     showToast && showToast('Gere o Pré-Orçamento antes de exportar o PDF.');
-    alert && alert('Gere o Pré-Orçamento antes de exportar o PDF.');
+    if (typeof alert !== 'undefined') alert('Gere o Pré-Orçamento antes de exportar o PDF.');
     return;
   }
   const { selectedMethod, snapshot } = frozen;
@@ -3204,5 +3204,5 @@ if (typeof window !== 'undefined') {
 }
 
 if (typeof module !== 'undefined') {
-  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft, adjustLegTime, getSelectedPdfMethod };
+  module.exports = { buildState, buildDocDefinition, gerarPDF, calcularComissao, calcTempo, saveDraft, loadDraft, adjustLegTime, getSelectedPdfMethod, computeByDistance, freezePreQuote };
  }
