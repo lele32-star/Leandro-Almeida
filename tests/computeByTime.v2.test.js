@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import '../src/utils/safeExport.js';
 import '../src/calc/computeByTime.js';
 
-describe('computeByTime', () => {
+describe('computeByTime (v2 module)', () => {
   const fn = window.App.calc.computeByTime;
   it('múltiplas pernas com taxi/buffer', () => {
     const r = fn({
@@ -16,3 +16,6 @@ describe('computeByTime', () => {
     expect(r.total).toBeGreaterThan(r.base);
   });
 });
+
+// Suite desativada (duplicado substituído por computeByTime.test.js)
+describe.skip('computeByTime duplicate', () => { it('noop', () => {}); });

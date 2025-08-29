@@ -27,29 +27,19 @@ const FROZEN_KEY = 'quote:last';
 const CURRENT_VERSION = '1.0';
 
 function getFrozenQuote(){
-  if (window.SnapshotStore) {
-    const f = window.SnapshotStore.getFrozenQuote();
-    if (f) {
-      __frozenQuote = { version: f.version, selectedMethod: f.method || f.selectedMethod, snapshot: f.snapshot, ts: f.ts };
-      return __frozenQuote;
-    }
+  if (App.state && App.state.getFrozenQuote) {
+    const snap = App.state.getFrozenQuote();
+    if (snap) return { version: CURRENT_VERSION, selectedMethod: snap.method || snap.selectedMethod, snapshot: snap.snapshot || snap, ts: snap.ts || Date.now() };
   }
   if (__frozenQuote) return __frozenQuote;
-  try {
-    const raw = localStorage.getItem(FROZEN_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.version === CURRENT_VERSION) { __frozenQuote = parsed; return __frozenQuote; }
-      localStorage.removeItem(FROZEN_KEY);
-    }
-  } catch{}
+  try { const raw = localStorage.getItem(FROZEN_KEY); if (raw){ const parsed = JSON.parse(raw); if (parsed.version===CURRENT_VERSION) { __frozenQuote=parsed; return __frozenQuote; } localStorage.removeItem(FROZEN_KEY);} } catch {}
   return null;
 }
 
 function freezePreQuote(method, snapshot){
-  if (window.SnapshotStore) {
-    const f = window.SnapshotStore.freezeQuote(method, snapshot);
-    __frozenQuote = { version: f.version, selectedMethod: method, snapshot: f.snapshot, ts: f.ts };
+  if (App.state && App.state.freezeQuote) {
+    const frozen = App.state.freezeQuote({ method, snapshot, ts: Date.now() });
+    __frozenQuote = { version: CURRENT_VERSION, selectedMethod: method, snapshot: frozen.snapshot || frozen, ts: frozen.ts || Date.now() };
   } else {
     __frozenQuote = { version: CURRENT_VERSION, selectedMethod: method, snapshot, ts: Date.now() };
   }
@@ -156,15 +146,15 @@ function renderFrozenPreview(container, frozen){
   linhas.push(`<div><strong>Método:</strong> ${selectedMethod==='distance'?'Distância':'Tempo de voo'}</div>`);
   linhas.push(`<div><strong>Distância:</strong> ${snapshot.distanciaNm?.toFixed(1)} NM (${snapshot.distanciaKm?.toFixed(1)} km)</div>`);
   if (selectedMethod==='distance') {
-    linhas.push(`<div><strong>Tarifa:</strong> R$ ${Number(snapshot.valorKm).toLocaleString('pt-BR',{minimumFractionDigits:2})}/km</div>`);
+  linhas.push(`<div><strong>Tarifa:</strong> R$ ${App.format.formatNumber(Number(snapshot.valorKm),2)}/km</div>`);
   } else if (snapshot.metodo2) {
-    linhas.push(`<div><strong>Valor-hora:</strong> R$ ${Number(snapshot.metodo2.hourlyRate).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
+  linhas.push(`<div><strong>Valor-hora:</strong> R$ ${App.format.formatNumber(Number(snapshot.metodo2.hourlyRate),2)}</div>`);
     linhas.push(`<div><strong>Tempo faturado:</strong> ${snapshot.metodo2.totalHhmm} (${snapshot.metodo2.totalHours.toFixed(2)} h)</div>`);
   }
-  linhas.push(`<div><strong>Subtotal:</strong> R$ ${Number(snapshot.subtotal).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
-  if (snapshot.ajusteAplicado) linhas.push(`<div><strong>Ajuste:</strong> R$ ${Number(snapshot.ajusteAplicado).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
-  if (snapshot.comissao) linhas.push(`<div><strong>Comissões:</strong> R$ ${Number(snapshot.comissao).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
-  linhas.push(`<div style="margin-top:4px"><strong>Total:</strong> R$ ${Number(snapshot.total).toLocaleString('pt-BR',{minimumFractionDigits:2})}</div>`);
+  linhas.push(`<div><strong>Subtotal:</strong> R$ ${App.format.formatNumber(Number(snapshot.subtotal),2)}</div>`);
+  if (snapshot.ajusteAplicado) linhas.push(`<div><strong>Ajuste:</strong> R$ ${App.format.formatNumber(Number(snapshot.ajusteAplicado),2)}</div>`);
+  if (snapshot.comissao) linhas.push(`<div><strong>Comissões:</strong> R$ ${App.format.formatNumber(Number(snapshot.comissao),2)}</div>`);
+  linhas.push(`<div style="margin-top:4px"><strong>Total:</strong> R$ ${App.format.formatNumber(Number(snapshot.total),2)}</div>`);
   container.innerHTML = `<div style="border:1px solid #ccc;padding:8px;border-radius:6px;background:#fafafa;font-size:14px;line-height:1.4">${linhas.join('')}</div>`;
 }
 
@@ -311,29 +301,28 @@ function copiarJSON(){
   }
 }
 
-function copiarLink(){
+async function copiarLink(){
   const frozen = getFrozenQuote();
   if (!frozen) {
     showToast && showToast('Nenhum orçamento para compartilhar.');
     return;
   }
 
-  const json = JSON.stringify(frozen.snapshot);
-  const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(url).then(() => {
-      showToast && showToast('Link copiado para a área de transferência!');
-    }).catch(() => {
-      fallbackCopy(url);
-    });
-  } else {
+  try {
+    // Use the new App.share.createShareLink function
+    const url = await window.App.share.createShareLink(frozen.snapshot);
+    showToast && showToast('Link copiado para a área de transferência!');
+    
+    // Limpar URL após uso (opcional, mas boa prática)
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (error) {
+    // Fallback to manual copy if clipboard fails
+    const json = JSON.stringify(frozen.snapshot);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
     fallbackCopy(url);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
-
-  // Limpar URL após uso (opcional, mas boa prática)
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
 function fallbackCopy(text){
@@ -351,13 +340,10 @@ function fallbackCopy(text){
 }
 
 // Função utilitária para buscar dados da aeronave selecionada
-// Substituído por AircraftDomain.getSelectedAircraftData
+// uso centralizado via App.domain.aircraft.getSelectedAircraftData
 
 // Formatação BRL (reutiliza padrão do app se existir)
-function formatNumberBR(n) {
-  if (typeof fmtBRL === 'function') return fmtBRL(n);
-  return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-}
+function formatNumberBR(n) { return App.format.formatNumber(Number(n),2); }
 
 // Função consolidada de autofill para aeronave - gerencia tarifa, velocidade e valor-hora
 function setupAircraftAutofillConsolidated() {
@@ -400,7 +386,7 @@ function setupAircraftAutofillConsolidated() {
 
   function handleAircraftChange() {
     const val = select.value;
-  const aircraft = (window.AircraftDomain && window.AircraftDomain.getSelectedAircraftData(val)) || null;
+  const aircraft = (App.domain && App.domain.aircraft && App.domain.aircraft.getSelectedAircraftData({ aircraftId: val })) || null;
     
     console.log('Aeronave selecionada:', val, 'Dados encontrados:', data);
     
@@ -426,14 +412,14 @@ function setupAircraftAutofillConsolidated() {
       const tarifaPreview = document.getElementById('tarifaPreview');
       if (tarifaPreview) {
         tarifaPreview.textContent = tarifaInput.value ? 
-          `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+          `R$ ${App.format.formatNumber(Number(tarifaInput.value),2)}/km` : '';
       }
     }
 
     // 2. Autofill hourly rate se campo existir e estiver vazio
     if (hourlyInput && !userDirtyHourly && aircraft.hourly_rate_brl_default && (!hourlyInput.value || hourlyInput.value === '' || hourlyInput.value == hourlyInput.defaultValue)) {
       hourlyInput.value = aircraft.hourly_rate_brl_default;
-      hourlyInput.placeholder = `R$ ${Number(aircraft.hourly_rate_brl_default).toLocaleString('pt-BR')}/h`;
+  hourlyInput.placeholder = `R$ ${App.format.formatNumber(Number(aircraft.hourly_rate_brl_default),2)}/h`;
       hourlyInput.dispatchEvent(new Event('input', { bubbles: true }));
       console.log('Hourly rate preenchido:', hourlyInput.value);
     }
@@ -461,7 +447,7 @@ function setupAircraftAutofillConsolidated() {
   function applyInitialValues() {
     if (!select.value) return;
     
-  const aircraft = (window.AircraftDomain && window.AircraftDomain.getSelectedAircraftData(select.value)) || null;
+  const aircraft = (App.domain && App.domain.aircraft && App.domain.aircraft.getSelectedAircraftData({ aircraftId: select.value })) || null;
   if (!aircraft) return;
 
     console.log('Aplicando valores iniciais para:', select.value);
@@ -480,14 +466,14 @@ function setupAircraftAutofillConsolidated() {
       const tarifaPreview = document.getElementById('tarifaPreview');
       if (tarifaPreview) {
         tarifaPreview.textContent = tarifaInput.value ? 
-          `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+          `R$ ${App.format.formatNumber(Number(tarifaInput.value),2)}/km` : '';
       }
     }
 
     // Aplicar hourly rate e cruise speed apenas se vazios
     if (hourlyInput && aircraft.hourly_rate_brl_default && (!hourlyInput.value || hourlyInput.value === '')) {
       hourlyInput.value = aircraft.hourly_rate_brl_default;
-      hourlyInput.placeholder = `R$ ${Number(aircraft.hourly_rate_brl_default).toLocaleString('pt-BR')}/h`;
+  hourlyInput.placeholder = `R$ ${App.format.formatNumber(Number(aircraft.hourly_rate_brl_default),2)}/h`;
     }
     
     if (cruiseInput && aircraft.cruise_speed_kt_default && (!cruiseInput.value || cruiseInput.value === '')) {
@@ -572,7 +558,7 @@ const valoresKm = {
  * @param {string} selectValue - Valor selecionado no dropdown de aeronaves
  * @returns {Object|null} Objeto com hourlyRate e cruiseKtas ou null se não encontrado
  */
-// Substituído por AircraftDomain.getSelectedAircraftData
+// uso centralizado via App.domain.aircraft.getSelectedAircraftData
 
 let valorParcialFn = (distanciaKm, valorKm) => distanciaKm * valorKm;
 let valorTotalFn = (distanciaKm, valorKm, valorExtra = 0) =>
@@ -642,9 +628,9 @@ function loadAircraftCatalog() {
                 if (placeholder) sel.appendChild(placeholder); else sel.insertAdjacentHTML('beforeend', '<option value="" disabled selected>Escolha uma aeronave</option>');
                 aircraftCatalog.forEach(ac => {
                   const kmRate = ac.tarifa_km_brl_default;
-                  const rateTxt = kmRate ? `R$${Number(kmRate).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+                  const rateTxt = kmRate ? `R$${App.format.formatNumber(Number(kmRate),2)}/km` : '';
                   const speedTxt = ac.cruise_speed_kt_default ? `${ac.cruise_speed_kt_default}KT` : '';
-                  const hourTxt = ac.hourly_rate_brl_default ? `R$${Number(ac.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : '';
+                  const hourTxt = ac.hourly_rate_brl_default ? `R$${App.format.formatNumber(Number(ac.hourly_rate_brl_default),2)}/h` : '';
                   const info = [rateTxt, speedTxt, hourTxt].filter(Boolean).join(' · ');
                   const opt = document.createElement('option');
                   opt.value = ac.nome;
@@ -764,14 +750,14 @@ function bindAircraftParamsUI() {
         if (baseTarifa !== undefined && baseTarifa !== null) {
           tarifaInput.value = baseTarifa;
         }
-        if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR',{minimumFractionDigits:2})}/km` : '';
+  if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${App.format.formatNumber(Number(tarifaInput.value),2)}/km` : '';
       }
       if (cruisePreview) cruisePreview.textContent = cruise ? `${cruise} KTAS` : '';
-      if (hourlyPreview) hourlyPreview.textContent = hourly ? `R$ ${Number(hourly).toLocaleString('pt-BR')}/h` : '';
+  if (hourlyPreview) hourlyPreview.textContent = hourly ? `R$ ${App.format.formatNumber(Number(hourly),2)}/h` : '';
     } catch(e) {}
     
     // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
-    try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+  try { if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) {}
   }
 
   if (select) select.addEventListener('change', (e) => applyFor(e.target.value));
@@ -789,14 +775,14 @@ function bindAircraftParamsUI() {
       try {
         const cruisePreview = document.getElementById('cruisePreview');
         if (cruisePreview) cruisePreview.textContent = cruiseEl.value ? `${cruiseEl.value} KTAS` : '';
-        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento();
+  if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento);
       } catch (e) {}
     });
     if (hourlyEl) hourlyEl.addEventListener('input', () => {
       try {
         const hourlyPreview = document.getElementById('hourlyPreview');
-        if (hourlyPreview) hourlyPreview.textContent = hourlyEl.value ? `R$ ${Number(hourlyEl.value).toLocaleString('pt-BR')}/h` : '';
-        if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento();
+  if (hourlyPreview) hourlyPreview.textContent = hourlyEl.value ? `R$ ${App.format.formatNumber(Number(hourlyEl.value),2)}/h` : '';
+  if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento);
       } catch (e) {}
     });
   } catch (e) { /* ignore */ }
@@ -819,28 +805,29 @@ function buildDraftPayload() {
     timestamp: new Date().toISOString()
   };
 }
-function saveDraft(name){
+function saveDraft(){
   try {
     const payload = buildDraftPayload();
-    if (window.StoragePersist && window.StoragePersist.saveDraft) {
-      return window.StoragePersist.saveDraft(payload);
+    if (window.App && window.App.persist && typeof window.App.persist.saveDraft === 'function') {
+      window.App.persist.saveDraft(payload);
+      return true;
     }
-    // fallback legado
-    if (typeof window !== 'undefined') { window.__lastDraft = payload; }
+    // fallback
+    if (typeof window !== 'undefined') window.__lastDraft = payload;
     return true;
   } catch(e){ return false; }
 }
 function loadDraft(){
   try {
-    let wrapped = null;
-    if (window.StoragePersist && window.StoragePersist.loadDraft) {
-      wrapped = window.StoragePersist.loadDraft();
+    let payload = null;
+    if (window.App && window.App.persist && typeof window.App.persist.loadDraft === 'function') {
+      const data = window.App.persist.loadDraft();
+      if (data) payload = data; // já é o objeto salvo (equivalente a wrapped.data anterior)
     }
-    if (!wrapped) { // fallback legacy
-      wrapped = { data: (typeof window !== 'undefined' && window.__lastDraft) ? window.__lastDraft : null };
+    if (!payload && typeof window !== 'undefined' && window.__lastDraft) {
+      payload = window.__lastDraft;
     }
-    if (!wrapped || !wrapped.data) return null;
-    const payload = wrapped.data;
+    if (!payload) return null;
     const s = payload.state || {};
     if (typeof document !== 'undefined') {
       const set = (id, val) => { const el = document.getElementById(id); if (!el) return; if (el.type === 'checkbox') el.checked = !!val; else el.value = val == null ? '' : val; };
@@ -877,7 +864,7 @@ function loadDraft(){
         if (panel) panel.style.display = ap.enabled ? 'block' : 'none';
       }
     } catch {}
-    try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch {}
+  try { if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento); } catch {}
     return payload;
   } catch(e){ return null; }
 }
@@ -915,7 +902,7 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
         <div style="min-width:220px">Tempo: <span class="leg-time" data-idx="${defaultIdx}">${timeDisplay}</span></div>
         <div style="display:flex;align-items:center;gap:8px">
           <label style="font-size:0.85rem;display:flex;align-items:center;gap:6px"><input type="checkbox" class="leg-show-custom" data-idx="${defaultIdx}" ${showCustomDefault ? 'checked' : ''} /> Mostrar tempo custom</label>
-          <button class="edit-leg" data-idx="${defaultIdx}" aria-label="Editar tempo da perna" title="Editar tempo manual desta perna">✏️</button>
+          <button class="edit-leg icon-btn focus-ring" data-idx="${defaultIdx}" aria-label="Editar tempo da perna" title="Editar tempo manual desta perna">✏️</button>
         </div>
       </div>
     `;
@@ -974,7 +961,7 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
         }
         span.style.display = '';
         input.remove(); saveBtn.remove(); cancelBtn.remove(); btnElem.style.display = '';
-        try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+  try { if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) {}
       });
 
       cancelBtn.addEventListener('click', () => {
@@ -1001,7 +988,7 @@ function updateLegsPanel(codes, waypoints, overrideSpeed = null) {
         const calc2 = legsData[idx].distNm ? calcTempo(legsData[idx].distNm, speed) : { hoursDecimal: 0, hhmm: '—' };
         span.textContent = `${calc2.hoursDecimal} h (${calc2.hhmm})`;
       }
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
+  try { if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) {}
     });
   });
 }
@@ -1063,7 +1050,6 @@ async function fetchAirportByCode(code) {
   const icao = String(code || '').toUpperCase();
   if (!/^[A-Z]{4}$/.test(icao)) return null;
   if (airportCache.has(icao)) return airportCache.get(icao);
-  // UI status elements
   let statusEl = typeof document !== 'undefined' ? document.getElementById('airportStatus') : null;
   if (!statusEl && typeof document !== 'undefined') {
     statusEl = document.createElement('div');
@@ -1074,9 +1060,7 @@ async function fetchAirportByCode(code) {
     const mapEl = document.getElementById('map');
     if (mapEl && mapEl.parentNode) mapEl.parentNode.insertBefore(statusEl, mapEl);
   }
-  const setStatus = (msg, tone='info') => {
-    if (!statusEl) return; statusEl.textContent = msg; statusEl.dataset.tone = tone; statusEl.style.color = tone==='error' ? '#b00020' : (tone==='warn' ? '#aa6c00' : '#555');
-  };
+  const setStatus = (msg, tone='info') => { if (!statusEl) return; statusEl.textContent = msg; statusEl.dataset.tone = tone; statusEl.style.color = tone==='error' ? '#b00020' : (tone==='warn' ? '#aa6c00' : '#555'); };
   setStatus('Consultando aeroporto '+icao+'…');
   try {
     const token = (typeof AVWX_TOKEN !== 'undefined' && AVWX_TOKEN) ? AVWX_TOKEN : (typeof process !== 'undefined' && process.env && process.env.AVWX_TOKEN ? process.env.AVWX_TOKEN : null);
@@ -1085,28 +1069,37 @@ async function fetchAirportByCode(code) {
       airportCache.set(icao, null);
       return null;
     }
-    if (typeof AVWXService === 'undefined' || !AVWXService.fetchAirport) {
+    if (!(window.App && window.App.services && window.App.services.avwx && typeof window.App.services.avwx.fetchAirport === 'function')) {
       setStatus('Serviço AVWX indisponível.', 'error');
       airportCache.set(icao, null);
       return null;
     }
-    const point = await AVWXService.fetchAirport(icao, { token });
-    if (point && !point.error) {
-      airportCache.set(icao, point);
-      setStatus('Aeroporto '+icao+' carregado.');
-      return point;
+    const resp = await window.App.services.avwx.fetchAirport(icao, { token, ttlMs: 300000 });
+    if (resp.ok && resp.data) {
+      const point = { lat: resp.data.latitude && resp.data.latitude.decimal, lng: resp.data.longitude && resp.data.longitude.decimal };
+      if (Number.isFinite(point.lat) && Number.isFinite(point.lng)) {
+        airportCache.set(icao, point);
+        setStatus('Aeroporto '+icao+' carregado.');
+        return point;
+      } else {
+        setStatus('Coordenadas indisponíveis para '+icao+'.', 'warn');
+        airportCache.set(icao, null);
+        return null;
+      }
     }
-    if (point && point.error === 'offline') {
-      setStatus('Offline ou sem conexão para AVWX.', 'warn');
-    } else if (point && point.error) {
-      setStatus('Erro AVWX ('+point.error+').', 'error');
+    if (resp.reason === 'token-missing') {
+      setStatus('Token AVWX ausente.', 'warn');
+    } else if (resp.reason === 'network') {
+      setStatus('Falha de rede AVWX.', 'warn');
+    } else if (resp.status) {
+      setStatus('Erro AVWX HTTP '+resp.status+'.', 'error');
     } else {
-      setStatus('Coordenadas não encontradas para '+icao+'.', 'warn');
+      setStatus('Falha ao obter '+icao+'.', 'error');
     }
     airportCache.set(icao, null);
     return null;
-  } catch (e) {
-    setStatus('Falha ao obter '+icao+'.', 'error');
+  } catch(e){
+    setStatus('Erro inesperado AVWX.', 'error');
     airportCache.set(icao, null);
     return null;
   }
@@ -1178,7 +1171,7 @@ function initDateGuards() {
 
 function fmtBRL(n) {
   try {
-    return Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return App.format.formatBRL(Number(n));
   } catch {
     return 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
   }
@@ -1386,7 +1379,7 @@ function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao
       root.addEventListener('change',e=>{ if(e.target && e.target.matches('input[data-inline-pdf-toggle]')){ 
         const key=e.target.getAttribute('data-inline-pdf-toggle');
         try{const data=JSON.parse(localStorage.getItem('pdfInlineToggles')||'{}'); data[key]=e.target.checked; localStorage.setItem('pdfInlineToggles',JSON.stringify(data));}catch{}
-        if(window.gerarPreOrcamento) { window.gerarPreOrcamento(); }
+  if(window.gerarPreOrcamento && App.ui && App.ui.scheduleRecalc) { App.ui.scheduleRecalc(window.gerarPreOrcamento); }
       }});
     })();</script>`;
 
@@ -1407,6 +1400,7 @@ if (typeof document !== 'undefined') {
 // Optional save/load buttons wiring
 if (typeof document !== 'undefined') {
   document.addEventListener('DOMContentLoaded', () => {
+    try { if (window.App && window.App.persist && typeof window.App.persist.migrateIfNeeded === 'function') window.App.persist.migrateIfNeeded(); } catch(e) {}
     const btnSaveDraft = document.getElementById('btnSaveDraft');
     const btnLoadDraft = document.getElementById('btnLoadDraft');
     if (btnSaveDraft) btnSaveDraft.addEventListener('click', () => { const ok = saveDraft(); showToast(ok ? 'Rascunho salvo localmente.' : 'Falha ao salvar rascunho.'); });
@@ -1423,7 +1417,7 @@ if (typeof document !== 'undefined') {
       const wind = document.getElementById('windBuffer');
       const taxi = document.getElementById('taxiMinutes');
       const minB = document.getElementById('minBillable');
-      const trigger = debounce(() => { try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {} }, 250);
+  const trigger = debounce(() => { try { if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) {} }, 250);
 
       if (toggle && panel) {
         // initialize visibility
@@ -1474,9 +1468,9 @@ if (typeof document !== 'undefined') {
     // REMOVIDO: syncTarifaFromAeronave - funcionalidade agora está em setupAircraftAutofillConsolidated
     
     tarifaInput.addEventListener('input', () => {
-      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+  if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${App.format.formatNumber(Number(tarifaInput.value),2)}/km` : '';
       // Atualiza pré-orçamento ao editar tarifa manualmente
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
+  try { if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) { /* ignore */ }
     });
 
     // Atualizar pré-orçamento ao editar velocidade manualmente
@@ -1509,7 +1503,7 @@ if (typeof document !== 'undefined') {
     }, 200);
 
     const applyTarifaPreview = () => {
-      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+  if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${App.format.formatNumber(Number(tarifaInput.value),2)}/km` : '';
     };
 
     // REMOVIDO: Listeners duplicados - funcionalidade agora está em setupAircraftAutofillConsolidated
@@ -1769,7 +1763,7 @@ function obterComissao(km, tarifa) {
     if (hidden) hidden.value = String(Number(amount.toFixed(2)));
     const preview = document.getElementById('commissionPreview');
     if (preview && typeof Intl !== 'undefined') {
-      preview.textContent = 'Comissão: ' + Number(amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  preview.textContent = 'Comissão: ' + App.format.formatBRL(Number(amount));
     }
 
     return amount;
@@ -2629,8 +2623,8 @@ function buildDocDefinition(state, methodSelection = 'method1', pdfOptions = {})
 
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
 async function gerarPreOrcamento() {
-  if (window.SnapshotStore) {
-    try { window.SnapshotStore.assertMutableOrThrow(); } catch(e){ if (e && e.message==='QuoteFrozen'){ showToast && showToast('Pré-orçamento congelado. Clique em "Novo Pré-Orçamento" para recalcular.'); return; } }
+  if (App.state && App.state.assertMutableOrThrow) {
+    try { App.state.assertMutableOrThrow(); } catch(e){ showToast && showToast(e.message); return; }
   }
   // 1. Captura e (se necessário) atualiza estado bruto
   const saida = document.getElementById('resultado');
@@ -2784,7 +2778,7 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
   // Não recalcula rota / mapa aqui. Usa somente dados congelados.
   
   // Usa snapshot diretamente para montar docDefinition (sem recalcular)
-  const docDefinition = buildDocDefinition(snapshot, selectedMethod === 'time' ? 'method2' : 'method1', pdfOptions);
+  const docDefinition = App.pdf && App.pdf.buildDocDefinition ? App.pdf.buildDocDefinition(snapshot) : null;
   try {
     if (!docDefinition || !docDefinition.content || !docDefinition.content.length) {
       console.warn('[PDF] docDefinition vazio, aplicando fallback simples.');
@@ -2809,17 +2803,30 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
 
 function limparCampos() {
   if (typeof document === 'undefined') return;
+  // Preservar aeronave e parâmetros de catálogo (tarifa, cruiseSpeed, hourlyRate)
+  const preserveIds = new Set(['aeronave','tarifa','cruiseSpeed','hourlyRate']);
   document.querySelectorAll('input, textarea').forEach(el => {
-    if (el.type === 'checkbox') el.checked = false;
-    else el.value = '';
+    const id = el.id;
+    if (preserveIds.has(id)) return; // não limpar
+    if (el.classList && el.classList.contains('stop-input')) { // limpar perna
+      el.value = '';
+      return;
+    }
+    if (el.type === 'checkbox') {
+      // Não tocar em toggles de PDF (não alterar PDF)
+      if (id && id.startsWith('pdf')) return;
+      el.checked = false;
+    } else {
+      el.value = '';
+    }
   });
-  document.getElementById('tarifa').value = '';
-  document.getElementById('resultado').innerHTML = '';
-  // Limpar localStorage dos toggles inline
-  try {
-    localStorage.removeItem('pdfInlineToggles');
-  } catch (e) { /* ignore */ }
+  // Limpar resultado e pernas
+  const resultado = document.getElementById('resultado');
+  if (resultado) resultado.innerHTML = '';
+  const stopsContainer = document.getElementById('stops');
+  if (stopsContainer) stopsContainer.querySelectorAll('.stop-input').forEach(i=>{ i.parentElement && i.parentElement.remove(); });
   if (routeLayer && routeLayer.remove) routeLayer.remove();
+  // Limpar comissões (considerado parte dos itens do orçamento)
   const comissoesDiv = document.getElementById('comissoes');
   if (comissoesDiv) comissoesDiv.innerHTML = '';
   const comissaoConfig = document.getElementById('comissaoConfig');
@@ -2832,19 +2839,12 @@ function limparCampos() {
     const preview = commissionComp.querySelector('#commissionPreview');
     const amountHidden = commissionComp.querySelector('#commissionAmount');
     panel.hidden = true;
-    if (btnAdd) {
-      btnAdd.setAttribute('aria-pressed', 'false');
-      btnAdd.textContent = 'Adicionar comissão';
-    }
+    if (btnAdd) { btnAdd.setAttribute('aria-pressed','false'); btnAdd.textContent = 'Adicionar comissão'; }
     if (percent) percent.value = '5';
     if (preview) preview.textContent = 'Comissão: R$ 0,00';
     if (amountHidden) amountHidden.value = '0';
   }
-  const pdfCommission = document.getElementById('pdfCommissionToggle');
-  if (pdfCommission) {
-    pdfCommission.checked = true;
-    pdfCommission.dispatchEvent(new Event('change'));
-  }
+  // Não tocar em configurações de PDF ou cache AVWX / freeze
 }
 
 if (typeof window !== 'undefined') {
@@ -2989,7 +2989,7 @@ if (typeof window !== 'undefined') {
       if (!ac) return false;
       const hrCatalog = Number(ac.hourly_rate_brl_default||0);
       const ktCatalog = Number(ac.cruise_speed_kt_default||0);
-      const hrVal = Number(String(hourlyEl.value).replace(/\./g,'').replace(',','.')) || 0;
+  const hrVal = App.format.parseBRNumber(hourlyEl.value) || 0;
       const ktVal = Number(ktasEl.value)||0;
       return (hrCatalog !== hrVal) || (ktCatalog !== ktVal);
     }

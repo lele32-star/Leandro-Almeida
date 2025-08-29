@@ -13,7 +13,7 @@ Cotação de voo executivo web app com conversão NM↔KM, múltiplas pernas, ma
 
 - Limitações conhecidas:
   - AVWX token embutido no código em alguns ambientes de teste; para produção, use variável de ambiente `AVWX_TOKEN` ou um backend seguro.
-  - Rascunhos são salvos localmente (localStorage) sob a chave `cotacao:currentDraft`.
+  - Rascunhos agora usam storage versionado com prefixo `app:quote:` (ex: `app:quote:draft`). Migração automática tenta ler `cotacao:currentDraft` se existir.
 
 ## QA e checklist
 

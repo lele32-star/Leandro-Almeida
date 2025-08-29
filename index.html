@@ -55,6 +55,8 @@
       outline: 3px solid #111; /* alto contraste (quase preto sobre fundo claro) */
       outline-offset: 2px;
     }
+  .icon-btn { display:inline-flex; align-items:center; justify-content:center; min-width:36px; min-height:36px; padding:6px 10px; font-size:18px; line-height:1; }
+  .icon-btn:focus-visible { outline:3px solid #111; }
     /* Utilitário para elementos que recebem focus programaticamente */
     .focus-ring { border-radius:4px; }
     /* Badge de status de parâmetros aeronave: reforçar contraste */
@@ -344,13 +346,16 @@ Conta: 25691815-5</textarea>
     <div id="map"></div>
 
     <script src="cotacao.js"></script>
+  <script src="src/utils/safeExport.js"></script>
   <script src="src/domain/aircraft.js"></script>
   <script src="src/ui/recalcScheduler.js"></script>
   <script src="src/state/snapshotStore.js"></script>
   <script src="src/pdf/buildDocDefinition.js"></script>
   <script src="src/services/avwx.js"></script>
   <script src="src/persist/storage.js"></script>
+  <script src="src/share/index.js"></script>
     <script src="app.js"></script>
+  <script src="src/index-bridge.js"></script>
     <script>
       // Validação leve e acessível (não altera lógica interna de cálculo)
       function validarFormularioBasico(){
