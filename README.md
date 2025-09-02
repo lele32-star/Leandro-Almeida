@@ -168,14 +168,14 @@ mv jsdom-24.0.0.tgz vendor/
 
     function gerarPreOrcamento() {
       const aeronave = document.getElementById("aeronave").value;
-      const nm = parseFloat(document.getElementById("nm").value);
+  const nm = parseFloat(document.getElementById("nm").value) || 0;
       const origem = document.getElementById("origem").value;
       const destino = document.getElementById("destino").value;
       const valorExtra = parseFloat(document.getElementById("valorExtra").value) || 0;
       const tipoExtra = document.getElementById("tipoExtra").value;
 
       const km = nm * 1.852;
-      const valorKm = valoresKm[aeronave];
+  const valorKm = valoresKm[aeronave] || 0;
       let total = km * valorKm;
 
       let labelExtra = "";
@@ -202,7 +202,7 @@ mv jsdom-24.0.0.tgz vendor/
 
     function gerarPDF() {
       const aeronave = document.getElementById("aeronave").value;
-      const nm = parseFloat(document.getElementById("nm").value);
+      const nm = parseFloat(document.getElementById("nm").value) || 0;
       const origem = document.getElementById("origem").value;
       const destino = document.getElementById("destino").value;
       const dataIda = document.getElementById("dataIda").value;
@@ -213,10 +213,10 @@ mv jsdom-24.0.0.tgz vendor/
       const tipoExtra = document.getElementById("tipoExtra").value;
 
       const km = nm * 1.852;
-      const valorKm = valoresKm[aeronave];
+      const valorKm = valoresKm[aeronave] || 0;
       let total = km * valorKm;
 
-      let ajustes = "";
+      let ajustes = null;
       if (valorExtra > 0 && incluirNoPDF) {
         if (tipoExtra === "soma") {
           total += valorExtra;
@@ -226,17 +226,18 @@ mv jsdom-24.0.0.tgz vendor/
           ajustes = { text: `Desconto: R$ ${valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin: [0, 10, 0, 0] };
         }
       }
+      const content = [
+        { text: "Cotação de Voo Executivo", style: "header" },
+        { text: `Origem: ${origem} → Destino: ${destino}`, margin: [0, 10, 0, 0] },
+        { text: `Aeronave: ${aeronave}` },
+        { text: `Data Ida: ${dataIda} | Data Volta: ${dataVolta}` }
+      ];
+      if (ajustes) content.push(ajustes);
+      content.push({ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, bold: true, margin: [0, 10, 0, 0] });
+      if (observacoes) content.push({ text: `Observações: ${observacoes}`, margin: [0, 10, 0, 0] });
 
       const docDefinition = {
-        content: [
-          { text: "Cotação de Voo Executivo", style: "header" },
-          { text: `Origem: ${origem} → Destino: ${destino}`, margin: [0, 10, 0, 0] },
-          { text: `Aeronave: ${aeronave}` },
-          { text: `Data Ida: ${dataIda} | Data Volta: ${dataVolta}` },
-          ajustes,
-          { text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, bold: true, margin: [0, 10, 0, 0] },
-          observacoes ? { text: `Observações: ${observacoes}`, margin: [0, 10, 0, 0] } : null
-        ],
+        content,
         styles: {
           header: {
             fontSize: 18,
@@ -246,7 +247,7 @@ mv jsdom-24.0.0.tgz vendor/
       };
 
       const nomeArquivo = `Cotacao_${aeronave}_${origem}_${destino}.pdf`.replace(/\s+/g, "_");
-      pdfMake.createPdf(docDefinition).open(); // Abre em nova aba
+      pdfMake.createPdf(docDefinition).download(nomeArquivo);
     }
   </script>
 
