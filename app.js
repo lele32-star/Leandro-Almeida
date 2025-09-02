@@ -30,7 +30,12 @@ if (typeof window !== 'undefined') {
 // NOTE: embedding tokens in source is insecure for public repos; this was requested explicitly.
 const API_KEY = (typeof process !== 'undefined' && process.env && process.env.AVWX_TOKEN)
   ? process.env.AVWX_TOKEN
-  : 'W51ZqbNnGvjTOz2IRloz4ev8mLIR3HCATEMK9wrO1L0';
+  : 'Zq-Qlr7SEVgfe5DE8lc2O6S7TPwqGnd7IDytnPp7T-Y';
+
+// Função centralizada para cabeçalhos AVWX (esquema oficial usa 'BEARER' em maiúsculas segundo documentação)
+function avwxHeaders(){
+  return API_KEY ? { Authorization: `BEARER ${API_KEY}` } : {};
+}
 
 // --- [ADD/REPLACE] Utilitários do mapa e cache ---
 let map;
@@ -55,8 +60,7 @@ async function fetchAirportByCode(code) {
   if (!/^[A-Z]{4}$/.test(icao)) return null;
   if (airportCache.has(icao)) return airportCache.get(icao);
   try {
-  // Use API_KEY (env or hardcoded) for AVWX
-  const headers = API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
+  const headers = avwxHeaders();
     const url = `https://avwx.rest/api/station/${icao}`;
     const res = await fetch(url, { headers });
     if (!res.ok) throw new Error('fetch failed');
