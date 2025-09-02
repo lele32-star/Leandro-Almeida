@@ -307,21 +307,29 @@ async function copiarLink(){
     showToast && showToast('Nenhum orçamento para compartilhar.');
     return;
   }
-
   try {
-    // Use the new App.share.createShareLink function
-    const url = await window.App.share.createShareLink(frozen.snapshot);
-    showToast && showToast('Link copiado para a área de transferência!');
-    
-    // Limpar URL após uso (opcional, mas boa prática)
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-  } catch (error) {
-    // Fallback to manual copy if clipboard fails
-    const json = JSON.stringify(frozen.snapshot);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    fallbackCopy(url);
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    if (App.share && typeof App.share.createShareLink === 'function') {
+      const { url, revoke } = App.share.createShareLink(frozen.snapshot);
+      const copy = (text) => {
+        if (navigator.clipboard) {
+          navigator.clipboard.writeText(text).then(() => {
+            showToast && showToast('Link copiado para a área de transferência!');
+          }).catch(() => {
+            fallbackCopy(text);
+          });
+        } else {
+          fallbackCopy(text);
+        }
+      };
+      copy(url);
+      // Revoga após 60s para evitar vazamentos de memória
+      setTimeout(() => { try { revoke(); } catch {} }, 60000);
+    } else {
+      showToast && showToast('Módulo de compartilhamento indisponível.');
+    }
+  } catch (e) {
+    console.error('Falha ao gerar link de compartilhamento', e);
+    showToast && showToast('Erro ao gerar link.');
   }
 }
 
@@ -351,6 +359,7 @@ function setupAircraftAutofillConsolidated() {
   const hourlyInput = document.getElementById('hourlyRate');
   const cruiseInput = document.getElementById('cruiseSpeed');
   const tarifaInput = document.getElementById('tarifa');
+  const fillBtn = document.getElementById('btn-fill-aircraft');
   
   if (!select) {
     console.error('Select #aeronave não encontrado');
@@ -388,7 +397,7 @@ function setupAircraftAutofillConsolidated() {
     const val = select.value;
   const aircraft = (App.domain && App.domain.aircraft && App.domain.aircraft.getSelectedAircraftData({ aircraftId: val })) || null;
     
-    console.log('Aeronave selecionada:', val, 'Dados encontrados:', data);
+  console.log('Aeronave selecionada:', val, 'Dados encontrados:', aircraft);
     
   if (!aircraft) {
       console.warn('Aeronave não encontrada no catálogo:', val);
@@ -482,82 +491,24 @@ function setupAircraftAutofillConsolidated() {
     }
   }
 
-  // Remover listeners existentes clonando o elemento
-  const newSelect = select.cloneNode(true);
-  select.parentNode.replaceChild(newSelect, select);
-
-  // Adicionar único listener consolidado
-  newSelect.addEventListener('change', handleAircraftChange);
-  
-  // Aplicar valores iniciais no carregamento
-  setTimeout(applyInitialValues, 100);
-  
-  // Chamar handleAircraftChange se já houver seleção
-  if (newSelect.value) {
-    setTimeout(handleAircraftChange, 200);
+  // Listener do botão para preencher sob demanda
+  if (fillBtn && !fillBtn.dataset.bound) {
+    fillBtn.dataset.bound = 'true';
+    fillBtn.addEventListener('click', () => {
+      if (!select.value) { showToast && showToast('Selecione uma aeronave primeiro.'); return; }
+      handleAircraftChange();
+      showToast && showToast('Parâmetros atualizados a partir do catálogo.');
+    });
   }
+
+  // Não aplicar automaticamente: somente via clique, conforme requisito
 
   console.log('Autofill consolidado configurado com sucesso');
 }
 
 // Inicializar apenas uma vez quando DOM estiver carregado
 let autofillConsolidatedInitialized = false;
-function initAutofillWhenReady() {
-  if (autofillConsolidatedInitialized) return;
-  
-  // Verificar se catálogo já foi carregado
-  if (!window.aircraftCatalog || !Array.isArray(window.aircraftCatalog) || window.aircraftCatalog.length === 0) {
-    console.log('⏳ Aguardando carregamento do catálogo...');
-    // Tentar novamente em 500ms
-    setTimeout(initAutofillWhenReady, 500);
-    return;
-  }
-  
-  autofillConsolidatedInitialized = true;
-  console.log('🚀 Inicializando autofill com catálogo carregado (' + window.aircraftCatalog.length + ' aeronaves)');
-  setupAircraftAutofillConsolidated();
-}
-
-if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
-    // Aguardar um pouco para o catálogo carregar, então tentar inicializar
-    setTimeout(initAutofillWhenReady, 300);
-  });
-}
-// Função de compatibilidade para obter tarifa por km de aeronave selecionada
-function getTarifaKmFromAircraft(aircraftName) {
-  if (!aircraftCatalog || !Array.isArray(aircraftCatalog)) return null;
-
-  // Primeiro tenta encontrar por nome exato
-  let aircraft = aircraftCatalog.find(a => a.nome === aircraftName);
-  if (!aircraft) {
-    // Tenta por id (alguns podem estar salvos com id)
-    aircraft = aircraftCatalog.find(a => a.id === aircraftName);
-  }
-  if (!aircraft) return null;
-
-  // Retorna tarifa efetiva (pode ter override)
-  return aircraft.tarifa_km_brl_default;
-}
-
-// Mantém valoresKm para compatibilidade, mas agora usa o catálogo
-const valoresKm = {
-  "Hawker 400": 36,
-  "Phenom 100": 36,
-  "Citation II": 36,
-  "King Air C90": 30,
-  "Sêneca IV": 22,
-  "Cirrus SR22": 15
-};
-
-// Removido legacyAircraftParams: agora somente catálogo JSON oficial alimenta velocidade/valor-hora.
-
-/**
- * Função utilitária para obter dados da aeronave selecionada a partir do catálogo
- * Conforme especificado nos requisitos
- * @param {string} selectValue - Valor selecionado no dropdown de aeronaves
- * @returns {Object|null} Objeto com hourlyRate e cruiseKtas ou null se não encontrado
- */
+// bindAircraftParamsUI removido: preenchimento agora é estritamente via botão "Preencher automaticamente".
 // uso centralizado via App.domain.aircraft.getSelectedAircraftData
 
 let valorParcialFn = (distanciaKm, valorKm) => distanciaKm * valorKm;
@@ -603,6 +554,8 @@ function loadAircraftCatalog() {
             aircraftCatalog = j;
             // Expor globalmente para compatibilidade
             window.aircraftCatalog = aircraftCatalog;
+            // Enviar para módulo domain (se carregado)
+            try { if (window.App && window.App.domain && window.App.domain.aircraft && typeof window.App.domain.aircraft.loadCatalog === 'function') { window.App.domain.aircraft.loadCatalog(aircraftCatalog); } } catch {}
             // Augmentar com aeronaves legadas que possuem tarifa mas não estão no catálogo oficial
             const legacyAugment = [
               { nome: 'Hawker 400', cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
@@ -645,6 +598,8 @@ function loadAircraftCatalog() {
                 }
                 // Força disparo de change para preencher campos
                 try { sel.dispatchEvent(new Event('change')); } catch(e) {}
+                // Notificar globalmente que catálogo está pronto
+                try { document.dispatchEvent(new CustomEvent('aircraftCatalog:loaded', { detail: { count: aircraftCatalog.length } })); } catch {}
               }
             }
           }
@@ -720,73 +675,7 @@ function showToast(message, timeout = 4000, type = 'info') {
   setTimeout(() => { try { t.remove(); } catch (e) {} }, timeout);
 }
 
-// UI: update aircraft params card when aeronave changes
-function bindAircraftParamsUI() {
-  if (typeof document === 'undefined') return;
-  const select = document.getElementById('aeronave');
-  const cruiseEl = document.getElementById('cruiseSpeed');
-  const hourlyEl = document.getElementById('hourlyRate');
-  // Botões de salvar/restaurar removidos
-
-  function applyFor(name) {
-    // find catalog entry by name (fallback)
-    const entry = aircraftCatalog.find(a => a.nome === name || a.id === name);
-    let cruise = entry ? entry.cruise_speed_kt_default : 0;
-    let hourly = entry ? entry.hourly_rate_brl_default : 0;
-    
-    cruiseEl.value = cruise || '';
-    hourlyEl.value = hourly || '';
-    
-    // tarifa com fallback aprimorado para aeronaves legacy
-    try {
-      const tarifaInput = document.getElementById('tarifa');
-      const tarifaPreview = document.getElementById('tarifaPreview');
-      const cruisePreview = document.getElementById('cruisePreview');
-      const hourlyPreview = document.getElementById('hourlyPreview');
-      
-      if (tarifaInput) {
-        // Priorizar catálogo, depois fallback para valoresKm
-        const baseTarifa = entry ? entry.tarifa_km_brl_default : valoresKm[name];
-        if (baseTarifa !== undefined && baseTarifa !== null) {
-          tarifaInput.value = baseTarifa;
-        }
-  if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${App.format.formatNumber(Number(tarifaInput.value),2)}/km` : '';
-      }
-      if (cruisePreview) cruisePreview.textContent = cruise ? `${cruise} KTAS` : '';
-  if (hourlyPreview) hourlyPreview.textContent = hourly ? `R$ ${App.format.formatNumber(Number(hourly),2)}/h` : '';
-    } catch(e) {}
-    
-    // dispara recálculo pois velocidade ou valor-hora podem alterar Método 2
-  try { if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento); } catch (e) {}
-  }
-
-  if (select) select.addEventListener('change', (e) => applyFor(e.target.value));
-  // Removidos listeners de salvar/restaurar padrões
-
-  // initial apply on load
-  document.addEventListener('DOMContentLoaded', () => {
-    loadAircraftCatalog();
-    setTimeout(() => { try { applyFor(select.value); } catch (e) {} }, 200);
-  });
-
-  // Recalcula imediatamente quando velocidade ou valor-hora forem alterados
-  try {
-    if (cruiseEl) cruiseEl.addEventListener('input', () => {
-      try {
-        const cruisePreview = document.getElementById('cruisePreview');
-        if (cruisePreview) cruisePreview.textContent = cruiseEl.value ? `${cruiseEl.value} KTAS` : '';
-  if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento);
-      } catch (e) {}
-    });
-    if (hourlyEl) hourlyEl.addEventListener('input', () => {
-      try {
-        const hourlyPreview = document.getElementById('hourlyPreview');
-  if (hourlyPreview) hourlyPreview.textContent = hourlyEl.value ? `R$ ${App.format.formatNumber(Number(hourlyEl.value),2)}/h` : '';
-  if (App.ui && App.ui.scheduleRecalc && typeof gerarPreOrcamento === 'function') App.ui.scheduleRecalc(gerarPreOrcamento);
-      } catch (e) {}
-    });
-  } catch (e) { /* ignore */ }
-}
+// (Função bindAircraftParamsUI removida)
 
 // Legs data (keeps per-leg computed values)
 let legsData = [];
@@ -2777,8 +2666,27 @@ async function gerarPDF(stateIgnored, methodSelectionIgnored = null) {
   
   // Não recalcula rota / mapa aqui. Usa somente dados congelados.
   
-  // Usa snapshot diretamente para montar docDefinition (sem recalcular)
-  const docDefinition = App.pdf && App.pdf.buildDocDefinition ? App.pdf.buildDocDefinition(snapshot) : null;
+  // --- FIX PDF BUILDER ---
+  // Anteriormente usávamos App.pdf.buildDocDefinition (versão simples em src/pdf/...),
+  // que espera um objeto {cliente,itens,totais,...} diferente do snapshot congelado.
+  // Agora, priorizamos o builder premium definido neste próprio arquivo (buildDocDefinition)
+  // fazendo merge de snapshot.inputs para restaurar flags (showComissao, etc.).
+  const effectiveState = { ...(snapshot.inputs||{}), ...snapshot };
+  const methodSel = selectedMethod === 'distance' ? 'method1' : (selectedMethod === 'time' ? 'method2' : 'both');
+  let docDefinition = null;
+  try {
+    if (typeof buildDocDefinition === 'function') {
+      docDefinition = buildDocDefinition(effectiveState, methodSel, pdfOptions);
+    } else if (App.pdf && App.pdf.buildDocDefinition) {
+      // fallback (versão simples)
+      docDefinition = App.pdf.buildDocDefinition(effectiveState);
+    }
+  } catch (e) {
+    console.error('[PDF] Falha ao montar docDefinition premium, fallback simples.', e);
+    if (App.pdf && App.pdf.buildDocDefinition) {
+      try { docDefinition = App.pdf.buildDocDefinition(effectiveState); } catch {}
+    }
+  }
   try {
     if (!docDefinition || !docDefinition.content || !docDefinition.content.length) {
       console.warn('[PDF] docDefinition vazio, aplicando fallback simples.');

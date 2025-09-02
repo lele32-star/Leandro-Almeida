@@ -118,8 +118,8 @@
       </div>
       <div id="aircraft-params-controls" style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;display:flex;align-items:center;gap:12px;">
         <span id="aircraft-params-badge" style="font-weight:bold;font-size:.8rem;padding:4px 8px;border-radius:4px;"></span>
-  <button type="button" id="btn-edit-params" style="padding:6px 12px;font-size:14px;" aria-label="Editar parâmetros da aeronave" title="Editar parâmetros da aeronave (tarifa, velocidade, valor-hora)">Editar parâmetros</button>
-  <button type="button" id="btn-reset-params" style="padding:6px 12px;font-size:14px;display:none;" aria-label="Restaurar parâmetros de catálogo" title="Restaurar parâmetros originais do catálogo">Resetar para Catálogo</button>
+  <button type="button" id="btn-fill-aircraft" style="padding:6px 12px;font-size:14px;" aria-label="Preencher automaticamente parâmetros da aeronave" title="Preencher automaticamente (tarifa/km, velocidade de cruzeiro e valor-hora) a partir do catálogo">Preencher automaticamente</button>
+  <span id="aircraft-fill-hint" style="font-size:.7rem;color:#555;">Selecione a aeronave acima e depois clique em “Preencher automaticamente”.</span>
       </div>
       <div style="margin-top:12px;border-top:1px dashed var(--border);padding-top:10px">
         <label style="font-weight:600">Parâmetros avançados de planejamento</label>
@@ -353,7 +353,7 @@ Conta: 25691815-5</textarea>
   <script src="src/pdf/buildDocDefinition.js"></script>
   <script src="src/services/avwx.js"></script>
   <script src="src/persist/storage.js"></script>
-  <script src="src/share/index.js"></script>
+  <script src="src/share/createLink.js"></script>
     <script src="app.js"></script>
   <script src="src/index-bridge.js"></script>
     <script>

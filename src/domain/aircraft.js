@@ -8,8 +8,9 @@
 
   function getSelectedAircraftData(state) {
     if (!_catalog) return null;
-    const id = state?.aircraftId;
-    return _catalog.find(a => a.id === id) || null;
+    const key = state?.aircraftId || state?.aircraftName || state?.aeronave || state?.nome;
+    if (!key) return null;
+    return _catalog.find(a => a.id === key || a.nome === key) || null;
   }
 
   function applyAircraftDefaults(state, aircraft) {
