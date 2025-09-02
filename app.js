@@ -645,20 +645,31 @@ function buildState() {
 }
 
 function buildDocDefinition(state) {
-  const km = state.nm * 1.852;
-  const subtotal = valorParcialFn(km, state.valorKm);
+  // Função helper para formatação segura
+  const safeCurrency = (value) => {
+    const num = Number.isFinite(value) ? value : 0;
+    return num.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  };
+  
+  // Validação dos valores essenciais
+  const nm = Number.isFinite(state.nm) ? state.nm : 0;
+  const valorKm = Number.isFinite(state.valorKm) ? state.valorKm : 0;
+  const valorExtra = Number.isFinite(state.valorExtra) ? state.valorExtra : 0;
+  
+  const km = nm * 1.852;
+  const subtotal = valorParcialFn(km, valorKm);
   const totalSemComissao = valorTotalFn(
     km,
-    state.valorKm,
-    state.tipoExtra === 'soma' ? state.valorExtra : -state.valorExtra
+    valorKm,
+    state.tipoExtra === 'soma' ? valorExtra : -valorExtra
   );
   const { totalComissao, detalhesComissao } = calcularComissao(
     subtotal,
-    state.valorExtra,
+    valorExtra,
     state.tipoExtra,
     state.commissions || []
   );
-  const commissionAmount = obterComissao(km, state.valorKm);
+  const commissionAmount = obterComissao(km, valorKm);
   const total = totalSemComissao + totalComissao + commissionAmount;
 
   // Cabeçalho estilizado (barra full-bleed com "falso" gradiente em camadas de canvas)
@@ -699,8 +710,8 @@ function buildDocDefinition(state) {
   if (state.showDatas) resumoLeft.push({ text: `Datas: ${state.dataIda} - ${state.dataVolta}`, style: 'row' });
 
   const resumoRight = [];
-  if (state.showDistancia) resumoRight.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)`, style: 'row' });
-  if (state.showTarifa) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'row' });
+  if (state.showDistancia) resumoRight.push({ text: `Distância: ${nm} NM (${km.toFixed(1)} km)`, style: 'row' });
+  if (state.showTarifa) resumoRight.push({ text: `Tarifa por km: R$ ${safeCurrency(valorKm)}`, style: 'row' });
 
   // Bloco de resumo em "card"
   const resumoBlock = {
@@ -727,23 +738,23 @@ function buildDocDefinition(state) {
 
   // Tabela de investimento
   const investBody = [];
-  investBody.push([{ text: `Total parcial: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+  investBody.push([{ text: `Total parcial: R$ ${safeCurrency(subtotal)}`, alignment: 'right' }]);
 
-  if (state.showAjuste && state.valorExtra > 0) {
+  if (state.showAjuste && valorExtra > 0) {
     const label = state.tipoExtra === 'soma' ? 'Outras Despesas' : 'Desconto';
-    investBody.push([{ text: `${label}: R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+    investBody.push([{ text: `${label}: R$ ${safeCurrency(valorExtra)}`, alignment: 'right' }]);
   }
 
   if (state.showComissao) {
     (detalhesComissao || []).forEach((c, idx) => {
-      investBody.push([{ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+      investBody.push([{ text: `Comissão ${idx + 1}: R$ ${safeCurrency(c.calculado)}`, alignment: 'right' }]);
     });
     if (commissionAmount > 0) {
-      investBody.push([{ text: `Comissão: R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
+      investBody.push([{ text: `Comissão: R$ ${safeCurrency(commissionAmount)}`, alignment: 'right' }]);
     }
   }
 
-  investBody.push([{ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right', style: 'totalRow' }]);
+  investBody.push([{ text: `Total Final: R$ ${safeCurrency(total)}`, alignment: 'right', style: 'totalRow' }]);
 
   const investimentoBlock = {
     table: { widths: ['*'], body: investBody },
@@ -885,6 +896,45 @@ async function gerarPDF(state) {
     }
     updateDistanceFromAirports(waypoints);
   }
+  
+  // Validação previa do estado para detectar dados insuficientes
+  const hasValidData = (
+    Number.isFinite(s.nm) && s.nm > 0 &&
+    Number.isFinite(s.valorKm) && s.valorKm > 0
+  );
+  
+  if (!hasValidData) {
+    console.warn('[PDF] Estado inválido detectado. nm:', s.nm, 'valorKm:', s.valorKm);
+    const fallbackDef = {
+      pageSize: 'A4',
+      pageMargins: [40,60,40,60],
+      content: [
+        { text: 'Pré-Orçamento', fontSize: 16, bold: true, margin: [0,0,0,12] },
+        { text: 'Dados insuficientes para gerar o orçamento.', fontSize: 12, color: 'red', margin:[0,0,0,12] },
+        { text: 'Verifique se os campos obrigatórios estão preenchidos:', margin:[0,0,0,8] },
+        { text: '• Distância (NM ou KM)', margin:[10,0,0,4] },
+        { text: '• Aeronave ou tarifa por km', margin:[10,0,0,4] },
+        { text: 'Estado atual:', margin:[0,12,0,8] },
+        { text: JSON.stringify({ 
+          aeronave: s.aeronave, 
+          nm: s.nm, 
+          valorKm: s.valorKm,
+          origem: s.origem, 
+          destino: s.destino 
+        }, null, 2), fontSize: 8 }
+      ]
+    };
+    
+    if (typeof pdfMake !== 'undefined') {
+      try {
+        pdfMake.createPdf(fallbackDef).open();
+      } catch (e) {
+        console.error('[PDF] Erro ao abrir PDF de fallback:', e);
+      }
+    }
+    return fallbackDef;
+  }
+  
   const docDefinition = buildDocDefinition(s);
   // Diagnóstico: detectar content vazio ou inválido
   let isBlank = false;
@@ -894,7 +944,10 @@ async function gerarPDF(state) {
       const meaningful = docDefinition.content.some(item => {
         if (!item) return false;
         if (typeof item.text === 'string' && item.text.trim() !== '') return true;
-        if (item.table || item.columns || item.stack || item.canvas) return true;
+        if (item.table && item.table.body && item.table.body.length > 0) return true;
+        if (item.columns && item.columns.length > 0) return true;
+        if (item.stack && item.stack.length > 0) return true;
+        if (item.canvas && item.canvas.length > 0) return true;
         return false;
       });
       if (!meaningful) isBlank = true;

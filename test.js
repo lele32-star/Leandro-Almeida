@@ -179,3 +179,28 @@ console.log('Route ordering test passed.');
   assert.deepStrictEqual(codes, ['SBBR', 'SBMO', 'SBBH'], 'gerarPDF should fetch coordinates in waypoint order');
   console.log('gerarPDF waypoint order test passed.');
 })();
+
+// Test blank PDF scenarios don't crash
+const invalidState = {
+  aeronave: 'Hawker 400',
+  nm: NaN,
+  valorKm: undefined,
+  origem: 'SBBR',
+  destino: 'SBMO',
+  dataIda: '', dataVolta: '', observacoes: '', pagamento: '',
+  valorExtra: 0, tipoExtra: 'soma', stops: [], commissions: [], commissionAmount: 0,
+  showRota: true, showAeronave: true, showTarifa: true, showDistancia: true,
+  showDatas: true, showAjuste: true, showComissao: true, showObservacoes: true,
+  showPagamento: true, showMapa: true
+};
+
+try {
+  const docDef = buildDocDefinition(invalidState);
+  assert(docDef && Array.isArray(docDef.content), 'buildDocDefinition should handle invalid values gracefully');
+  const docText = JSON.stringify(docDef);
+  assert(!docText.includes('NaN') && !docText.includes('undefined'), 'Should not contain NaN/undefined in output');
+  console.log('Blank PDF fix test passed.');
+} catch (error) {
+  console.error('Blank PDF fix test failed:', error.message);
+  process.exit(1);
+}
