@@ -661,15 +661,33 @@ function buildDocDefinition(state) {
   const commissionAmount = obterComissao(km, state.valorKm);
   const total = totalSemComissao + totalComissao + commissionAmount;
 
-  // Cabeçalho sem imagem (evita falha caso não exista dataURL)
+  // Cabeçalho estilizado (barra full-bleed com "falso" gradiente em camadas de canvas)
   const headerBlock = {
-    columns: [
-      { width: 80, stack: [ { canvas: [ { type: 'rect', x: 0, y: 0, w: 60, h: 40, color: '#f0f0f0' } ] } ], margin: [0,0,0,0] },
-      { stack: [ { text: '[NOME_EMPRESA]', style: 'brand' }, { text: '[SLOGAN_CURTO]', style: 'muted' } ], alignment: 'left' },
-      { stack: [ { text: '[EMAIL_CONTATO]', style: 'mini' }, { text: '[WHATSAPP_LINK]', style: 'mini' }, { text: '[CNPJ_OPCIONAL]', style: 'mini' } ], alignment: 'right' }
+    stack: [
+      {
+        // camada de fundo principal
+        canvas: [
+          { type: 'rect', x: -40, y: -30, w: 595, h: 90, color: '#1B2635' },
+          { type: 'rect', x: -40, y: 30, w: 595, h: 4, color: '#F1C40F' }
+        ]
+      },
+      {
+        columns: [
+          { width: '*', stack: [
+            { text: '[NOME_EMPRESA]', style: 'brand' },
+            { text: '[SLOGAN_CURTO]', style: 'muted' }
+          ], margin: [0,4,0,0] },
+          { width: 'auto', stack: [
+            { text: '[EMAIL_CONTATO]', style: 'miniRight' },
+            { text: '[WHATSAPP_LINK]', style: 'miniRight' },
+            { text: '[CNPJ_OPCIONAL]', style: 'miniRight' }
+          ] }
+        ],
+        columnGap: 16,
+        margin: [0,0,0,4]
+      }
     ],
-    columnGap: 10,
-    margin: [0, 0, 0, 12]
+    margin: [0, 0, 0, 18]
   };
 
   const resumoLeft = [];
@@ -684,15 +702,27 @@ function buildDocDefinition(state) {
   if (state.showDistancia) resumoRight.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)`, style: 'row' });
   if (state.showTarifa) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'row' });
 
+  // Bloco de resumo em "card"
   const resumoBlock = {
     table: {
       widths: ['*','*'],
       body: [
-        [ { stack: resumoLeft, margin: [0,0,0,0] }, { stack: resumoRight, margin: [0,0,0,0] } ]
+        [
+          { stack: resumoLeft, margin: [0,0,0,0] },
+          { stack: resumoRight, margin: [0,0,0,0] }
+        ]
       ]
     },
-    layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingTop: () => 6, paddingBottom: () => 6 },
-    margin: [0, 6, 0, 10]
+    layout: {
+      hLineWidth: () => 0,
+      vLineWidth: () => 0,
+      paddingLeft: () => 10,
+      paddingRight: () => 10,
+      paddingTop: () => 8,
+      paddingBottom: () => 8,
+      fillColor: () => '#F8FAFC'
+    },
+    margin: [0, 8, 0, 14]
   };
 
   // Tabela de investimento
@@ -713,18 +743,23 @@ function buildDocDefinition(state) {
     }
   }
 
-  investBody.push([{ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right', bold: true }]);
+  investBody.push([{ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right', style: 'totalRow' }]);
 
   const investimentoBlock = {
     table: { widths: ['*'], body: investBody },
     layout: {
-      fillColor: (rowIndex) => (rowIndex === investBody.length - 1 ? '#0d6efd' : (rowIndex % 2 === 0 ? null : '#fafafa')),
-      hLineColor: () => '#eaeaea',
-      vLineColor: () => '#ffffff',
-      paddingTop: (i) => (i === investBody.length - 1 ? 8 : 6),
-      paddingBottom: (i) => (i === investBody.length - 1 ? 8 : 6)
+      fillColor: (rowIndex) => {
+        if (rowIndex === investBody.length - 1) return '#1B2635';
+        return rowIndex % 2 === 0 ? '#FFFFFF' : '#F4F6F8';
+      },
+      hLineColor: () => '#E2E8F0',
+      vLineColor: () => '#E2E8F0',
+      paddingTop: () => 6,
+      paddingBottom: () => 6,
+      paddingLeft: () => 10,
+      paddingRight: () => 10
     },
-    margin: [0, 6, 0, 12]
+    margin: [0, 6, 0, 16]
   };
 
   const extras = [];
@@ -741,8 +776,11 @@ function buildDocDefinition(state) {
   { text: '', margin: [0,2,0,0] },
   resumoBlock,
   { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
-  { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: '#eaeaea' }] },
-  { text: 'Investimento', style: 'h2', margin: [0, 10, 0, 6] },
+  { canvas: [
+      { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.2, lineColor: '#E2E8F0' },
+      { type: 'line', x1: 0, y1: 2, x2: 515, y2: 2, lineWidth: 0.4, lineColor: '#F1C40F' }
+    ], margin: [0,4,0,4] },
+  { text: 'Investimento', style: 'sectionTitle', margin: [0, 6, 0, 6] },
   investimentoBlock,
   ...(extras.length ? [{ text: 'Informações adicionais', style: 'h2', margin: [0, 6, 0, 4] }, ...extras] : [])
   ];
@@ -751,14 +789,16 @@ function buildDocDefinition(state) {
     content,
     pageSize: 'A4',
     pageMargins: [40, 60, 40, 60],
-    defaultStyle: { fontSize: 10, lineHeight: 1.25, color: '#222' },
+    defaultStyle: { fontSize: 10, lineHeight: 1.3, color: '#1B2635', font: 'Helvetica' },
     styles: {
-      h1: { fontSize: 18, bold: true, margin: [0, 0, 0, 8] },
-      h2: { fontSize: 12, bold: true, color: '#0d6efd' },
-      brand: { fontSize: 14, bold: true },
-      muted: { color: '#666', margin: [0, 2, 0, 0] },
-      mini: { color: '#777', fontSize: 9 },
-      row: { margin: [0, 2, 0, 0] }
+      h1: { fontSize: 20, bold: true, color: '#1B2635', margin: [0, 0, 0, 4], letterSpacing: 0.5 },
+      sectionTitle: { fontSize: 13, bold: true, color: '#1B2635', letterSpacing: 0.5 },
+      brand: { fontSize: 18, bold: true, color: '#F1C40F', letterSpacing: 1 },
+      muted: { color: '#E5E7EB', margin: [0, 2, 0, 0], fontSize: 9, letterSpacing: 0.5 },
+      mini: { color: '#516170', fontSize: 8 },
+      miniRight: { color: '#F1F3F5', fontSize: 8, alignment: 'right' },
+      row: { margin: [0, 2, 0, 0], fontSize: 10 },
+      totalRow: { bold: true, color: '#FFFFFF', fontSize: 12 }
     },
     info: { title: 'Cotação de Voo Executivo', author: '[NOME_EMPRESA]' },
     footer: function(currentPage, pageCount) {
