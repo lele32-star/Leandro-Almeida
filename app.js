@@ -661,15 +661,19 @@ function buildDocDefinition(state) {
   const commissionAmount = obterComissao(km, state.valorKm);
   const total = totalSemComissao + totalComissao + commissionAmount;
 
-  // Cabeçalho sem imagem (evita falha caso não exista dataURL)
+  // Cabeçalho premium
   const headerBlock = {
     columns: [
-      { width: 80, stack: [ { canvas: [ { type: 'rect', x: 0, y: 0, w: 60, h: 40, color: '#f0f0f0' } ] } ], margin: [0,0,0,0] },
-      { stack: [ { text: '[NOME_EMPRESA]', style: 'brand' }, { text: '[SLOGAN_CURTO]', style: 'muted' } ], alignment: 'left' },
-      { stack: [ { text: '[EMAIL_CONTATO]', style: 'mini' }, { text: '[WHATSAPP_LINK]', style: 'mini' }, { text: '[CNPJ_OPCIONAL]', style: 'mini' } ], alignment: 'right' }
+      [
+        { text: '[NOME_EMPRESA]', style: 'brand' },
+        { text: '[SLOGAN_CURTO]', style: 'muted' },
+        { text: '[EMAIL_CONTATO] • [WHATSAPP_LINK] • [CNPJ_OPCIONAL]', style: 'mini' }
+      ]
     ],
-    columnGap: 10,
-    margin: [0, 0, 0, 12]
+    margin: [0, 0, 0, 12],
+    canvas: [
+      { type: 'rect', x: -40, y: -60, w: 595, h: 80, color: '#2E4053' }
+    ]
   };
 
   const resumoLeft = [];
@@ -685,13 +689,11 @@ function buildDocDefinition(state) {
   if (state.showTarifa) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'row' });
 
   const resumoBlock = {
-    table: {
-      widths: ['*','*'],
-      body: [
-        [ { stack: resumoLeft, margin: [0,0,0,0] }, { stack: resumoRight, margin: [0,0,0,0] } ]
-      ]
-    },
-    layout: { hLineWidth: () => 0, vLineWidth: () => 0, paddingTop: () => 6, paddingBottom: () => 6 },
+    columns: [
+      { stack: resumoLeft, width: '50%' },
+      { stack: resumoRight, width: '50%' }
+    ],
+    columnGap: 12,
     margin: [0, 6, 0, 10]
   };
 
@@ -718,11 +720,9 @@ function buildDocDefinition(state) {
   const investimentoBlock = {
     table: { widths: ['*'], body: investBody },
     layout: {
-      fillColor: (rowIndex) => (rowIndex === investBody.length - 1 ? '#0d6efd' : (rowIndex % 2 === 0 ? null : '#fafafa')),
+      fillColor: (rowIndex) => (rowIndex % 2 === 0 ? null : '#fafafa'),
       hLineColor: () => '#eaeaea',
-      vLineColor: () => '#ffffff',
-      paddingTop: (i) => (i === investBody.length - 1 ? 8 : 6),
-      paddingBottom: (i) => (i === investBody.length - 1 ? 8 : 6)
+      vLineColor: () => '#ffffff'
     },
     margin: [0, 6, 0, 12]
   };
@@ -736,15 +736,33 @@ function buildDocDefinition(state) {
   const resumoTextForTest = [...resumoLeft, ...resumoRight].map(r => r.text).join(' ');
 
   const content = [
-  { text: 'Cotação de Voo Executivo', style: 'h1' },
-  headerBlock,
-  { text: '', margin: [0,2,0,0] },
-  resumoBlock,
-  { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
-  { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: '#eaeaea' }] },
-  { text: 'Investimento', style: 'h2', margin: [0, 10, 0, 6] },
-  investimentoBlock,
-  ...(extras.length ? [{ text: 'Informações adicionais', style: 'h2', margin: [0, 6, 0, 4] }, ...extras] : [])
+    { text: 'Cotação de Voo Executivo', style: 'h1' },
+    headerBlock,
+    resumoBlock,
+    { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
+    { canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1, lineColor: '#eaeaea' }] },
+    { text: 'Investimento', style: 'h2', margin: [0, 10, 0, 6] },
+    investimentoBlock,
+    ...(extras.length ? [{ text: 'Informações adicionais', style: 'h2', margin: [0, 6, 0, 4] }, ...extras] : []),
+    {
+      margin: [0, 20, 0, 0],
+      table: {
+        widths: ['*'],
+        body: [[{
+          text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+          alignment: 'center',
+          fontSize: 16,
+          bold: true,
+          margin: [0, 6, 0, 6],
+          color: '#2E4053'
+        }]]
+      },
+      layout: {
+        fillColor: () => '#F1C40F',
+        hLineWidth: () => 0,
+        vLineWidth: () => 0
+      }
+    }
   ];
 
   return {
@@ -755,21 +773,19 @@ function buildDocDefinition(state) {
     styles: {
       h1: { fontSize: 18, bold: true, margin: [0, 0, 0, 8] },
       h2: { fontSize: 12, bold: true, color: '#0d6efd' },
-      brand: { fontSize: 14, bold: true },
-      muted: { color: '#666', margin: [0, 2, 0, 0] },
-      mini: { color: '#777', fontSize: 9 },
+      brand: { fontSize: 16, bold: true, color: '#fff' },
+      muted: { color: '#E5E7E9', margin: [0, 2, 0, 0] },
+      mini: { color: '#F2F3F4', fontSize: 9 },
       row: { margin: [0, 2, 0, 0] }
     },
     info: { title: 'Cotação de Voo Executivo', author: '[NOME_EMPRESA]' },
-    footer: function(currentPage, pageCount) {
-      return {
-        columns: [
-          { text: '[NOME_EMPRESA] • [WHATSAPP_LINK] • [EMAIL_CONTATO]', style: 'mini' },
-          { text: `${currentPage} / ${pageCount}`, alignment: 'right', style: 'mini' }
-        ],
-        margin: [40, 0, 40, 20]
-      };
-    }
+    footer: (currentPage, pageCount) => ({
+      columns: [
+        { text: '[NOME_EMPRESA] • [WHATSAPP_LINK] • [EMAIL_CONTATO]', style: 'mini' },
+        { text: `${currentPage} / ${pageCount}`, alignment: 'right', style: 'mini' }
+      ],
+      margin: [40, 0, 40, 20]
+    })
   };
 }
 
