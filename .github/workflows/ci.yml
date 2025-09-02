@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [ main, develop ]
+  push:
+    branches: [ chore/github-setup ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar JSON do catálogo (se existir)
+        run: |
+          if [ -f data/aircraftCatalog.json ]; then
+            jq . < data/aircraftCatalog.json > /dev/null
+          else
+            echo "Sem data/aircraftCatalog.json, ok por enquanto."
+          fi
+
+      - name: Checagem rápida de formatação
+        run: |
+          if command -v npx >/dev/null 2>&1 && [ -f package.json ]; then
+            npx prettier -c "**/*.{js,ts,css,html,json,md}" || true
+          else
+            echo "Sem Node/Prettier configurados; ignorando."
+          fi
+
+      - name: Teste rápido (se existir test.js sem package.json)
+        run: |
+          if [ -f test.js ]; then
+            node test.js || (echo "Falha em test.js" && exit 1)
+          else
+            echo "Sem test.js para rodar."
+          fi

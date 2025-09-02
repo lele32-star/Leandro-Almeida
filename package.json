@@ -1,7 +1,14 @@
 {
   "name": "leandro-almeida",
   "version": "1.0.0",
+  "type": "module",
   "scripts": {
-    "test": "node test.js"
+    "test": "vitest run",
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "jsdom": "^24.0.0",
+    "vitest": "^1.6.0"
   }
 }

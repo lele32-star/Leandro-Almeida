@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Mapa e PDF</title>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #map { height: 400px; width: 100%; border: 1px solid #ccc; }
+        button { margin: 10px; padding: 10px 20px; }
+    </style>
+</head>
+<body>
+    <h1>Teste de Captura do Mapa para PDF</h1>
+    <div id="map"></div>
+    <button onclick="testCapture()">Capturar Mapa</button>
+    <button onclick="testPDF()">Gerar PDF com Mapa</button>
+    <div id="result"></div>
+
+    <script>
+        // Simular mapa Leaflet
+        let map;
+        function initMap() {
+            map = L.map('map').setView([-15, -47], 4);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+
+            // Adicionar alguns marcadores de teste
+            L.marker([-15, -47]).addTo(map).bindPopup('Brasília');
+            L.marker([-22.9, -43.2]).addTo(map).bindPopup('Rio de Janeiro');
+        }
+
+        // Função de captura do mapa
+        async function captureMapDataUrl() {
+            const mapEl = document.getElementById('map');
+            if (!mapEl) return null;
+
+            try {
+                if (typeof html2canvas !== 'undefined') {
+                    const canvas = await html2canvas(mapEl, {
+                        useCORS: true,
+                        allowTaint: false,
+                        scale: 1,
+                        width: mapEl.offsetWidth,
+                        height: mapEl.offsetHeight
+                    });
+                    return canvas.toDataURL('image/png');
+                }
+
+                const canvas = mapEl.querySelector('canvas');
+                if (canvas && typeof canvas.toDataURL === 'function') {
+                    return canvas.toDataURL('image/png');
+                }
+
+                return null;
+            } catch (error) {
+                console.warn('Failed to capture map dataURL:', error);
+                return null;
+            }
+        }
+
+        // Testar captura
+        async function testCapture() {
+            const result = document.getElementById('result');
+            result.innerHTML = 'Capturando mapa...';
+
+            try {
+                const dataUrl = await captureMapDataUrl();
+                if (dataUrl) {
+                    result.innerHTML = `
+                        <p>Mapa capturado com sucesso!</p>
+                        <img src="${dataUrl}" style="max-width: 300px; border: 1px solid #ccc;" alt="Mapa capturado">
+                        <p>DataURL length: ${dataUrl.length} characters</p>
+                    `;
+                    window.__mapDataUrl = dataUrl; // Salvar globalmente
+                } else {
+                    result.innerHTML = '<p>Falha ao capturar mapa</p>';
+                }
+            } catch (error) {
+                result.innerHTML = `<p>Erro: ${error.message}</p>`;
+            }
+        }
+
+        // Testar PDF (simulado)
+        function testPDF() {
+            const result = document.getElementById('result');
+            const hasMapData = !!window.__mapDataUrl;
+
+            result.innerHTML = `
+                <p>PDF seria gerado com mapa: ${hasMapData ? 'SIM' : 'NÃO'}</p>
+                ${hasMapData ? '<p>DataURL disponível para inclusão no PDF</p>' : '<p>Nenhum mapa capturado ainda</p>'}
+            `;
+        }
+
+        // Inicializar
+        initMap();
+    </script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste - Valores nos Campos Editáveis</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .aircraft-params { display: flex; gap: 12px; margin: 10px 0; }
+        .aircraft-params > div { min-width: 160px; }
+        label { display: block; margin-bottom: 4px; font-weight: 600; }
+        input { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        .help { font-size: 0.75rem; color: #666; margin-top: 2px; }
+        button { padding: 8px 16px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #resultado { margin-top: 20px; padding: 15px; border: 1px solid #ccc; border-radius: 5px; background: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <h1>Teste - Valores Aparecendo nos Campos Editáveis</h1>
+
+    <div class="test-section">
+        <h2>Seleção de Aeronave</h2>
+        <label for="aeronave">Aeronave:</label>
+        <select id="aeronave">
+            <option value="">Selecione uma aeronave...</option>
+            <option value="Hawker 400">Hawker 400</option>
+            <option value="Phenom 100">Phenom 100</option>
+            <option value="Citation II">Citation II</option>
+            <option value="Sêneca IV">Sêneca IV</option>
+            <option value="Cirrus SR22">Cirrus SR22</option>
+        </select>
+    </div>
+
+    <div class="test-section">
+        <h2>Parâmetros da Aeronave</h2>
+        <div class="aircraft-params">
+            <div>
+                <label for="tarifa">Tarifa por km (R$):</label>
+                <input type="number" id="tarifa" step="0.01" />
+            </div>
+            <div>
+                <label for="cruiseSpeed">Velocidade de Cruzeiro (KTAS):</label>
+                <input type="number" id="cruiseSpeed" step="1" placeholder="Ex: 430" />
+                <div class="help">Velocidade típica de cruzeiro.</div>
+            </div>
+            <div>
+                <label for="hourlyRate">Valor-hora (R$/h):</label>
+                <input type="number" id="hourlyRate" step="1" placeholder="Ex: 18000" />
+                <div class="help">Valor faturado por hora.</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Teste de Funcionalidade</h2>
+        <button onclick="testAircraftSelection()">Testar Seleção de Aeronave</button>
+        <button onclick="testManualEditing()">Testar Edição Manual</button>
+        <button onclick="showCurrentValues()">Mostrar Valores Atuais</button>
+    </div>
+
+    <div id="resultado"></div>
+
+    <script>
+        // Simulação do catálogo de aeronaves
+        const aircraftCatalog = [
+            { nome: 'Hawker 400', tarifa_km_brl_default: 12.50, cruise_speed_kt_default: 430, hourly_rate_brl_default: 18000 },
+            { nome: 'Phenom 100', tarifa_km_brl_default: 11.80, cruise_speed_kt_default: 390, hourly_rate_brl_default: 16500 },
+            { nome: 'Citation II', tarifa_km_brl_default: 10.50, cruise_speed_kt_default: 375, hourly_rate_brl_default: 15000 },
+            { nome: 'Sêneca IV', tarifa_km_brl_default: 8.20, cruise_speed_kt_default: 190, hourly_rate_brl_default: 6500 },
+            { nome: 'Cirrus SR22', tarifa_km_brl_default: 6.50, cruise_speed_kt_default: 180, hourly_rate_brl_default: 3300 }
+        ];
+
+        // Elementos DOM
+        const aeronaveSel = document.getElementById('aeronave');
+        const tarifaInput = document.getElementById('tarifa');
+        const cruiseInput = document.getElementById('cruiseSpeed');
+        const hourlyInput = document.getElementById('hourlyRate');
+
+        // Função para sincronizar valores quando aeronave muda
+        const syncTarifaFromAeronave = () => {
+            const entry = aircraftCatalog.find(a => a.nome === aeronaveSel.value);
+
+            if (entry) {
+                // Valores aparecem diretamente nos campos
+                tarifaInput.value = entry.tarifa_km_brl_default || '';
+                cruiseInput.value = entry.cruise_speed_kt_default || '';
+                cruiseInput.placeholder = entry.cruise_speed_kt_default ? `${entry.cruise_speed_kt_default} KTAS` : 'Ex: 430';
+                hourlyInput.value = entry.hourly_rate_brl_default || '';
+                hourlyInput.placeholder = entry.hourly_rate_brl_default ? `R$ ${Number(entry.hourly_rate_brl_default).toLocaleString('pt-BR')}/h` : 'Ex: 18000';
+
+                showResult(`✅ Valores da aeronave "${aeronaveSel.value}" carregados nos campos!`);
+            } else {
+                // Limpar campos se nenhuma aeronave selecionada
+                tarifaInput.value = '';
+                cruiseInput.value = '';
+                cruiseInput.placeholder = 'Ex: 430';
+                hourlyInput.value = '';
+                hourlyInput.placeholder = 'Ex: 18000';
+                showResult('Campos limpos - selecione uma aeronave.');
+            }
+        };
+
+        // Event listeners
+        aeronaveSel.addEventListener('change', syncTarifaFromAeronave);
+
+        // Funções de teste
+        function testAircraftSelection() {
+            const aircraft = ['Hawker 400', 'Phenom 100', 'Citation II'];
+            let index = 0;
+
+            const interval = setInterval(() => {
+                if (index < aircraft.length) {
+                    aeronaveSel.value = aircraft[index];
+                    syncTarifaFromAeronave();
+                    index++;
+                } else {
+                    clearInterval(interval);
+                    showResult('✅ Teste de seleção automática concluído!');
+                }
+            }, 1500);
+        }
+
+        function testManualEditing() {
+            if (!aeronaveSel.value) {
+                showResult('❌ Selecione uma aeronave primeiro!');
+                return;
+            }
+
+            // Simular edição manual
+            setTimeout(() => {
+                cruiseInput.value = '450';
+                showResult('✅ Velocidade alterada manualmente para 450 KTAS');
+            }, 500);
+
+            setTimeout(() => {
+                hourlyInput.value = '20000';
+                showResult('✅ Valor-hora alterado manualmente para R$ 20.000/h');
+            }, 1000);
+
+            setTimeout(() => {
+                showResult('✅ Teste de edição manual concluído! Os valores permanecem nos campos.');
+            }, 1500);
+        }
+
+        function showCurrentValues() {
+            const values = {
+                aeronave: aeronaveSel.value,
+                tarifa: tarifaInput.value,
+                velocidade: cruiseInput.value,
+                valorHora: hourlyInput.value
+            };
+
+            showResult(`📊 Valores atuais:
+- Aeronave: ${values.aeronave || 'Nenhuma'}
+- Tarifa: R$ ${values.tarifa}/km
+- Velocidade: ${values.velocidade} KTAS
+- Valor-hora: R$ ${values.valorHora}/h`);
+        }
+
+        function showResult(message) {
+            document.getElementById('resultado').innerHTML = `<p>${message}</p>`;
+        }
+
+        // Inicialização
+        showResult('🎯 Teste pronto! Selecione uma aeronave para ver os valores aparecerem nos campos editáveis.');
+    </script>
+</body>
+</html>
