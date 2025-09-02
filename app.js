@@ -886,10 +886,44 @@ async function gerarPDF(state) {
     updateDistanceFromAirports(waypoints);
   }
   const docDefinition = buildDocDefinition(s);
-  if (typeof pdfMake !== 'undefined') {
-    pdfMake.createPdf(docDefinition).open();
+  // Diagnóstico: detectar content vazio ou inválido
+  let isBlank = false;
+  try {
+    if (!docDefinition || !Array.isArray(docDefinition.content)) isBlank = true;
+    else {
+      const meaningful = docDefinition.content.some(item => {
+        if (!item) return false;
+        if (typeof item.text === 'string' && item.text.trim() !== '') return true;
+        if (item.table || item.columns || item.stack || item.canvas) return true;
+        return false;
+      });
+      if (!meaningful) isBlank = true;
+    }
+  } catch { isBlank = true; }
+
+  let finalDef = docDefinition;
+  if (isBlank) {
+    console.warn('[PDF] Detetado docDefinition possivelmente em branco. Gerando fallback. State:', s, 'Doc:', docDefinition);
+    finalDef = {
+      pageSize: 'A4',
+      pageMargins: [40,60,40,60],
+      content: [
+        { text: 'Pré-Orçamento', fontSize: 16, bold: true, margin: [0,0,0,12] },
+        { text: 'Não foi possível montar o layout completo do PDF. Este é um fallback automático.', fontSize: 9, color: 'red', margin:[0,0,0,12] },
+        { text: JSON.stringify({ aeronave: s.aeronave, nm: s.nm, origem: s.origem, destino: s.destino }, null, 2), fontSize: 8 }
+      ]
+    };
   }
-  return docDefinition;
+
+  if (typeof pdfMake !== 'undefined') {
+    try {
+      pdfMake.createPdf(finalDef).open();
+    } catch (e) {
+      console.error('[PDF] Erro ao abrir PDF principal, usando fallback mínimo.', e);
+      try { pdfMake.createPdf({ content: [{ text: 'Erro ao gerar PDF', color: 'red' }, { text: String(e), fontSize: 8 }] }).open(); } catch {}
+    }
+  }
+  return finalDef;
 }
 
 function limparCampos() {
