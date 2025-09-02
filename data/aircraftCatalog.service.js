@@ -22,7 +22,11 @@ function getById(id) {
 function loadOverrides() {
   if (_hasLocalStorage()) {
     const raw = localStorage.getItem(STORAGE_KEY);
-    try { return raw ? JSON.parse(raw) : {}; } catch (e) { return {}; 
+    try { 
+      return raw ? JSON.parse(raw) : {}; 
+    } catch (e) { 
+      return {}; 
+    }
   }
   return _inMemoryStore || {};
 }

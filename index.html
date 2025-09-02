@@ -55,6 +55,8 @@
       outline: 3px solid #111; /* alto contraste (quase preto sobre fundo claro) */
       outline-offset: 2px;
     }
+  .icon-btn { display:inline-flex; align-items:center; justify-content:center; min-width:36px; min-height:36px; padding:6px 10px; font-size:18px; line-height:1; }
+  .icon-btn:focus-visible { outline:3px solid #111; }
     /* Utilitário para elementos que recebem focus programaticamente */
     .focus-ring { border-radius:4px; }
     /* Badge de status de parâmetros aeronave: reforçar contraste */
@@ -116,8 +118,8 @@
       </div>
       <div id="aircraft-params-controls" style="margin-top:12px;padding-top:12px;border-top:1px solid #eee;display:flex;align-items:center;gap:12px;">
         <span id="aircraft-params-badge" style="font-weight:bold;font-size:.8rem;padding:4px 8px;border-radius:4px;"></span>
-  <button type="button" id="btn-edit-params" style="padding:6px 12px;font-size:14px;" aria-label="Editar parâmetros da aeronave" title="Editar parâmetros da aeronave (tarifa, velocidade, valor-hora)">Editar parâmetros</button>
-  <button type="button" id="btn-reset-params" style="padding:6px 12px;font-size:14px;display:none;" aria-label="Restaurar parâmetros de catálogo" title="Restaurar parâmetros originais do catálogo">Resetar para Catálogo</button>
+  <button type="button" id="btn-fill-aircraft" style="padding:6px 12px;font-size:14px;" aria-label="Preencher automaticamente parâmetros da aeronave" title="Preencher automaticamente (tarifa/km, velocidade de cruzeiro e valor-hora) a partir do catálogo">Preencher automaticamente</button>
+  <span id="aircraft-fill-hint" style="font-size:.7rem;color:#555;">Selecione a aeronave acima e depois clique em “Preencher automaticamente”.</span>
       </div>
       <div style="margin-top:12px;border-top:1px dashed var(--border);padding-top:10px">
         <label style="font-weight:600">Parâmetros avançados de planejamento</label>
@@ -344,13 +346,16 @@ Conta: 25691815-5</textarea>
     <div id="map"></div>
 
     <script src="cotacao.js"></script>
+  <script src="src/utils/safeExport.js"></script>
   <script src="src/domain/aircraft.js"></script>
   <script src="src/ui/recalcScheduler.js"></script>
   <script src="src/state/snapshotStore.js"></script>
   <script src="src/pdf/buildDocDefinition.js"></script>
   <script src="src/services/avwx.js"></script>
   <script src="src/persist/storage.js"></script>
+  <script src="src/share/createLink.js"></script>
     <script src="app.js"></script>
+  <script src="src/index-bridge.js"></script>
     <script>
       // Validação leve e acessível (não altera lógica interna de cálculo)
       function validarFormularioBasico(){
