@@ -84,6 +84,24 @@
 
   <label for="tarifa">Tarifa por km (R$):</label>
   <input type="number" id="tarifa" step="0.01" />
+  <div style="margin-top:8px">
+    <button type="button" id="btnShowTarifa" style="background:#198754">Mostrar / Editar Tarifa</button>
+    <span id="tarifaPreview" style="margin-left:10px;color:#333;opacity:.85"></span>
+  </div>
+
+  <!-- Modal de edição de tarifa -->
+  <div id="modalTarifa" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="modalTarifaTitle">
+    <div class="modal" role="document">
+      <h3 id="modalTarifaTitle">Editar tarifa por km (R$)</h3>
+      <div>
+        <input id="tarifaModalInput" type="number" step="0.01" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:4px" />
+      </div>
+      <div class="actions">
+        <button type="button" id="tarifaModalCancel" class="secondary">Cancelar</button>
+        <button type="button" id="tarifaModalSave">Salvar</button>
+      </div>
+    </div>
+  </div>
 
     <div class="linha">
       <div>

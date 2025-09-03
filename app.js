@@ -154,7 +154,62 @@ if (typeof document !== 'undefined') {
       saveAndRefresh();
     });
 
-  // (removido modal tarifa) bloco obsoleto purgado
+    // Ao carregar a página, aplicar tarifa salva ou padrão
+    document.addEventListener('DOMContentLoaded', () => {
+      try {
+        const store = loadTarifasStore();
+        const saved = store[aeronaveSel.value];
+        if (saved !== undefined && saved !== null) tarifaInput.value = saved;
+        else if (!tarifaInput.value || tarifaInput.value === '') tarifaInput.value = valoresKm[aeronaveSel.value] || '';
+        applyTarifaPreview();
+      } catch (e) {}
+    });
+
+    // substituir comportamento do botão para abrir modal
+    if (btnShowTarifa && modal && modalInput && modalSave && modalCancel) {
+      btnShowTarifa.addEventListener('click', () => {
+        const cur = tarifaInput.value || valoresKm[aeronaveSel.value] || '';
+        modalInput.value = cur;
+        modal.classList.add('show');
+        // focar input
+        setTimeout(() => modalInput.focus(), 50);
+      });
+
+      modalCancel.addEventListener('click', () => {
+        modal.classList.remove('show');
+      });
+
+      modalSave.addEventListener('click', () => {
+        const val = parseFloat(modalInput.value);
+        if (Number.isFinite(val) && val >= 0) {
+          tarifaInput.value = val;
+          applyTarifaPreview();
+          
+          // Salvar no store personalizado
+          const store = loadTarifasStore();
+          store[aeronaveSel.value] = val;
+          saveTarifasStore(store);
+          
+          saveAndRefresh();
+        }
+        modal.classList.remove('show');
+      });
+
+      // Fechar modal com Escape
+      modal.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          modal.classList.remove('show');
+        }
+      });
+
+      // Salvar com Enter no input
+      modalInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          modalSave.click();
+        }
+      });
+    }
+  }
 
   function debounce(fn, ms) {
     let t;
@@ -323,147 +378,6 @@ if (typeof document !== 'undefined') {
   });
 }
 
-function buildState() {
-  const aeronave = document.getElementById('aeronave').value;
-  const nmField = document.getElementById('nm');
-  const kmField = document.getElementById('km');
-  let nm = parseFloat(nmField.value);
-    // Simples: ao trocar aeronave, preenche tarifa padrão se vazio
-    const syncTarifaFromAeronave = () => {
-      if (!tarifaInput.value) tarifaInput.value = valoresKm[aeronaveSel.value] || '';
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch {}
-    };
-    aeronaveSel.addEventListener('change', syncTarifaFromAeronave);
-    tarifaInput.addEventListener('input', () => { try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch {} });
-    document.addEventListener('DOMContentLoaded', syncTarifaFromAeronave);
-        margin: [0,0,0,4]
-      }
-  // Removed stray array and margin to fix syntax error
-
-  const resumoLeft = [];
-  if (state.showRota) {
-    const codes = [state.origem, state.destino, ...(state.stops || [])].filter(Boolean).join(' → ');
-    resumoLeft.push({ text: `Rota: ${codes}`, style: 'row' });
-  }
-  if (state.showAeronave) resumoLeft.push({ text: `Aeronave: ${state.aeronave}`, style: 'row' });
-  if (state.showDatas) resumoLeft.push({ text: `Datas: ${state.dataIda} - ${state.dataVolta}`, style: 'row' });
-
-  const resumoRight = [];
-  if (state.showDistancia) resumoRight.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)`, style: 'row' });
-  if (state.showTarifa) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'row' });
-
-  // Bloco de resumo em "card"
-  const resumoBlock = {
-    table: {
-      widths: ['*','*'],
-      body: [
-        [
-          { stack: resumoLeft, margin: [0,0,0,0] },
-          { stack: resumoRight, margin: [0,0,0,0] }
-        ]
-      ]
-    },
-    layout: {
-      hLineWidth: () => 0,
-      vLineWidth: () => 0,
-      paddingLeft: () => 10,
-      paddingRight: () => 10,
-      paddingTop: () => 8,
-      paddingBottom: () => 8,
-      fillColor: () => '#F8FAFC'
-    },
-    margin: [0, 8, 0, 14]
-  };
-
-  // Tabela de investimento
-  const investBody = [];
-  investBody.push([{ text: `Total parcial: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
-
-  if (state.showAjuste && state.valorExtra > 0) {
-    const label = state.tipoExtra === 'soma' ? 'Outras Despesas' : 'Desconto';
-    investBody.push([{ text: `${label}: R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
-  }
-
-  if (state.showComissao) {
-    (detalhesComissao || []).forEach((c, idx) => {
-      investBody.push([{ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
-    });
-    if (commissionAmount > 0) {
-      investBody.push([{ text: `Comissão: R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
-    }
-  }
-
-  investBody.push([{ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right', style: 'totalRow' }]);
-
-  const investimentoBlock = {
-    table: { widths: ['*'], body: investBody },
-    layout: {
-      fillColor: (rowIndex) => {
-        if (rowIndex === investBody.length - 1) return '#1B2635';
-        return rowIndex % 2 === 0 ? '#FFFFFF' : '#F4F6F8';
-      },
-      hLineColor: () => '#E2E8F0',
-      vLineColor: () => '#E2E8F0',
-      paddingTop: () => 6,
-      paddingBottom: () => 6,
-      paddingLeft: () => 10,
-      paddingRight: () => 10
-    },
-    margin: [0, 6, 0, 16]
-  };
-
-  const extras = [];
-  if (state.showObservacoes && state.observacoes) extras.push({ text: `Observações: ${state.observacoes}`, margin: [0, 2, 0, 0] });
-  if (state.showPagamento && state.pagamento) extras.push({ text: `Dados de pagamento: ${state.pagamento}`, margin: [0, 2, 0, 0] });
-  if (state.showMapa) extras.push({ text: 'Mapa:', margin: [0, 2, 0, 0] });
-
-  // Texto invisível preserva palavras-chave para testes
-  const resumoTextForTest = [...resumoLeft, ...resumoRight].map(r => r.text).join(' ');
-
-  const content = [
-  { text: 'Cotação de Voo Executivo', style: 'h1' },
-  headerBlock,
-  { text: '', margin: [0,2,0,0] },
-  resumoBlock,
-  { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
-  { canvas: [
-      { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.2, lineColor: '#E2E8F0' },
-      { type: 'line', x1: 0, y1: 2, x2: 515, y2: 2, lineWidth: 0.4, lineColor: '#F1C40F' }
-    ], margin: [0,4,0,4] },
-  { text: 'Investimento', style: 'sectionTitle', margin: [0, 6, 0, 6] },
-  investimentoBlock,
-  ...(extras.length ? [{ text: 'Informações adicionais', style: 'h2', margin: [0, 6, 0, 4] }, ...extras] : [])
-  ];
-
-  try { console.debug('[PDF][buildDocDefinition] content length', content.length, 'keys first items', content.slice(0,5).map(i => Object.keys(i))); } catch {}
-
-  return {
-    content,
-    pageSize: 'A4',
-    pageMargins: [40, 60, 40, 60],
-    defaultStyle: { fontSize: 10, lineHeight: 1.3, color: '#1B2635', font: 'Helvetica' },
-    styles: {
-      h1: { fontSize: 20, bold: true, color: '#1B2635', margin: [0, 0, 0, 4], letterSpacing: 0.5 },
-      sectionTitle: { fontSize: 13, bold: true, color: '#1B2635', letterSpacing: 0.5 },
-      brand: { fontSize: 18, bold: true, color: '#F1C40F', letterSpacing: 1 },
-      muted: { color: '#E5E7EB', margin: [0, 2, 0, 0], fontSize: 9, letterSpacing: 0.5 },
-      mini: { color: '#516170', fontSize: 8 },
-      miniRight: { color: '#F1F3F5', fontSize: 8, alignment: 'right' },
-      row: { margin: [0, 2, 0, 0], fontSize: 10 },
-      totalRow: { bold: true, color: '#FFFFFF', fontSize: 12 }
-    },
-    info: { title: 'Cotação de Voo Executivo', author: '[NOME_EMPRESA]' },
-    footer: function(currentPage, pageCount) {
-      return {
-        columns: [
-          { text: '[NOME_EMPRESA] • [WHATSAPP_LINK] • [EMAIL_CONTATO]', style: 'mini' },
-          { text: `${currentPage} / ${pageCount}`, alignment: 'right', style: 'mini' }
-        ],
-        margin: [40, 0, 40, 20]
-      };
-    }
-  };
-}
 
 function calcularComissao(subtotal, _valorExtra, _tipoExtra, commissions) {
   const base = subtotal; // km × tarifa
