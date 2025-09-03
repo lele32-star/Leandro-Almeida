@@ -97,7 +97,13 @@ const elements = {
 elements.commissionShowInPdf = { value: '1' };
 global.document = {
   getElementById: id => elements[id],
-  querySelectorAll: sel => (sel === '.stop-input' ? [{ value: 'SBBH' }] : sel === '.commission-percent' ? [{ value: '10' }] : [])
+  querySelectorAll: sel => (sel === '.stop-input' ? [{ value: 'SBBH' }] : sel === '.commission-percent' ? [{ value: '10' }] : []),
+  querySelector: sel => {
+    if (sel === 'input[name="tipoExtra"]:checked') {
+      return { value: 'soma' }; // Default radio button selection
+    }
+    return null;
+  }
 };
 const stateConv = buildState();
 assert(Math.abs(stateConv.nm - 100) < 1e-6, 'KM field should convert to NM');

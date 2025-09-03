@@ -23,12 +23,18 @@ function updateDistanceFromAirports(waypoints) {
   const nmInput = typeof document !== 'undefined' ? document.getElementById('nm') : null;
   const kmInput = typeof document !== 'undefined' ? document.getElementById('km') : null;
   const points = (waypoints || []).filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
-
-    if (volta.value && volta.value < min) volta.value = min;
-  if (volta.value && volta.value < min) volta.value = min;
+  
+  // Calculate total distance from waypoints
+  if (points.length >= 2 && nmInput && kmInput) {
+    let totalDistance = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      totalDistance += haversine(points[i], points[i + 1]);
+    }
+    const nm = totalDistance / 1.852;
+    nmInput.value = nm.toFixed(1);
+    kmInput.value = totalDistance.toFixed(1);
+  }
 };
-ida.addEventListener('change', syncVolta);
-syncVolta();
 function buildState() {
   const aeronave = (document.getElementById('aeronave') || {}).value || '';
   const nmField = document.getElementById('nm');
@@ -41,6 +47,15 @@ function buildState() {
   if (!Number.isFinite(nm)) nm = 0;
 
   const valorKm = parseFloat((document.getElementById('tarifa') || {}).value || '');
+  
+  // If tariff is not manually set, use default for aircraft
+  let finalValorKm = Number.isFinite(valorKm) && valorKm > 0 ? valorKm : 0;
+  if (!finalValorKm) {
+    const defaultTariff = valoresKm[aeronave];
+    if (Number.isFinite(defaultTariff) && defaultTariff > 0) {
+      finalValorKm = defaultTariff;
+    }
+  }
   const origem = ((document.getElementById('origem') || {}).value || '').toUpperCase();
   const destino = ((document.getElementById('destino') || {}).value || '').toUpperCase();
   const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => (i.value || '').toUpperCase()).filter(Boolean);
@@ -56,7 +71,7 @@ function buildState() {
   return {
     aeronave,
     nm: Number.isFinite(nm) ? Number(nm.toFixed(2)) : 0,
-    valorKm: Number.isFinite(valorKm) ? Number(valorKm) : 0,
+    valorKm: finalValorKm,
     origem,
     destino,
     stops,
@@ -116,47 +131,30 @@ if (typeof document !== 'undefined') {
       try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
     });
 
-    // botão Mostrar/Editar Tarifa
-    const btnShowTarifa = document.getElementById('btnShowTarifa');
-    const modal = document.getElementById('modalTarifa');
-    const modalInput = document.getElementById('tarifaModalInput');
-    const modalSave = document.getElementById('tarifaModalSave');
-    const modalCancel = document.getElementById('tarifaModalCancel');
-
-    // Persistência simples em localStorage
-    const LKEY = 'cotacao:tarifas';
-    function loadTarifasStore() {
-      try { return JSON.parse(localStorage.getItem(LKEY) || '{}'); } catch { return {}; }
-    }
-    function saveTarifasStore(store) { try { localStorage.setItem(LKEY, JSON.stringify(store)); } catch {} }
-
-    // Atualiza preview e persiste se necessário (debounced)
-    const saveAndRefresh = debounce(() => {
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
-    }, 200);
-
-    const applyTarifaPreview = () => {
-      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
-    };
-
-    // Ao trocar de aeronave, aplicar tarifa padrão ou a salva
+    // Simplified tariff handling - no modal needed
     aeronaveSel.addEventListener('change', () => {
-      const store = loadTarifasStore();
-      const saved = store[aeronaveSel.value];
       const defaultVal = valoresKm[aeronaveSel.value];
-      if (saved !== undefined && saved !== null) {
-        tarifaInput.value = saved;
-      } else if (!tarifaInput.value || tarifaInput.value === '') {
+      if (!tarifaInput.value || tarifaInput.value === '') {
         tarifaInput.value = defaultVal || '';
       }
-      applyTarifaPreview();
-      saveAndRefresh();
+      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
     });
+
+  } // Close the if (aeronaveSel && tarifaInput) block
 
   // (removido modal tarifa) bloco obsoleto purgado
 
   function debounce(fn, ms) {
     let t;
+    return function(...args) {
+      clearTimeout(t);
+      t = setTimeout(() => fn.apply(this, args), ms);
+    };
+  }
+
+  async function refreshRouteFromInputs(triggerPre = false) {
+    // This function should be defined elsewhere - adding placeholder
     if (triggerPre && typeof gerarPreOrcamentoCore === 'function') {
       try { gerarPreOrcamentoCore(); } catch (e) { /* ignore */ }
     }
@@ -350,22 +348,47 @@ if (typeof document !== 'undefined') {
   });
 }
 
-function buildState() {
-  const aeronave = document.getElementById('aeronave').value;
-  const nmField = document.getElementById('nm');
-  const kmField = document.getElementById('km');
-  let nm = parseFloat(nmField.value);
-    // Simples: ao trocar aeronave, preenche tarifa padrão se vazio
-    const syncTarifaFromAeronave = () => {
-      if (!tarifaInput.value) tarifaInput.value = valoresKm[aeronaveSel.value] || '';
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch {}
-    };
-    aeronaveSel.addEventListener('change', syncTarifaFromAeronave);
-    tarifaInput.addEventListener('input', () => { try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch {} });
-    document.addEventListener('DOMContentLoaded', syncTarifaFromAeronave);
-        margin: [0,0,0,4]
-      }
-  // Removed stray array and margin to fix syntax error
+function buildDocDefinition(state) {
+  // Calculate variables needed for the document
+  const km = state.nm * 1.852;
+  const subtotal = state.nm * 1.852 * state.valorKm;
+  const valorExtra = state.valorExtra || 0;
+  let total = subtotal;
+  
+  if (state.tipoExtra === 'soma') {
+    total += valorExtra;
+  } else if (state.tipoExtra === 'subtrai') {
+    total -= valorExtra;
+  }
+
+  // Commission calculation
+  const commissionAmount = typeof obterComissao === 'function' ? obterComissao(km, state.valorKm) : 0;
+  const { totalComissao, detalhesComissao } = calcularComissao(subtotal, valorExtra, state.tipoExtra, state.commissions || []);
+  total += totalComissao + commissionAmount;
+
+  // Header block with company info
+  const headerBlock = {
+    canvas: [
+      { type: 'rect', x: -40, y: -30, w: 595, h: 90, color: '#1B2635' },
+      { type: 'rect', x: -40, y: 30, w: 595, h: 4, color: '#F1C40F' }
+    ]
+  };
+
+  const companyHeader = {
+    columns: [
+      { width: '*', stack: [
+        { text: '[NOME_EMPRESA]', style: 'brand' },
+        { text: '[SLOGAN_CURTO]', style: 'muted' }
+      ], margin: [0,4,0,0] },
+      { width: 'auto', stack: [
+        { text: '[EMAIL_CONTATO]', style: 'miniRight' },
+        { text: '[WHATSAPP_LINK]', style: 'miniRight' },
+        { text: '[CNPJ_OPCIONAL]', style: 'miniRight' }
+      ] }
+    ],
+    columnGap: 16,
+    margin: [0,0,0,4]
+  };
 
   const resumoLeft = [];
   if (state.showRota) {
@@ -448,11 +471,12 @@ function buildState() {
   const resumoTextForTest = [...resumoLeft, ...resumoRight].map(r => r.text).join(' ');
 
   const content = [
-  { text: 'Cotação de Voo Executivo', style: 'h1' },
-  headerBlock,
-  { text: '', margin: [0,2,0,0] },
-  resumoBlock,
-  { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
+    { text: 'Cotação de Voo Executivo', style: 'h1' },
+    headerBlock,
+    companyHeader,
+    { text: '', margin: [0,2,0,0] },
+    resumoBlock,
+    { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
   { canvas: [
       { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.2, lineColor: '#E2E8F0' },
       { type: 'line', x1: 0, y1: 2, x2: 515, y2: 2, lineWidth: 0.4, lineColor: '#F1C40F' }
