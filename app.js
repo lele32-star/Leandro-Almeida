@@ -17,186 +17,82 @@ try {
     valorParcialFn = calc.valorParcial;
     valorTotalFn = calc.valorTotal;
   }
-} catch (err) {
-  /* ignore missing module in browser */
-}
-
-if (typeof window !== 'undefined') {
-  if (typeof window.valorParcial === 'function') valorParcialFn = window.valorParcial;
-  if (typeof window.valorTotal === 'function') valorTotalFn = window.valorTotal;
-}
-
-// AVWX token: prefer environment variable `AVWX_TOKEN`, otherwise use the provided hardcoded token.
-// NOTE: embedding tokens in source is insecure for public repos; this was requested explicitly.
-const API_KEY = (typeof process !== 'undefined' && process.env && process.env.AVWX_TOKEN)
-  ? process.env.AVWX_TOKEN
-  : 'Zq-Qlr7SEVgfe5DE8lc2O6S7TPwqGnd7IDytnPp7T-Y';
-
-// Função centralizada para cabeçalhos AVWX (esquema oficial usa 'BEARER' em maiúsculas segundo documentação)
-function avwxHeaders(){
-  return API_KEY ? { Authorization: `BEARER ${API_KEY}` } : {};
-}
-
-// --- [ADD/REPLACE] Utilitários do mapa e cache ---
-let map;
-let routeLayer = null;
-const airportCache = new Map();
-
-function ensureMap() {
-  if (typeof L === 'undefined') return;
-  const el = typeof document !== 'undefined' && document.getElementById('map');
-  if (!el) return;
-  if (!map) {
-    map = L.map('map', { preferCanvas: true }).setView([-15, -47], 4);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-    setTimeout(() => { try { map.invalidateSize(); } catch {} }, 0);
-  }
-}
-
-async function fetchAirportByCode(code) {
-  const icao = String(code || '').toUpperCase();
-  if (!/^[A-Z]{4}$/.test(icao)) return null;
-  if (airportCache.has(icao)) return airportCache.get(icao);
-  try {
-  const headers = avwxHeaders();
-    const url = `https://avwx.rest/api/station/${icao}`;
-    const res = await fetch(url, { headers });
-    if (!res.ok) throw new Error('fetch failed');
-    const data = await res.json();
-
-    // Robust coordinate extraction: busca recursiva por chaves lat/lon em qualquer nível
-    function findLatLon(obj, depth = 0) {
-      if (!obj || typeof obj !== 'object' || depth > 6) return null;
-      const keys = Object.keys(obj || {});
-      let latVal, lonVal;
-      for (const k of keys) {
-        const lk = k.toLowerCase();
-        if (lk.includes('lat')) latVal = obj[k];
-        if (lk.includes('lon') || lk.includes('lng') || lk.includes('long')) lonVal = obj[k];
-      }
-      if (latVal !== undefined && lonVal !== undefined) {
-        const latN = Number(String(latVal).replace(',', '.'));
-        const lonN = Number(String(lonVal).replace(',', '.'));
-        if (Number.isFinite(latN) && Number.isFinite(lonN)) return { lat: latN, lng: lonN };
-      }
-      for (const k of keys) {
-        try {
-          const v = obj[k];
-          if (v && typeof v === 'object') {
-            const r = findLatLon(v, depth + 1);
-            if (r) return r;
-          }
-        } catch (e) { /* ignore */ }
-      }
-      return null;
-    }
-
-    const point = findLatLon(data);
-    airportCache.set(icao, point);
-    return point;
-  } catch {
-    airportCache.set(icao, null);
-    return null;
-  }
-}
+} catch (e) { /* ignore fallback */ }
 
 function updateDistanceFromAirports(waypoints) {
   const nmInput = typeof document !== 'undefined' ? document.getElementById('nm') : null;
   const kmInput = typeof document !== 'undefined' ? document.getElementById('km') : null;
   const points = (waypoints || []).filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
-
-  ensureMap();
-
-  if (points.length < 2) {
-    if (routeLayer && typeof routeLayer.remove === 'function') routeLayer.remove();
-    routeLayer = null;
-    return;
+  
+  // Calculate total distance from waypoints
+  if (points.length >= 2 && nmInput && kmInput) {
+    let totalDistance = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      totalDistance += haversine(points[i], points[i + 1]);
+    }
+    const nm = totalDistance / 1.852;
+    nmInput.value = nm.toFixed(1);
+    kmInput.value = totalDistance.toFixed(1);
   }
+};
+function buildState() {
+  const aeronave = (document.getElementById('aeronave') || {}).value || '';
+  const nmField = document.getElementById('nm');
+  const kmField = document.getElementById('km');
+  let nm = parseFloat(nmField && nmField.value || '');
+  if (!Number.isFinite(nm) || nm <= 0) {
+    const kmVal = parseFloat(kmField && kmField.value || '');
+    if (Number.isFinite(kmVal) && kmVal > 0) nm = kmVal / 1.852;
+  }
+  if (!Number.isFinite(nm)) nm = 0;
 
-  let kmTotal = 0;
-  for (let i = 1; i < points.length; i++) kmTotal += haversine(points[i - 1], points[i]);
-  const nmTotal = kmTotal / 1.852;
-
-  if (nmInput) nmInput.value = nmTotal.toFixed(1);
-  if (kmInput) kmInput.value = kmTotal.toFixed(1);
-
-  if (typeof L !== 'undefined' && map) {
-    if (routeLayer) routeLayer.remove();
-    routeLayer = L.polyline(points.map(p => [p.lat, p.lng]), {
-      color: 'blue', weight: 3, opacity: 0.9
-    }).addTo(map);
-    const b = routeLayer.getBounds();
-    if (b.isValid && b.isValid()) {
-      map.fitBounds(b, { padding: [20, 20] });
-      setTimeout(() => { try { map.invalidateSize(); } catch {} }, 50);
+  const valorKm = parseFloat((document.getElementById('tarifa') || {}).value || '');
+  
+  // If tariff is not manually set, use default for aircraft
+  let finalValorKm = Number.isFinite(valorKm) && valorKm > 0 ? valorKm : 0;
+  if (!finalValorKm) {
+    const defaultTariff = valoresKm[aeronave];
+    if (Number.isFinite(defaultTariff) && defaultTariff > 0) {
+      finalValorKm = defaultTariff;
     }
   }
-}
+  const origem = ((document.getElementById('origem') || {}).value || '').toUpperCase();
+  const destino = ((document.getElementById('destino') || {}).value || '').toUpperCase();
+  const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => (i.value || '').toUpperCase()).filter(Boolean);
+  const dataIda = (document.getElementById('dataIda') || {}).value || '';
+  const dataVolta = (document.getElementById('dataVolta') || {}).value || '';
+  const tipoExtra = ((document.querySelector('input[name="tipoExtra"]:checked') || {}).value) || 'soma';
+  const valorExtra = parseFloat((document.getElementById('valorExtra') || {}).value || '0') || 0;
+  const observacoes = (document.getElementById('observacoes') || {}).value || '';
+  const pagamento = (document.getElementById('pagamento') || {}).value || '';
+  const commissions = (typeof getAllCommissions === 'function') ? getAllCommissions() : [];
+  const showComissao = !!(document.getElementById('pdfCommissionToggle') || {}).checked;
 
-if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', () => {
-    ensureMap();
-    if (typeof window.__refreshRouteNow === 'function') window.__refreshRouteNow();
-  });
-}
-// --- [END ADD/REPLACE] ---
-
-/* ==== BEGIN PATCH: pre-orcamento resumo + validações + datas ==== */
-
-function initDateGuards() {
-  if (typeof document === 'undefined') return;
-  const ida = document.getElementById('dataIda');
-  const volta = document.getElementById('dataVolta');
-  if (!ida || !volta) return;
-
-  const today = new Date();
-  const isoToday = today.toISOString().slice(0, 10);
-
-  // valor e limite mínimo para hoje
-  if (!ida.value) ida.value = isoToday;
-  ida.min = isoToday;
-
-  const syncVolta = () => {
-    const min = ida.value || isoToday;
-    volta.min = min;
-    if (volta.value && volta.value < min) volta.value = min;
+  return {
+    aeronave,
+    nm: Number.isFinite(nm) ? Number(nm.toFixed(2)) : 0,
+    valorKm: finalValorKm,
+    origem,
+    destino,
+    stops,
+    dataIda,
+    dataVolta,
+    tipoExtra,
+    valorExtra: Number(valorExtra.toFixed ? valorExtra.toFixed(2) : valorExtra) || 0,
+    observacoes,
+    pagamento,
+    commissions,
+    showRota: !!(document.getElementById('showRota') || {}).checked,
+    showAeronave: !!(document.getElementById('showAeronave') || {}).checked,
+    showTarifa: !!(document.getElementById('showTarifa') || {}).checked,
+    showDistancia: !!(document.getElementById('showDistancia') || {}).checked,
+    showDatas: !!(document.getElementById('showDatas') || {}).checked,
+    showAjuste: !!(document.getElementById('showAjuste') || {}).checked,
+    showComissao,
+    showObservacoes: !!(document.getElementById('showObservacoes') || {}).checked,
+    showPagamento: !!(document.getElementById('showPagamento') || {}).checked,
+    showMapa: !!(document.getElementById('showMapa') || {}).checked
   };
-  ida.addEventListener('change', syncVolta);
-  syncVolta();
-}
-
-function fmtBRL(n) {
-  try {
-    return Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  } catch {
-    return 'R$ ' + (Number(n) || 0).toFixed(2).replace('.', ',');
-  }
-}
-
-function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount }) {
-  const rota = [state.origem, state.destino, ...(state.stops || [])]
-    .filter(Boolean)
-    .join(' → ');
-
-  const linhas = [];
-  linhas.push(`<p><strong>Rota:</strong> ${rota || '—'}</p>`);
-  linhas.push(`<p><strong>Aeronave:</strong> ${state.aeronave || '—'} <span style="opacity:.8">(${fmtBRL(state.valorKm)}/km)</span></p>`);
-  linhas.push(`<p><strong>Distância:</strong> ${Number(state.nm || 0)} NM (${km.toFixed(1)} km)</p>`);
-  linhas.push(`<p><strong>Datas:</strong> ${state.dataIda || '—'}${state.dataVolta ? ' → ' + state.dataVolta : ''}</p>`);
-  linhas.push(`<p><strong>Total Parcial (km×tarifa):</strong> ${fmtBRL(subtotal)}</p>`);
-  if (state.valorExtra > 0) linhas.push(`<p><strong>Ajuste:</strong> ${labelExtra}</p>`);
-  (detalhesComissao || []).forEach((c, i) => {
-    linhas.push(`<p><strong>Comissão ${i + 1}:</strong> ${fmtBRL(c.calculado)}</p>`);
-  });
-  if (commissionAmount > 0) linhas.push(`<p><strong>Comissão:</strong> ${fmtBRL(commissionAmount)}</p>`);
-  if (state.observacoes) linhas.push(`<p><strong>Observações:</strong> ${state.observacoes}</p>`);
-  if (state.pagamento) linhas.push(`<p><strong>Pagamento:</strong><br><pre style="white-space:pre-wrap;margin:0">${state.pagamento}</pre></p>`);
-  linhas.push(`<hr style="margin:12px 0;border:none;border-top:1px solid #eee" />`);
-  linhas.push(`<p style="font-size:1.1rem"><strong>Total Estimado:</strong> ${fmtBRL(total)}</p>`);
-
-  return `<h3>Pré-Orçamento</h3>${linhas.join('')}`;
 }
 
 if (typeof document !== 'undefined') {
@@ -235,167 +131,30 @@ if (typeof document !== 'undefined') {
       try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
     });
 
-    // botão Mostrar/Editar Tarifa
-    const btnShowTarifa = document.getElementById('btnShowTarifa');
-    const modal = document.getElementById('modalTarifa');
-    const modalInput = document.getElementById('tarifaModalInput');
-    const modalSave = document.getElementById('tarifaModalSave');
-    const modalCancel = document.getElementById('tarifaModalCancel');
-
-    // Persistência simples em localStorage
-    const LKEY = 'cotacao:tarifas';
-    function loadTarifasStore() {
-      try { return JSON.parse(localStorage.getItem(LKEY) || '{}'); } catch { return {}; }
-    }
-    function saveTarifasStore(store) { try { localStorage.setItem(LKEY, JSON.stringify(store)); } catch {} }
-
-    // Atualiza preview e persiste se necessário (debounced)
-    const saveAndRefresh = debounce(() => {
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
-    }, 200);
-
-    const applyTarifaPreview = () => {
-      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
-    };
-
-    // Ao trocar de aeronave, aplicar tarifa padrão ou a salva
+    // Simplified tariff handling - no modal needed
     aeronaveSel.addEventListener('change', () => {
-      const store = loadTarifasStore();
-      const saved = store[aeronaveSel.value];
       const defaultVal = valoresKm[aeronaveSel.value];
-      if (saved !== undefined && saved !== null) {
-        tarifaInput.value = saved;
-      } else if (!tarifaInput.value || tarifaInput.value === '') {
+      if (!tarifaInput.value || tarifaInput.value === '') {
         tarifaInput.value = defaultVal || '';
       }
-      applyTarifaPreview();
-      saveAndRefresh();
+      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
+      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) {}
     });
 
-    // Ao carregar a página, aplicar tarifa salva ou padrão
-    document.addEventListener('DOMContentLoaded', () => {
-      try {
-        const store = loadTarifasStore();
-        const saved = store[aeronaveSel.value];
-        if (saved !== undefined && saved !== null) tarifaInput.value = saved;
-        else if (!tarifaInput.value || tarifaInput.value === '') tarifaInput.value = valoresKm[aeronaveSel.value] || '';
-        applyTarifaPreview();
-      } catch (e) {}
-    });
+  } // Close the if (aeronaveSel && tarifaInput) block
 
-    // substituir comportamento do botão para abrir modal
-    if (btnShowTarifa && modal && modalInput && modalSave && modalCancel) {
-      btnShowTarifa.addEventListener('click', () => {
-        const cur = tarifaInput.value || valoresKm[aeronaveSel.value] || '';
-        modalInput.value = cur;
-        modal.classList.add('show');
-        // focar input
-        setTimeout(() => modalInput.focus(), 50);
-      });
-
-      modalCancel.addEventListener('click', () => {
-        modal.classList.remove('show');
-      });
-
-      modalSave.addEventListener('click', () => {
-        const raw = modalInput.value;
-        const v = Number(String(raw).replace(',', '.'));
-        if (!Number.isFinite(v) || v < 0) {
-          alert('Valor inválido');
-          return;
-        }
-        tarifaInput.value = String(Number(v.toFixed(2)));
-        // Persistir por aeronave
-        const store = loadTarifasStore();
-        if (aeronaveSel.value) store[aeronaveSel.value] = tarifaInput.value;
-        saveTarifasStore(store);
-        applyTarifaPreview();
-        modal.classList.remove('show');
-        saveAndRefresh();
-      });
-
-      // salvar com Enter no input
-      modalInput.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Enter') {
-          ev.preventDefault();
-          modalSave.click();
-        }
-      });
-
-      // fechar modal com ESC
-      document.addEventListener('keydown', (ev) => {
-        if (ev.key === 'Escape' && modal.classList.contains('show')) modal.classList.remove('show');
-      });
-    }
-  }
-
-  // ====== [ADD] ICAO uppercase + cálculo instantâneo de rota/distância ======
-  const ICAO_RE = /^[A-Z]{4}$/;
-
-  const enforceICAO = (el) => {
-    if (!el) return;
-    el.value = String(el.value || '')
-      .toUpperCase()
-      .replace(/[^A-Z]/g, '')
-      .slice(0, 4);
-  };
+  // (removido modal tarifa) bloco obsoleto purgado
 
   function debounce(fn, ms) {
     let t;
-    return (...args) => {
+    return function(...args) {
       clearTimeout(t);
-      t = setTimeout(() => fn(...args), ms);
+      t = setTimeout(() => fn.apply(this, args), ms);
     };
   }
 
   async function refreshRouteFromInputs(triggerPre = false) {
-    const origemEl = document.getElementById('origem');
-    const destinoEl = document.getElementById('destino');
-    const stopEls = Array.from(document.querySelectorAll('.stop-input'));
-
-    [origemEl, destinoEl, ...stopEls].forEach(enforceICAO);
-
-    const origem = origemEl ? origemEl.value : '';
-    const destino = destinoEl ? destinoEl.value : '';
-    const stops  = stopEls.map(i => i.value).filter(Boolean);
-
-    const codes = [origem, destino, ...stops].filter(Boolean);
-    const valid = codes.filter(c => ICAO_RE.test(c));
-    if (valid.length < 2) {
-      // Não recalcular/limpar distância quando não houver 2 aeroportos válidos.
-      // Apenas remover a rota do mapa (se existir) e sair.
-      updateDistanceFromAirports([]);
-      return;
-    }
-
-  // detecta se existe token (env ou hardcoded)
-  const tokenAvailable = !!API_KEY;
-
-    const coords = await Promise.all(valid.map(fetchAirportByCode));
-    const waypoints = coords.filter(Boolean);
-    updateDistanceFromAirports(waypoints);
-
-    // Se alguns ICAOs válidos não puderam ser resolvidos, mostrar aviso no UI
-    const unresolved = valid.map((c, i) => ({ c, ok: !!coords[i] })).filter(x => !x.ok).map(x => x.c);
-    try {
-      const avisoEl = document.getElementById('resultado');
-      if (unresolved.length > 0 && avisoEl) {
-          const prev = avisoEl.dataset.avwxWarn || '';
-          let msg = `Atenção: não foi possível localizar coordenadas para: ${unresolved.join(', ')}.`;
-          if (!tokenAvailable) msg += ' (AVWX token não configurado — insira em AVWX Token no formulário)';
-          else msg += ' Verifique token AVWX, limite de requisições ou a validade dos ICAOs.';
-          avisoEl.innerHTML = `<div style="padding:10px;border-radius:6px;background:#fff3cd;border:1px solid #ffecb5">${msg}</div>`;
-          avisoEl.dataset.avwxWarn = msg;
-        } else if (unresolved.length === 0 && document.getElementById('resultado')) {
-        // limpa aviso antigo
-        const el = document.getElementById('resultado');
-        if (el && el.dataset && el.dataset.avwxWarn) {
-          el.dataset.avwxWarn = '';
-          el.innerHTML = '';
-        }
-      }
-    } catch (e) { /* ignore DOM errors */ }
-    // Se solicitado, atualizar pré-orçamento sem re-disparar o refresh (usa core)
+    // This function should be defined elsewhere - adding placeholder
     if (triggerPre && typeof gerarPreOrcamentoCore === 'function') {
       try { gerarPreOrcamentoCore(); } catch (e) { /* ignore */ }
     }
@@ -589,105 +348,46 @@ if (typeof document !== 'undefined') {
   });
 }
 
-function buildState() {
-  const aeronave = document.getElementById('aeronave').value;
-  const nmField = document.getElementById('nm');
-  const kmField = document.getElementById('km');
-  let nm = parseFloat(nmField.value);
-  const kmVal = parseFloat(kmField.value);
-  if (!Number.isFinite(nm) && Number.isFinite(kmVal)) {
-    nm = kmVal / 1.852;
-  }
-  const origem = document.getElementById('origem').value;
-  const destino = document.getElementById('destino').value;
-  const dataIda = document.getElementById('dataIda').value;
-  const dataVolta = document.getElementById('dataVolta').value;
-  const observacoes = document.getElementById('observacoes').value;
-  const pagamentoEl = document.getElementById('pagamento');
-  const pagamento = pagamentoEl ? pagamentoEl.value : '';
-  const valorExtra = parseFloat(document.getElementById('valorExtra').value) || 0;
-  const tipoExtra = document.getElementById('tipoExtra').value;
-  const tarifaVal = parseFloat(document.getElementById('tarifa').value);
-  const valorKm = Number.isFinite(tarifaVal) ? tarifaVal : valoresKm[aeronave];
-  const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => i.value).filter(Boolean);
-  const commissions = Array.from(document.querySelectorAll('.commission-percent')).map(input => parseFloat(input.value) || 0);
-  const commissionAmountEl = document.getElementById('commissionAmount');
-  const commissionShowEl = document.getElementById('commissionShowInPdf');
-  const showComissao = commissionShowEl ? commissionShowEl.value !== '0' : true;
-  const commissionAmount = commissionAmountEl ? parseFloat(commissionAmountEl.value) || 0 : 0;
-
-  return {
-    aeronave,
-    nm,
-    origem,
-    destino,
-    dataIda,
-    dataVolta,
-    observacoes,
-    pagamento,
-    valorExtra,
-    tipoExtra,
-    valorKm,
-    stops,
-    commissions,
-    commissionAmount,
-    showRota: document.getElementById('showRota').checked,
-    showAeronave: document.getElementById('showAeronave').checked,
-    showTarifa: document.getElementById('showTarifa').checked,
-    showDistancia: document.getElementById('showDistancia').checked,
-    showDatas: document.getElementById('showDatas').checked,
-    showAjuste: document.getElementById('showAjuste').checked,
-    showComissao,
-    showObservacoes: document.getElementById('showObservacoes').checked,
-    showPagamento: document.getElementById('showPagamento').checked,
-    showMapa: document.getElementById('showMapa').checked
-  };
-}
-
 function buildDocDefinition(state) {
+  // Calculate variables needed for the document
   const km = state.nm * 1.852;
-  const subtotal = valorParcialFn(km, state.valorKm);
-  const totalSemComissao = valorTotalFn(
-    km,
-    state.valorKm,
-    state.tipoExtra === 'soma' ? state.valorExtra : -state.valorExtra
-  );
-  const { totalComissao, detalhesComissao } = calcularComissao(
-    subtotal,
-    state.valorExtra,
-    state.tipoExtra,
-    state.commissions || []
-  );
-  const commissionAmount = obterComissao(km, state.valorKm);
-  const total = totalSemComissao + totalComissao + commissionAmount;
+  const subtotal = state.nm * 1.852 * state.valorKm;
+  const valorExtra = state.valorExtra || 0;
+  let total = subtotal;
+  
+  if (state.tipoExtra === 'soma') {
+    total += valorExtra;
+  } else if (state.tipoExtra === 'subtrai') {
+    total -= valorExtra;
+  }
 
-  // Cabeçalho estilizado (barra full-bleed com "falso" gradiente em camadas de canvas)
+  // Commission calculation
+  const commissionAmount = typeof obterComissao === 'function' ? obterComissao(km, state.valorKm) : 0;
+  const { totalComissao, detalhesComissao } = calcularComissao(subtotal, valorExtra, state.tipoExtra, state.commissions || []);
+  total += totalComissao + commissionAmount;
+
+  // Header block with company info
   const headerBlock = {
-    stack: [
-      {
-        // camada de fundo principal
-        canvas: [
-          { type: 'rect', x: -40, y: -30, w: 595, h: 90, color: '#1B2635' },
-          { type: 'rect', x: -40, y: 30, w: 595, h: 4, color: '#F1C40F' }
-        ]
-      },
-      {
-        columns: [
-          { width: '*', stack: [
-            { text: '[NOME_EMPRESA]', style: 'brand' },
-            { text: '[SLOGAN_CURTO]', style: 'muted' }
-          ], margin: [0,4,0,0] },
-          { width: 'auto', stack: [
-            { text: '[EMAIL_CONTATO]', style: 'miniRight' },
-            { text: '[WHATSAPP_LINK]', style: 'miniRight' },
-            { text: '[CNPJ_OPCIONAL]', style: 'miniRight' }
-          ] }
-        ],
-        columnGap: 16,
-        margin: [0,0,0,4]
-      }
+    canvas: [
+      { type: 'rect', x: -40, y: -30, w: 595, h: 90, color: '#1B2635' },
+      { type: 'rect', x: -40, y: 30, w: 595, h: 4, color: '#F1C40F' }
+    ]
+  };
+
+  const companyHeader = {
+    columns: [
+      { width: '*', stack: [
+        { text: '[NOME_EMPRESA]', style: 'brand' },
+        { text: '[SLOGAN_CURTO]', style: 'muted' }
+      ], margin: [0,4,0,0] },
+      { width: 'auto', stack: [
+        { text: '[EMAIL_CONTATO]', style: 'miniRight' },
+        { text: '[WHATSAPP_LINK]', style: 'miniRight' },
+        { text: '[CNPJ_OPCIONAL]', style: 'miniRight' }
+      ] }
     ],
-    margin: [0, 0, 0, 18]
+    columnGap: 16,
+    margin: [0,0,0,4]
   };
 
   const resumoLeft = [];
@@ -771,11 +471,12 @@ function buildDocDefinition(state) {
   const resumoTextForTest = [...resumoLeft, ...resumoRight].map(r => r.text).join(' ');
 
   const content = [
-  { text: 'Cotação de Voo Executivo', style: 'h1' },
-  headerBlock,
-  { text: '', margin: [0,2,0,0] },
-  resumoBlock,
-  { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
+    { text: 'Cotação de Voo Executivo', style: 'h1' },
+    headerBlock,
+    companyHeader,
+    { text: '', margin: [0,2,0,0] },
+    resumoBlock,
+    { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
   { canvas: [
       { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.2, lineColor: '#E2E8F0' },
       { type: 'line', x1: 0, y1: 2, x2: 515, y2: 2, lineWidth: 0.4, lineColor: '#F1C40F' }
@@ -784,6 +485,8 @@ function buildDocDefinition(state) {
   investimentoBlock,
   ...(extras.length ? [{ text: 'Informações adicionais', style: 'h2', margin: [0, 6, 0, 4] }, ...extras] : [])
   ];
+
+  try { console.debug('[PDF][buildDocDefinition] content length', content.length, 'keys first items', content.slice(0,5).map(i => Object.keys(i))); } catch {}
 
   return {
     content,
@@ -875,6 +578,7 @@ async function gerarPreOrcamento() {
 
 async function gerarPDF(state) {
   const s = state || buildState();
+  try { console.debug('[PDF][gerarPDF] Estado bruto antes de refresh', s); } catch {}
   if (typeof __refreshRouteNow === 'function') { await __refreshRouteNow(); }
   let waypoints = [];
   if (s.showMapa) {
@@ -886,6 +590,7 @@ async function gerarPDF(state) {
     updateDistanceFromAirports(waypoints);
   }
   const docDefinition = buildDocDefinition(s);
+  try { console.debug('[PDF][gerarPDF] docDefinition recebido', { hasContent: !!docDefinition && Array.isArray(docDefinition.content), count: docDefinition?.content?.length }); } catch {}
   // Diagnóstico: detectar content vazio ou inválido
   let isBlank = false;
   try {
@@ -917,7 +622,11 @@ async function gerarPDF(state) {
 
   if (typeof pdfMake !== 'undefined') {
     try {
+      // Tenta abrir em nova aba; se bloqueado, força download
       pdfMake.createPdf(finalDef).open();
+      setTimeout(() => {
+        try { console.debug('[PDF][gerarPDF] Tentando forçar download de debug (seguro ignorar)'); pdfMake.createPdf(finalDef).download('cotacao-debug.pdf'); } catch {}
+      }, 1500);
     } catch (e) {
       console.error('[PDF] Erro ao abrir PDF principal, usando fallback mínimo.', e);
       try { pdfMake.createPdf({ content: [{ text: 'Erro ao gerar PDF', color: 'red' }, { text: String(e), fontSize: 8 }] }).open(); } catch {}
