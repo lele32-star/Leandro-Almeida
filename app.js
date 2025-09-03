@@ -23,12 +23,25 @@ function updateDistanceFromAirports(waypoints) {
   const nmInput = typeof document !== 'undefined' ? document.getElementById('nm') : null;
   const kmInput = typeof document !== 'undefined' ? document.getElementById('km') : null;
   const points = (waypoints || []).filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+  // Implementation removed - this was incomplete/broken
+}
 
+// Date synchronization - only run in browser
+if (typeof document !== 'undefined') {
+  const ida = document.getElementById('dataIda');
+  const volta = document.getElementById('dataVolta');
+  
+  function syncVolta() {
+    if (!ida || !volta) return;
+    const min = ida.value;
     if (volta.value && volta.value < min) volta.value = min;
-  if (volta.value && volta.value < min) volta.value = min;
-};
-ida.addEventListener('change', syncVolta);
-syncVolta();
+  }
+  
+  if (ida) {
+    ida.addEventListener('change', syncVolta);
+    syncVolta();
+  }
+}
 function buildState() {
   const aeronave = (document.getElementById('aeronave') || {}).value || '';
   const nmField = document.getElementById('nm');

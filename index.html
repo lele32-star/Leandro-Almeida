@@ -269,6 +269,81 @@ Conta: 25691815-5</textarea>
 
     <script src="cotacao.js"></script>
     <script src="app.js"></script>
+    
+    <script>
+      // VFS fonts setup for pdfMake
+      if (window.pdfMake && !window.pdfMake.vfs && window.pdfFonts?.pdfMake?.vfs) {
+        window.pdfMake.vfs = window.pdfFonts.pdfMake.vfs;
+      }
+
+      async function appGerarPDF(){
+        // Check if required libraries are available
+        if (typeof html2canvas === 'undefined') {
+          alert('html2canvas não está disponível. Verifique se a biblioteca foi carregada corretamente.');
+          return;
+        }
+        if (typeof pdfMake === 'undefined') {
+          alert('pdfMake não está disponível. Verifique se a biblioteca foi carregada corretamente.');
+          return;
+        }
+
+        const target = document.getElementById('resultado');
+        if (!target || !target.innerHTML.trim()) {
+          if (typeof appGerarPreOrcamento === 'function') { 
+            appGerarPreOrcamento(); 
+          } else if (typeof gerarPreOrcamento === 'function') {
+            gerarPreOrcamento();
+          } else {
+            alert('Função de gerar pré-orçamento não está disponível. Verifique se os scripts foram carregados corretamente.');
+            return;
+          }
+          await new Promise(r=>setTimeout(r, 80)); // dá um respiro para renderizar
+        }
+
+        const showMapa = document.getElementById('showMapa')?.checked;
+        // Clona a área para evitar "efeitos" de CSS ao capturar
+        const clone = target.cloneNode(true);
+        clone.style.background = '#fff';
+        // Se mapa não deve ir para o PDF, remova-o do clone
+        if (!showMapa) { clone.querySelector('#map')?.remove(); }
+
+        // Insere fora da tela, só para a captura
+        clone.style.position = 'fixed';
+        clone.style.left = '-99999px';
+        document.body.appendChild(clone);
+
+        try {
+          const canvas = await html2canvas(clone, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            useCORS: true,
+            allowTaint: false,
+            // Evita que o Leaflet/tile panes "taintem" o canvas
+            ignoreElements: el => el?.id === 'map' || el?.classList?.contains('leaflet-pane')
+          });
+
+          const img = canvas.toDataURL('image/png');
+          const docDefinition = {
+            pageSize: 'A4',
+            pageMargins: [24,24,24,24],
+            content: [{ image: img, width: 545 }]
+          };
+          pdfMake.createPdf(docDefinition).download(`cotacao-${new Date().toISOString().slice(0,10)}.pdf`);
+        } catch (err) {
+          console.error('Falha ao capturar DOM com html2canvas:', err);
+          alert('Não foi possível incluir o mapa/parte visual. Vou gerar um PDF nativo sem o mapa.');
+          // fallback: PDF nativo simples
+          if (typeof pdfMake !== 'undefined') {
+            const doc = { content: [{ text: (target.innerText || 'Cotação'), fontSize: 12 }] };
+            pdfMake.createPdf(doc).download('cotacao.pdf');
+          } else {
+            alert('pdfMake não está disponível. Verifique se as bibliotecas foram carregadas corretamente.');
+          }
+        } finally {
+          document.body.removeChild(clone);
+        }
+      }
+    </script>
   </main>
 </body>
 </html>
