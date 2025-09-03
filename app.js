@@ -552,63 +552,61 @@ async function gerarPreOrcamento() {
 }
 /* ==== END PATCH ==== */
 
-async function gerarPDF(state) {
-  const s = state || buildState();
-  try { console.debug('[PDF][gerarPDF] Estado bruto antes de refresh', s); } catch {}
-  if (typeof __refreshRouteNow === 'function') { await __refreshRouteNow(); }
-  let waypoints = [];
-  if (s.showMapa) {
-    const codes = [s.origem, s.destino, ...(s.stops || [])];
-    for (const code of codes) {
-      const point = await fetchAirportByCode(code);
-      if (point) waypoints.push(point);
-    }
-    updateDistanceFromAirports(waypoints);
-  }
-  const docDefinition = buildDocDefinition(s);
-  try { console.debug('[PDF][gerarPDF] docDefinition recebido', { hasContent: !!docDefinition && Array.isArray(docDefinition.content), count: docDefinition?.content?.length }); } catch {}
-  // Diagnóstico: detectar content vazio ou inválido
-  let isBlank = false;
-  try {
-    if (!docDefinition || !Array.isArray(docDefinition.content)) isBlank = true;
-    else {
-      const meaningful = docDefinition.content.some(item => {
-        if (!item) return false;
-        if (typeof item.text === 'string' && item.text.trim() !== '') return true;
-        if (item.table || item.columns || item.stack || item.canvas) return true;
-        return false;
-      });
-      if (!meaningful) isBlank = true;
-    }
-  } catch { isBlank = true; }
+function buildDocDefinition(state){
+  const km = state.nm * 1.852;
+  const subtotal = valorParcialFn(km, state.valorKm);
+  const totalBase = valorTotalFn(km, state.valorKm, state.tipoExtra === 'soma' ? state.valorExtra : -state.valorExtra);
+  const { totalComissao, detalhesComissao } = calcularComissao(subtotal, state.valorExtra, state.tipoExtra, state.commissions||[]);
+  const commissionAmount = obterComissao(km, state.valorKm);
+  const total = totalBase + totalComissao + commissionAmount;
 
-  let finalDef = docDefinition;
-  if (isBlank) {
-    console.warn('[PDF] Detetado docDefinition possivelmente em branco. Gerando fallback. State:', s, 'Doc:', docDefinition);
-    finalDef = {
-      pageSize: 'A4',
-      pageMargins: [40,60,40,60],
-      content: [
-        { text: 'Pré-Orçamento', fontSize: 16, bold: true, margin: [0,0,0,12] },
-        { text: 'Não foi possível montar o layout completo do PDF. Este é um fallback automático.', fontSize: 9, color: 'red', margin:[0,0,0,12] },
-        { text: JSON.stringify({ aeronave: s.aeronave, nm: s.nm, origem: s.origem, destino: s.destino }, null, 2), fontSize: 8 }
-      ]
-    };
-  }
+  const resumoLeft=[]; const resumoRight=[];
+  if(state.showRota){ const rota=[state.origem, ...(state.stops||[]), state.destino].filter(Boolean).join(' → '); resumoLeft.push({text:`Rota: ${rota}`}); }
+  if(state.showAeronave) resumoLeft.push({text:`Aeronave: ${state.aeronave}`});
+  if(state.showDatas) resumoLeft.push({text:`Datas: ${state.dataIda} - ${state.dataVolta}`});
+  if(state.showDistancia) resumoRight.push({text:`Distância: ${state.nm} NM (${km.toFixed(1)} km)`});
+  if(state.showTarifa) resumoRight.push({text:`Tarifa: R$ ${state.valorKm.toLocaleString('pt-BR',{minimumFractionDigits:2})}`});
 
-  if (typeof pdfMake !== 'undefined') {
-    try {
-      // Tenta abrir em nova aba; se bloqueado, força download
-      pdfMake.createPdf(finalDef).open();
-      setTimeout(() => {
-        try { console.debug('[PDF][gerarPDF] Tentando forçar download de debug (seguro ignorar)'); pdfMake.createPdf(finalDef).download('cotacao-debug.pdf'); } catch {}
-      }, 1500);
-    } catch (e) {
-      console.error('[PDF] Erro ao abrir PDF principal, usando fallback mínimo.', e);
-      try { pdfMake.createPdf({ content: [{ text: 'Erro ao gerar PDF', color: 'red' }, { text: String(e), fontSize: 8 }] }).open(); } catch {}
-    }
+  const investBody=[];
+  investBody.push([{text:`Subtotal: R$ ${subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, alignment:'right'}]);
+  if(state.showAjuste && state.valorExtra>0){ investBody.push([{text:`${state.tipoExtra==='soma'?'Outras Despesas':'Desconto'}: R$ ${state.valorExtra.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, alignment:'right'}]); }
+  if(state.showComissao){ (detalhesComissao||[]).forEach((c,i)=>investBody.push([{text:`Comissão ${i+1}: R$ ${c.calculado.toLocaleString('pt-BR',{minimumFractionDigits:2})}`,alignment:'right'}])); if(commissionAmount>0) investBody.push([{text:`Comissão: R$ ${commissionAmount.toLocaleString('pt-BR',{minimumFractionDigits:2})}`,alignment:'right'}]); }
+  investBody.push([{text:`Total Final: R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, style:'total', alignment:'right'}]);
+
+  const extras=[];
+  if(state.showObservacoes && state.observacoes) extras.push({text:`Observações: ${state.observacoes}`});
+  if(state.showPagamento && state.pagamento) extras.push({text:`Pagamento: ${state.pagamento}`});
+
+  return {
+    pageSize:'A4', pageMargins:[40,60,40,60],
+    content:[
+      {text:'Cotação de Voo Executivo', style:'h1'},
+      {columns:[{stack:resumoLeft},{stack:resumoRight}] , margin:[0,8,0,12]},
+      {text:'Investimento', style:'h2'},
+      {table:{widths:['*'], body:investBody}, layout:'noBorders', margin:[0,4,0,10]},
+      ...(extras.length?[{text:'Informações Adicionais', style:'h2', margin:[0,4,0,4]}, ...extras]:[])
+    ],
+    styles:{ h1:{fontSize:18,bold:true}, h2:{fontSize:12,bold:true}, total:{bold:true,fontSize:12,color:'#1B2635'} },
+    defaultStyle:{fontSize:10}
+  };
+}
+
+async function gerarPDF(state){
+  const s = state||buildState();
+  // recalcula rota se necessário
+  if(s.showMapa && typeof refreshRouteFromInputs==='function'){
+    try { await refreshRouteFromInputs(false); } catch{}
   }
-  return finalDef;
+  const def = buildDocDefinition(s);
+  if(!def || !Array.isArray(def.content) || !def.content.length){
+    console.warn('[PDF] Def vazio, usando fallback', def);
+    return pdfMake && pdfMake.createPdf({content:[{text:'Falha ao gerar PDF',color:'red'}]}).open();
+  }
+  if(typeof pdfMake==='undefined'){ console.error('pdfMake não carregado'); return def; }
+  try { pdfMake.createPdf(def).open(); } catch(e){
+    console.error('Erro pdfMake.open()', e); try { pdfMake.createPdf(def).download('cotacao.pdf'); } catch{}
+  }
+  return def;
 }
 
 function limparCampos() {
