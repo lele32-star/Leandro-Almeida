@@ -675,7 +675,75 @@ if (typeof window !== 'undefined') {
   window.limparCampos = limparCampos;
   // Aliases para garantir que os botões chamem SEMPRE a versão do app.js
   window.appGerarPreOrcamento = gerarPreOrcamento;
-  window.appGerarPDF = gerarPDF;
+  window.appGerarPDF = gerarPDF; // será sobrescrito por fallback visual abaixo
+
+  /* === Fallback visual (html2canvas) para casos de PDF em branco === */
+  (function installPdfImageFallback(){
+    function ensureVfs(){
+      try {
+        if (window.pdfMake && !window.pdfMake.vfs && window.pdfFonts?.pdfMake?.vfs) {
+          window.pdfMake.vfs = window.pdfFonts.pdfMake.vfs;
+        }
+      } catch(e){ console.warn('[PDF] Falha ao garantir vfs', e); }
+    }
+
+    async function gerarPDFDom(){
+      ensureVfs();
+      const target = document.getElementById('resultado');
+      if (!target) { console.error('[PDF] Área #resultado não encontrada'); return; }
+      if (!target.innerHTML.trim() && typeof window.appGerarPreOrcamento === 'function') {
+        try { window.appGerarPreOrcamento(); } catch{}
+        await new Promise(r=>setTimeout(r,80));
+      }
+
+      // Se ainda vazio, recorre ao builder nativo
+      if (!target.innerHTML.trim()) {
+        console.warn('[PDF] Resultado vazio, usando builder nativo');
+        return gerarPDF();
+      }
+
+      const showMapa = !!document.getElementById('showMapa')?.checked;
+      const clone = target.cloneNode(true);
+      clone.style.background = '#fff';
+      // Remover mapa se não for para exibir
+      if (!showMapa) { const m = clone.querySelector('#map'); if (m) m.remove(); }
+      clone.style.position='fixed';
+      clone.style.left='-99999px';
+      clone.style.top='0';
+      document.body.appendChild(clone);
+      try {
+        if (typeof html2canvas !== 'function') {
+          console.warn('[PDF] html2canvas indisponível, fallback nativo.');
+          return gerarPDF();
+        }
+        const canvas = await html2canvas(clone, {
+          scale: 2,
+          backgroundColor: '#ffffff',
+          useCORS: true,
+          allowTaint: false,
+          ignoreElements: el => el?.id === 'map' || el?.classList?.contains('leaflet-pane')
+        });
+        const img = canvas.toDataURL('image/png');
+        const docDefinition = { pageSize:'A4', pageMargins:[24,24,24,24], content:[{ image: img, width: 545 }] };
+        if (typeof pdfMake === 'undefined') { console.error('[PDF] pdfMake não carregado'); return; }
+        pdfMake.createPdf(docDefinition).download(`cotacao-${new Date().toISOString().slice(0,10)}.pdf`);
+      } catch(err){
+        console.error('[PDF] Falha html2canvas, fallback texto', err);
+        try {
+          if (typeof pdfMake !== 'undefined') {
+            const doc = { content:[{ text: (target.innerText||'Cotação'), fontSize:12 }] };
+            pdfMake.createPdf(doc).download('cotacao.pdf');
+          }
+        } catch(e2){ console.error('[PDF] Falha também no fallback texto', e2); }
+      } finally {
+        try { document.body.removeChild(clone); } catch{}
+      }
+    }
+
+    // expõe e sobrescreve botão principal
+    window.gerarPDFDom = gerarPDFDom;
+    window.appGerarPDF = gerarPDFDom;
+  })();
 }
 
 if (typeof module !== 'undefined') {
