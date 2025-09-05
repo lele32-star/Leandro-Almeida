@@ -94,9 +94,7 @@ function buildState() {
   };
 }
 
-if (typeof document !== 'undefined') {
-  document.addEventListener('DOMContentLoaded', initDateGuards);
-}
+
 
 /* ==== END PATCH ==== */
 
@@ -174,9 +172,70 @@ if (typeof document !== 'undefined') {
 
   function debounce(fn, ms) {
     let t;
-    if (triggerPre && typeof gerarPreOrcamentoCore === 'function') {
-      try { gerarPreOrcamentoCore(); } catch (e) { /* ignore */ }
+    return function(...args) {
+      clearTimeout(t);
+      t = setTimeout(() => fn.apply(this, args), ms);
+    };
+  }
+
+  // Stub for refreshRouteFromInputs (simplified - no coordinate fetching)
+  function refreshRouteFromInputs(triggerPre = false) {
+    // Simplified version - just update distance if available
+    const nmInput = document.getElementById('nm');
+    const kmInput = document.getElementById('km');
+    if (nmInput && kmInput) {
+      if (nmInput.value && !kmInput.value) {
+        kmInput.value = (parseFloat(nmInput.value) * 1.852).toFixed(1);
+      } else if (kmInput.value && !nmInput.value) {
+        nmInput.value = (parseFloat(kmInput.value) / 1.852).toFixed(1);
+      }
     }
+    
+    if (triggerPre && typeof gerarPreOrcamento === 'function') {
+      try { gerarPreOrcamento(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  // Simple ICAO code enforcement
+  function enforceICAO(input) {
+    if (input && input.value) {
+      input.value = input.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4);
+    }
+  }
+
+  // Simple currency formatter
+  function fmtBRL(n) {
+    return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+  }
+
+  // Simple summary renderer
+  function renderResumo(state, { km, subtotal, total, labelExtra, detalhesComissao, commissionAmount }) {
+    const parts = [
+      `<h3>Resumo da Cotação</h3>`,
+      `<p><strong>Aeronave:</strong> ${state.aeronave}</p>`,
+      `<p><strong>Rota:</strong> ${state.origem} → ${state.destino}</p>`,
+      `<p><strong>Distância:</strong> ${state.nm} NM (${km.toFixed(1)} km)</p>`,
+      `<p><strong>Tarifa:</strong> R$ ${fmtBRL(state.valorKm)}/km</p>`,
+      `<p><strong>Subtotal:</strong> R$ ${fmtBRL(subtotal)}</p>`
+    ];
+
+    if (labelExtra) {
+      parts.push(`<p><strong>Ajuste:</strong> ${labelExtra}</p>`);
+    }
+
+    if (commissionAmount > 0) {
+      parts.push(`<p><strong>Comissão:</strong> R$ ${fmtBRL(commissionAmount)}</p>`);
+    }
+
+    if (detalhesComissao && detalhesComissao.length > 0) {
+      detalhesComissao.forEach(({ label, valor }) => {
+        parts.push(`<p><strong>${label}:</strong> R$ ${fmtBRL(valor)}</p>`);
+      });
+    }
+
+    parts.push(`<p style="font-size: 1.2em; font-weight: bold;"><strong>Total Final:</strong> R$ ${fmtBRL(total)}</p>`);
+
+    return parts.join('\n');
   }
 
   const debouncedRefresh = debounce(() => refreshRouteFromInputs(true), 400);
@@ -468,22 +527,49 @@ function buildDocDefinition(state){
   };
 }
 
-async function gerarPDF(state){
-  const s = state||buildState();
-  // recalcula rota se necessário
-  if(s.showMapa && typeof refreshRouteFromInputs==='function'){
-    try { await refreshRouteFromInputs(false); } catch{}
+async function gerarPDF(state) {
+  console.log('[PDF] Generating PDF...');
+  const s = state || buildState();
+  
+  try {
+    const docDefinition = buildDocDefinition(s);
+    console.log('[PDF] Document definition created successfully');
+    
+    if (typeof pdfMake === 'undefined') {
+      console.error('[PDF] pdfMake não carregado');
+      return docDefinition;
+    }
+    
+    // Simple PDF generation without complex fallbacks
+    pdfMake.createPdf(docDefinition).open();
+    console.log('[PDF] PDF generated and opened successfully');
+    return docDefinition;
+    
+  } catch (error) {
+    console.error('[PDF] Erro ao gerar PDF:', error);
+    
+    // Simple fallback - just try to create a basic PDF
+    if (typeof pdfMake !== 'undefined') {
+      try {
+        const fallbackDoc = {
+          content: [
+            { text: 'Cotação de Voo Executivo', fontSize: 16, bold: true },
+            { text: 'Erro ao gerar PDF completo. Dados básicos:', margin: [0, 10, 0, 5] },
+            { text: `Aeronave: ${s.aeronave || 'N/A'}` },
+            { text: `Origem: ${s.origem || 'N/A'}` },
+            { text: `Destino: ${s.destino || 'N/A'}` },
+            { text: `Distância: ${s.nm || 0} NM` },
+            { text: `Tarifa: R$ ${(s.valorKm || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` }
+          ]
+        };
+        pdfMake.createPdf(fallbackDoc).open();
+      } catch (fallbackError) {
+        console.error('[PDF] Erro no fallback também:', fallbackError);
+      }
+    }
+    
+    return null;
   }
-  const def = buildDocDefinition(s);
-  if(!def || !Array.isArray(def.content) || !def.content.length){
-    console.warn('[PDF] Def vazio, usando fallback', def);
-    return pdfMake && pdfMake.createPdf({content:[{text:'Falha ao gerar PDF',color:'red'}]}).open();
-  }
-  if(typeof pdfMake==='undefined'){ console.error('pdfMake não carregado'); return def; }
-  try { pdfMake.createPdf(def).open(); } catch(e){
-    console.error('Erro pdfMake.open()', e); try { pdfMake.createPdf(def).download('cotacao.pdf'); } catch{}
-  }
-  return def;
 }
 
 function limparCampos() {
@@ -539,75 +625,7 @@ if (typeof window !== 'undefined') {
   window.limparCampos = limparCampos;
   // Aliases para garantir que os botões chamem SEMPRE a versão do app.js
   window.appGerarPreOrcamento = gerarPreOrcamento;
-  window.appGerarPDF = gerarPDF; // será sobrescrito por fallback visual abaixo
-
-  /* === Fallback visual (html2canvas) para casos de PDF em branco === */
-  (function installPdfImageFallback(){
-    function ensureVfs(){
-      try {
-        if (window.pdfMake && !window.pdfMake.vfs && window.pdfFonts?.pdfMake?.vfs) {
-          window.pdfMake.vfs = window.pdfFonts.pdfMake.vfs;
-        }
-      } catch(e){ console.warn('[PDF] Falha ao garantir vfs', e); }
-    }
-
-    async function gerarPDFDom(){
-      ensureVfs();
-      const target = document.getElementById('resultado');
-      if (!target) { console.error('[PDF] Área #resultado não encontrada'); return; }
-      if (!target.innerHTML.trim() && typeof window.appGerarPreOrcamento === 'function') {
-        try { window.appGerarPreOrcamento(); } catch{}
-        await new Promise(r=>setTimeout(r,80));
-      }
-
-      // Se ainda vazio, recorre ao builder nativo
-      if (!target.innerHTML.trim()) {
-        console.warn('[PDF] Resultado vazio, usando builder nativo');
-        return gerarPDF();
-      }
-
-      const showMapa = !!document.getElementById('showMapa')?.checked;
-      const clone = target.cloneNode(true);
-      clone.style.background = '#fff';
-      // Remover mapa se não for para exibir
-      if (!showMapa) { const m = clone.querySelector('#map'); if (m) m.remove(); }
-      clone.style.position='fixed';
-      clone.style.left='-99999px';
-      clone.style.top='0';
-      document.body.appendChild(clone);
-      try {
-        if (typeof html2canvas !== 'function') {
-          console.warn('[PDF] html2canvas indisponível, fallback nativo.');
-          return gerarPDF();
-        }
-        const canvas = await html2canvas(clone, {
-          scale: 2,
-          backgroundColor: '#ffffff',
-          useCORS: true,
-          allowTaint: false,
-          ignoreElements: el => el?.id === 'map' || el?.classList?.contains('leaflet-pane')
-        });
-        const img = canvas.toDataURL('image/png');
-        const docDefinition = { pageSize:'A4', pageMargins:[24,24,24,24], content:[{ image: img, width: 545 }] };
-        if (typeof pdfMake === 'undefined') { console.error('[PDF] pdfMake não carregado'); return; }
-        pdfMake.createPdf(docDefinition).download(`cotacao-${new Date().toISOString().slice(0,10)}.pdf`);
-      } catch(err){
-        console.error('[PDF] Falha html2canvas, fallback texto', err);
-        try {
-          if (typeof pdfMake !== 'undefined') {
-            const doc = { content:[{ text: (target.innerText||'Cotação'), fontSize:12 }] };
-            pdfMake.createPdf(doc).download('cotacao.pdf');
-          }
-        } catch(e2){ console.error('[PDF] Falha também no fallback texto', e2); }
-      } finally {
-        try { document.body.removeChild(clone); } catch{}
-      }
-    }
-
-    // expõe e sobrescreve botão principal
-    window.gerarPDFDom = gerarPDFDom;
-    window.appGerarPDF = gerarPDFDom;
-  })();
+  window.appGerarPDF = gerarPDF;
 }
 
 if (typeof module !== 'undefined') {
