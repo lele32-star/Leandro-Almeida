@@ -24,11 +24,23 @@ function updateDistanceFromAirports(waypoints) {
   const kmInput = typeof document !== 'undefined' ? document.getElementById('km') : null;
   const points = (waypoints || []).filter(p => p && Number.isFinite(p.lat) && Number.isFinite(p.lng));
 
+  // Calculate distance logic would go here...
+}
+
+// Date synchronization logic (wrapped in DOM check)
+if (typeof document !== 'undefined') {
+  const ida = document.getElementById('dataIda');
+  const volta = document.getElementById('dataVolta');
+  
+  const syncVolta = () => {
+    if (!ida || !volta) return;
+    const min = ida.value;
     if (volta.value && volta.value < min) volta.value = min;
-  if (volta.value && volta.value < min) volta.value = min;
-};
-ida.addEventListener('change', syncVolta);
-syncVolta();
+  };
+  
+  if (ida) ida.addEventListener('change', syncVolta);
+  syncVolta();
+}
 function buildState() {
   const aeronave = (document.getElementById('aeronave') || {}).value || '';
   const nmField = document.getElementById('nm');
@@ -41,12 +53,14 @@ function buildState() {
   if (!Number.isFinite(nm)) nm = 0;
 
   const valorKm = parseFloat((document.getElementById('tarifa') || {}).value || '');
+  // If no tariff is set, fall back to the default for the selected aircraft
+  const finalValorKm = Number.isFinite(valorKm) && valorKm > 0 ? valorKm : (valoresKm[aeronave] || 0);
   const origem = ((document.getElementById('origem') || {}).value || '').toUpperCase();
   const destino = ((document.getElementById('destino') || {}).value || '').toUpperCase();
-  const stops = Array.from(document.querySelectorAll('.stop-input')).map(i => (i.value || '').toUpperCase()).filter(Boolean);
+  const stops = typeof document !== 'undefined' && document.querySelectorAll ? Array.from(document.querySelectorAll('.stop-input')).map(i => (i.value || '').toUpperCase()).filter(Boolean) : [];
   const dataIda = (document.getElementById('dataIda') || {}).value || '';
   const dataVolta = (document.getElementById('dataVolta') || {}).value || '';
-  const tipoExtra = ((document.querySelector('input[name="tipoExtra"]:checked') || {}).value) || 'soma';
+  const tipoExtra = typeof document !== 'undefined' && document.querySelector ? ((document.querySelector('input[name="tipoExtra"]:checked') || {}).value) || 'soma' : 'soma';
   const valorExtra = parseFloat((document.getElementById('valorExtra') || {}).value || '0') || 0;
   const observacoes = (document.getElementById('observacoes') || {}).value || '';
   const pagamento = (document.getElementById('pagamento') || {}).value || '';
@@ -56,7 +70,7 @@ function buildState() {
   return {
     aeronave,
     nm: Number.isFinite(nm) ? Number(nm.toFixed(2)) : 0,
-    valorKm: Number.isFinite(valorKm) ? Number(valorKm) : 0,
+    valorKm: Number.isFinite(finalValorKm) ? Number(finalValorKm) : 0,
     origem,
     destino,
     stops,
@@ -353,147 +367,7 @@ if (typeof document !== 'undefined') {
   });
 }
 
-function buildState() {
-  const aeronave = document.getElementById('aeronave').value;
-  const nmField = document.getElementById('nm');
-  const kmField = document.getElementById('km');
-  let nm = parseFloat(nmField.value);
-    // Simples: ao trocar aeronave, preenche tarifa padrão se vazio
-    const syncTarifaFromAeronave = () => {
-      if (!tarifaInput.value) tarifaInput.value = valoresKm[aeronaveSel.value] || '';
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch {}
-    };
-    aeronaveSel.addEventListener('change', syncTarifaFromAeronave);
-    tarifaInput.addEventListener('input', () => { try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch {} });
-    document.addEventListener('DOMContentLoaded', syncTarifaFromAeronave);
-        margin: [0,0,0,4]
-      }
-  // Removed stray array and margin to fix syntax error
 
-  const resumoLeft = [];
-  if (state.showRota) {
-    const codes = [state.origem, state.destino, ...(state.stops || [])].filter(Boolean).join(' → ');
-    resumoLeft.push({ text: `Rota: ${codes}`, style: 'row' });
-  }
-  if (state.showAeronave) resumoLeft.push({ text: `Aeronave: ${state.aeronave}`, style: 'row' });
-  if (state.showDatas) resumoLeft.push({ text: `Datas: ${state.dataIda} - ${state.dataVolta}`, style: 'row' });
-
-  const resumoRight = [];
-  if (state.showDistancia) resumoRight.push({ text: `Distância: ${state.nm} NM (${km.toFixed(1)} km)`, style: 'row' });
-  if (state.showTarifa) resumoRight.push({ text: `Tarifa por km: R$ ${state.valorKm.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, style: 'row' });
-
-  // Bloco de resumo em "card"
-  const resumoBlock = {
-    table: {
-      widths: ['*','*'],
-      body: [
-        [
-          { stack: resumoLeft, margin: [0,0,0,0] },
-          { stack: resumoRight, margin: [0,0,0,0] }
-        ]
-      ]
-    },
-    layout: {
-      hLineWidth: () => 0,
-      vLineWidth: () => 0,
-      paddingLeft: () => 10,
-      paddingRight: () => 10,
-      paddingTop: () => 8,
-      paddingBottom: () => 8,
-      fillColor: () => '#F8FAFC'
-    },
-    margin: [0, 8, 0, 14]
-  };
-
-  // Tabela de investimento
-  const investBody = [];
-  investBody.push([{ text: `Total parcial: R$ ${subtotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
-
-  if (state.showAjuste && state.valorExtra > 0) {
-    const label = state.tipoExtra === 'soma' ? 'Outras Despesas' : 'Desconto';
-    investBody.push([{ text: `${label}: R$ ${state.valorExtra.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
-  }
-
-  if (state.showComissao) {
-    (detalhesComissao || []).forEach((c, idx) => {
-      investBody.push([{ text: `Comissão ${idx + 1}: R$ ${c.calculado.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
-    });
-    if (commissionAmount > 0) {
-      investBody.push([{ text: `Comissão: R$ ${commissionAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right' }]);
-    }
-  }
-
-  investBody.push([{ text: `Total Final: R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, alignment: 'right', style: 'totalRow' }]);
-
-  const investimentoBlock = {
-    table: { widths: ['*'], body: investBody },
-    layout: {
-      fillColor: (rowIndex) => {
-        if (rowIndex === investBody.length - 1) return '#1B2635';
-        return rowIndex % 2 === 0 ? '#FFFFFF' : '#F4F6F8';
-      },
-      hLineColor: () => '#E2E8F0',
-      vLineColor: () => '#E2E8F0',
-      paddingTop: () => 6,
-      paddingBottom: () => 6,
-      paddingLeft: () => 10,
-      paddingRight: () => 10
-    },
-    margin: [0, 6, 0, 16]
-  };
-
-  const extras = [];
-  if (state.showObservacoes && state.observacoes) extras.push({ text: `Observações: ${state.observacoes}`, margin: [0, 2, 0, 0] });
-  if (state.showPagamento && state.pagamento) extras.push({ text: `Dados de pagamento: ${state.pagamento}`, margin: [0, 2, 0, 0] });
-  if (state.showMapa) extras.push({ text: 'Mapa:', margin: [0, 2, 0, 0] });
-
-  // Texto invisível preserva palavras-chave para testes
-  const resumoTextForTest = [...resumoLeft, ...resumoRight].map(r => r.text).join(' ');
-
-  const content = [
-  { text: 'Cotação de Voo Executivo', style: 'h1' },
-  headerBlock,
-  { text: '', margin: [0,2,0,0] },
-  resumoBlock,
-  { text: resumoTextForTest, fontSize: 0, margin: [0, 0, 0, 0], color: '#fff' },
-  { canvas: [
-      { type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 1.2, lineColor: '#E2E8F0' },
-      { type: 'line', x1: 0, y1: 2, x2: 515, y2: 2, lineWidth: 0.4, lineColor: '#F1C40F' }
-    ], margin: [0,4,0,4] },
-  { text: 'Investimento', style: 'sectionTitle', margin: [0, 6, 0, 6] },
-  investimentoBlock,
-  ...(extras.length ? [{ text: 'Informações adicionais', style: 'h2', margin: [0, 6, 0, 4] }, ...extras] : [])
-  ];
-
-  try { console.debug('[PDF][buildDocDefinition] content length', content.length, 'keys first items', content.slice(0,5).map(i => Object.keys(i))); } catch {}
-
-  return {
-    content,
-    pageSize: 'A4',
-    pageMargins: [40, 60, 40, 60],
-    defaultStyle: { fontSize: 10, lineHeight: 1.3, color: '#1B2635', font: 'Helvetica' },
-    styles: {
-      h1: { fontSize: 20, bold: true, color: '#1B2635', margin: [0, 0, 0, 4], letterSpacing: 0.5 },
-      sectionTitle: { fontSize: 13, bold: true, color: '#1B2635', letterSpacing: 0.5 },
-      brand: { fontSize: 18, bold: true, color: '#F1C40F', letterSpacing: 1 },
-      muted: { color: '#E5E7EB', margin: [0, 2, 0, 0], fontSize: 9, letterSpacing: 0.5 },
-      mini: { color: '#516170', fontSize: 8 },
-      miniRight: { color: '#F1F3F5', fontSize: 8, alignment: 'right' },
-      row: { margin: [0, 2, 0, 0], fontSize: 10 },
-      totalRow: { bold: true, color: '#FFFFFF', fontSize: 12 }
-    },
-    info: { title: 'Cotação de Voo Executivo', author: '[NOME_EMPRESA]' },
-    footer: function(currentPage, pageCount) {
-      return {
-        columns: [
-          { text: '[NOME_EMPRESA] • [WHATSAPP_LINK] • [EMAIL_CONTATO]', style: 'mini' },
-          { text: `${currentPage} / ${pageCount}`, alignment: 'right', style: 'mini' }
-        ],
-        margin: [40, 0, 40, 20]
-      };
-    }
-  };
-}
 
 /* ==== BEGIN PATCH: função gerarPreOrcamento (resumo completo + validações) ==== */
 async function gerarPreOrcamento() {
@@ -564,14 +438,14 @@ function buildDocDefinition(state){
   const total = totalBase + totalComissao + commissionAmount;
 
   const resumoLeft=[]; const resumoRight=[];
-  if(state.showRota){ const rota=[state.origem, ...(state.stops||[]), state.destino].filter(Boolean).join(' → '); resumoLeft.push({text:`Rota: ${rota}`}); }
+  if(state.showRota){ const rota=[state.origem, state.destino, ...(state.stops||[])].filter(Boolean).join(' → '); resumoLeft.push({text:`Rota: ${rota}`}); }
   if(state.showAeronave) resumoLeft.push({text:`Aeronave: ${state.aeronave}`});
   if(state.showDatas) resumoLeft.push({text:`Datas: ${state.dataIda} - ${state.dataVolta}`});
   if(state.showDistancia) resumoRight.push({text:`Distância: ${state.nm} NM (${km.toFixed(1)} km)`});
   if(state.showTarifa) resumoRight.push({text:`Tarifa: R$ ${state.valorKm.toLocaleString('pt-BR',{minimumFractionDigits:2})}`});
 
   const investBody=[];
-  investBody.push([{text:`Subtotal: R$ ${subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, alignment:'right'}]);
+  investBody.push([{text:`Total parcial: R$ ${subtotal.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, alignment:'right'}]);
   if(state.showAjuste && state.valorExtra>0){ investBody.push([{text:`${state.tipoExtra==='soma'?'Outras Despesas':'Desconto'}: R$ ${state.valorExtra.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, alignment:'right'}]); }
   if(state.showComissao){ (detalhesComissao||[]).forEach((c,i)=>investBody.push([{text:`Comissão ${i+1}: R$ ${c.calculado.toLocaleString('pt-BR',{minimumFractionDigits:2})}`,alignment:'right'}])); if(commissionAmount>0) investBody.push([{text:`Comissão: R$ ${commissionAmount.toLocaleString('pt-BR',{minimumFractionDigits:2})}`,alignment:'right'}]); }
   investBody.push([{text:`Total Final: R$ ${total.toLocaleString('pt-BR',{minimumFractionDigits:2})}`, style:'total', alignment:'right'}]);

@@ -2,14 +2,22 @@ const assert = require('assert');
 const { buildState, buildDocDefinition, gerarPDF, calcularComissao } = require('./app.js');
 
 function extractText(docDef) {
+  function extractFromItem(item) {
+    if (item && item.text) return item.text;
+    if (item && item.table) {
+      return item.table.body.flat().map(c => extractFromItem(c)).join(' ');
+    }
+    if (item && item.columns) {
+      return item.columns.map(col => extractFromItem(col)).join(' ');
+    }
+    if (item && item.stack) {
+      return item.stack.map(stackItem => extractFromItem(stackItem)).join(' ');
+    }
+    return '';
+  }
+  
   return docDef.content
-    .map(item => {
-      if (item && item.text) return item.text;
-      if (item && item.table) {
-        return item.table.body.flat().map(c => c.text).join(' ');
-      }
-      return '';
-    })
+    .map(item => extractFromItem(item))
     .join('\n');
 }
 
