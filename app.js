@@ -102,22 +102,25 @@ if (typeof document !== 'undefined') {
 
   const aeronaveSel = document.getElementById('aeronave');
   const tarifaInput = document.getElementById('tarifa');
-  if (aeronaveSel && tarifaInput) {
-    const tarifaPreview = typeof document !== 'undefined' ? document.getElementById('tarifaPreview') : null;
-    const syncTarifaFromAeronave = () => {
-      const val = valoresKm[aeronaveSel.value];
-      if (!tarifaInput.value || tarifaInput.value === '') tarifaInput.value = val || '';
-      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
-    };
+  const tarifaPreview = document.getElementById('tarifaPreview');
+  function renderTarifaPreview(){
+    if (!tarifaPreview) return;
+    const v = tarifaInput && tarifaInput.value ? Number(tarifaInput.value) : NaN;
+    tarifaPreview.textContent = Number.isFinite(v) && v>0 ? `Tarifa selecionada: R$ ${v.toLocaleString('pt-BR',{minimumFractionDigits:2})}/km` : '';
+  }
+  function syncTarifaFromAeronave(){
+    if (!aeronaveSel || !tarifaInput) return;
+    const base = valoresKm[aeronaveSel.value];
+    if (base && (!tarifaInput.value || Number(tarifaInput.value)<=0)) tarifaInput.value = base;
+    renderTarifaPreview();
+    try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch{}
+  }
+  if (aeronaveSel && tarifaInput){
     aeronaveSel.addEventListener('change', syncTarifaFromAeronave);
-    tarifaInput.addEventListener('input', () => {
-      if (tarifaPreview) tarifaPreview.textContent = tarifaInput.value ? `R$ ${Number(tarifaInput.value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/km` : '';
-      // Atualiza pré-orçamento ao editar tarifa manualmente
-      try { if (typeof gerarPreOrcamento === 'function') gerarPreOrcamento(); } catch (e) { /* ignore */ }
-    });
-
-    // botão Mostrar/Editar Tarifa
-    const btnShowTarifa = document.getElementById('btnShowTarifa');
+    tarifaInput.addEventListener('input', ()=>{ renderTarifaPreview(); try { if (typeof gerarPreOrcamento==='function') gerarPreOrcamento(); } catch{} });
+    // inicial
+    setTimeout(syncTarifaFromAeronave,0);
+  }
     const modal = document.getElementById('modalTarifa');
     const modalInput = document.getElementById('tarifaModalInput');
     const modalSave = document.getElementById('tarifaModalSave');
